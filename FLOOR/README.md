@@ -181,6 +181,8 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 - Letzte Output-Buffer Optimierung wieder rückgängig gemacht da offenbar IPSView nicht damit umgehen konnte. Das bedeutet für grössere Projekte, dass allenfalls der Output-Buffer erhöht werden muss.
 - Flackern der Stockwerk-Auswahl auf einigen Android Tablets behoben.
+- Die Einstellung der Nachkommastellen etc. wird nun ebenfalls aus dem Variablenprofil übernommen.
+- Vier neue Möbel hinzugefügt: Dusche, Eckdusche, Eck-Whirlpool, Wärmepumpe und Backofen.
 
 ### 1.11
 
