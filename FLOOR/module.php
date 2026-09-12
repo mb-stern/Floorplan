@@ -8596,7 +8596,18 @@ JAVASCRIPT;
         }
         $profile = null;
         $profileSummary = '';
-        $valueText = $this->FormatRawValue($rawValue);
+
+        // Den sichtbaren Wert grundsätzlich von IP-Symcon formatieren lassen.
+        // Damit werden Legacy-Profile (Digits, Prefix/Suffix, Assoziationen)
+        // genauso dargestellt wie die Variable selbst. Für neue Darstellungen
+        // wird weiter unten zusätzlich ein gezielter DIGITS-Fallback angewandt,
+        // falls GetValueFormatted() nur den Rohwert zurückliefert.
+        $valueText = $this->GetFormattedVariableValue(
+            $VariableID,
+            $rawValue,
+            (array) ($activePresentation['parameters'] ?? []),
+            $hasNewPresentation
+        );
         $legacyColorOn = '';
         $legacyCurrentColor = '';
         $newIntegerStatusColor = '';
@@ -8694,9 +8705,9 @@ JAVASCRIPT;
                     break;
                 }
 
-                if ($valueText === $this->FormatRawValue($rawValue)) {
-                    $valueText = (string) ($p['Prefix'] ?? '') . $valueText . (string) ($p['Suffix'] ?? '');
-                }
+                // $valueText kommt bereits aus GetValueFormatted(). Dadurch
+                // werden insbesondere die im Legacy-Profil hinterlegten Digits
+                // sowie Prefix/Suffix exakt von Symcon übernommen.
             } catch (Throwable $e) {
                 $this->SendDebug('VariableProfile', $profileName . ': ' . $e->getMessage(), 0);
             }
@@ -8742,6 +8753,73 @@ JAVASCRIPT;
             '_profile'        => $profile,
             '_canAction'      => $canAction
         ];
+    }
+
+    private function GetFormattedVariableValue(
+        int $VariableID,
+        mixed $RawValue,
+        array $Presentation,
+        bool $HasNewPresentation
+    ): string {
+        $rawText = $this->FormatRawValue($RawValue);
+        $formatted = '';
+
+        // Legacy-Profile und aktuelle Symcon-Versionen mit neuer Darstellung:
+        // Symcon selbst ist die erste Quelle für die sichtbare Formatierung.
+        try {
+            $formatted = (string) GetValueFormatted($VariableID);
+        } catch (Throwable $e) {
+            $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+        }
+
+        if (!$HasNewPresentation || !is_numeric($RawValue)) {
+            return $formatted !== '' ? $formatted : $rawText;
+        }
+
+        // Bei neuen Wertdarstellungen gab/gibt es Symcon-Versionen, in denen
+        // GetValueFormatted() bei numerischen Werten nur den Rohwert liefert.
+        // Wenn DIGITS explizit gesetzt ist und die Ausgabe offensichtlich noch
+        // unformatiert ist, übernehmen wir diese Darstellung selbst.
+        $digitsRaw = $this->FindPresentationValue($Presentation, 'DIGITS');
+        if (!is_numeric($digitsRaw)) {
+            return $formatted !== '' ? $formatted : $rawText;
+        }
+
+        $digits = max(0, min(12, (int) $digitsRaw));
+        $formattedLooksRaw =
+            $formatted === '' ||
+            trim($formatted) === trim($rawText) ||
+            (is_numeric(trim($formatted)) && (float) trim($formatted) === (float) $RawValue);
+
+        if (!$formattedLooksRaw) {
+            return $formatted;
+        }
+
+        $prefix = (string) ($this->FindPresentationValue($Presentation, 'PREFIX') ?? '');
+        $suffix = (string) ($this->FindPresentationValue($Presentation, 'SUFFIX') ?? '');
+
+        // Dezimal-/Tausender-Trenner nur dann fest übernehmen, wenn die
+        // Darstellung tatsächlich einen konkreten Trenner vorgibt. 'Client'
+        // bleibt Symcon/Client überlassen; als neutraler Fallback verwenden wir
+        // den Punkt und keinen Tausendertrenner.
+        $decimalRaw = $this->FindPresentationValue($Presentation, 'DECIMAL_SEPARATOR');
+        $thousandsRaw = $this->FindPresentationValue($Presentation, 'THOUSANDS_SEPARATOR');
+
+        $decimalSeparator = is_string($decimalRaw) && $decimalRaw !== '' && strcasecmp($decimalRaw, 'Client') !== 0
+            ? $decimalRaw
+            : '.';
+        $thousandsSeparator = is_string($thousandsRaw) && strcasecmp($thousandsRaw, 'Client') !== 0
+            ? $thousandsRaw
+            : '';
+
+        $number = number_format(
+            (float) $RawValue,
+            $digits,
+            $decimalSeparator,
+            $thousandsSeparator
+        );
+
+        return $prefix . $number . $suffix;
     }
 
     private function FormatRawValue(mixed $Value): string
