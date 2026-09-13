@@ -3180,6 +3180,7 @@ HTML;
         // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
         // zuverlässig anklickbar.
         const shutterControlParts = [];
+        const variableTopParts = [];
         // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
         // gesammelt und nach den Möbeln nochmals gezeichnet.
         // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
@@ -3702,7 +3703,7 @@ HTML;
                 : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
             const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
 
-            parts.push(
+            variableTopParts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
@@ -3759,6 +3760,11 @@ HTML;
         // Immer als letzte Ebene: Rollladen-Steuerung bleibt sichtbar und klickbar,
         // selbst wenn an derselben Position ein Möbelstück oder Gerät liegt.
         parts.push(...shutterControlParts);
+
+        // Variablen-/Geräteebene immer ganz oben rendern.
+        // Dadurch bleiben insbesondere Werte und deren Rahmen vollständig sichtbar
+        // und überdecken Möbel, Formen, Wände, Texte und sonstige Planinhalte.
+        parts.push(...variableTopParts);
 
         scene.innerHTML = parts.join('');
         setTransform();
