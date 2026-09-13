@@ -180,7 +180,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.13
 
 - Variablenwert mit Rahmen deckt nun Möbel zwecks besserer Lesbarkeit ab.
-- Zwei neue Möbel hinzugefügt, Wascgbecken halbrund und Badewanne beidseitig rund
+- Zwei neue Möbel hinzugefügt, Waschbecken halbrund und Badewanne beidseitig rund
 
 ### 1.12
 
