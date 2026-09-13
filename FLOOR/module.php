@@ -1016,7 +1016,10 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            fill: rgba(255,255,255,.06);
+            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
+               dürfen durch den Variablenwert nicht hindurchscheinen. */
+            fill: #303030;
+            fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
             vector-effect: non-scaling-stroke;
@@ -1024,7 +1027,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: rgba(255,255,255,.78);
+            fill: #f5f5f5;
+            fill-opacity: 1;
             stroke: #5f5f5f;
         }
 
