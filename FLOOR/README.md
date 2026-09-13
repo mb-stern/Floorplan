@@ -177,6 +177,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.13
+
+- Variablenwert mit Rahmen deckt nun Möbel zwecks besserer Lesbarkeit ab.
+
 ### 1.12
 
 - Letzte Output-Buffer Optimierung wieder rückgängig gemacht da offenbar IPSView nicht damit umgehen konnte. Das bedeutet für grössere Projekte, dass allenfalls der Output-Buffer erhöht werden muss.
