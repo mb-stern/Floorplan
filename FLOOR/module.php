@@ -133,7 +133,7 @@ class Floorplan extends IPSModuleStrict
                     [
                         'type'    => 'Label',
                         'caption' => sprintf(
-                            'Etagen: %d | Wände: %d | Türen: %d | Fenster: %d | Geräte: %d | Möbel: %d | Formen: %d | Texte: %d',
+                            'Etagen: %d | Wände: %d | Türen: %d | Fenster: %d | Geräte: %d | Objekte: %d | Formen: %d | Texte: %d',
                             $counts['floors'],
                             $counts['walls'],
                             $counts['doors'],
@@ -1695,7 +1695,7 @@ class Floorplan extends IPSModuleStrict
                 <b>Bedienung</b><br>
                 Wand: Start- und Endpunkt anklicken.<br>
                 Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Möbel: 28 Easy-Floorplan-Symbole + 6 eigene Symbole verfügbar.<br>
+                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Objekte: 28 Easy-Floorplan-Symbole + 10 eigene Symbole verfügbar.<br>
                 Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
                 Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
                 Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
@@ -1714,7 +1714,7 @@ class Floorplan extends IPSModuleStrict
             <button data-tool="window">Fenster</button>
             <button data-tool="device">Gerät</button>
             <button data-tool="text">Text</button>
-                <button data-tool="furniture">Möbel</button>
+                <button data-tool="furniture">Objekte</button>
             <div class="grid-editor-controls" title="Raster">
                 <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
                 <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
@@ -3010,7 +3010,25 @@ HTML;
         }
     }
 
-    const furnitureTemplates = {"airHandler":{"id":"airHandler","name":"Lüftungsgerät","category":"utility","size":{"w":60,"h":56},"parts":[{"rect":[0,0,100,100],"rx":7.142857},{"line":[8,8,92,92],"role":"detail","opacity":0.8},{"line":[8,92,92,8],"role":"detail","opacity":0.8}]},"heatPump":{"id":"heatPump","name":"Wärmepumpe","category":"utility","size":{"w":90,"h":58},"parts":[{"rect":[0,0,100,100],"rx":6.5},{"circle":[36,50,30],"role":"line"},{"circle":[36,50,5],"role":"thin"},{"path":[["M",36,45],["C",23,25,18,30,25,47],["C",28,52,32,53,36,50]],"role":"detail"},{"path":[["M",41,50],["C",61,37,58,30,41,36],["C",36,39,35,44,36,50]],"role":"detail"},{"path":[["M",36,55],["C",49,75,55,70,47,54],["C",44,49,40,47,36,50]],"role":"detail"},{"path":[["M",31,50],["C",12,63,15,70,31,64],["C",36,61,37,56,36,50]],"role":"detail"},{"line":[72,14,72,86],"role":"line"},{"line":[79,22,91,22],"role":"thin"},{"line":[79,34,91,34],"role":"thin"},{"line":[79,66,91,66],"role":"thin"},{"line":[79,78,91,78],"role":"thin"}]},"bathtub":{"id":"bathtub","name":"Badewanne","category":"bath","size":{"w":150,"h":76},"parts":[{"rect":[0,0,100,100],"rx":5.263158},{"rect":[6,12,88,76],"rx":12,"role":"line"},{"circle":[14,50,5.5],"role":"thin"}]},"bed":{"id":"bed","name":"Bett","category":"bedroom","size":{"w":150,"h":200},"parts":[{"rect":[0,0,100,100],"rx":2.666667},{"line":[0,26,100,26],"role":"line"},{"rect":[10,6,34,14],"rx":2,"role":"thin"},{"rect":[56,6,34,14],"rx":2,"role":"thin"}]},"chair":{"id":"chair","name":"Stuhl","category":"living","size":{"w":44,"h":44},"parts":[{"rect":[0,0,100,100],"rx":9.090909},{"line":[0,22,100,22],"role":"line"}]},"desk":{"id":"desk","name":"Schreibtisch","category":"living","size":{"w":120,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,55,100,55],"role":"detail"}]},"dishwasher":{"id":"dishwasher","name":"Geschirrspüler","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"rect":[10,24,80,62],"rx":5,"role":"detail","opacity":0.8},{"line":[6,88,94,88],"role":"line"}]},"dryer":{"id":"dryer","name":"Trockner","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[50,56,13.5],"role":"detail"}]},"fishTank":{"id":"fishTank","name":"Aquarium","category":"living","size":{"w":100,"h":40},"parts":[{"rect":[0,0,100,100],"rx":10},{"rect":[5,12,90,76],"role":"hint"},{"ellipse":[32,40,7,9],"role":"thin"},{"path":[["M",39,40],["L",44,32],["L",44,48],["Z"]],"role":"solid"},{"ellipse":[68,60,7,9],"role":"thin"},{"path":[["M",61,60],["L",56,52],["L",56,68],["Z"]],"role":"solid"},{"circle":[82,32,4],"role":"hint"}]},"fridge":{"id":"fridge","name":"Kühlschrank","category":"kitchen","size":{"w":60,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,40,100,40],"role":"line"},{"line":[84,12,84,30],"role":"line"},{"line":[84,50,84,84],"role":"line"}]},"hotTub":{"id":"hotTub","name":"Whirlpool","category":"bath","size":{"w":120,"h":120},"parts":[{"rect":[0,0,100,100],"rx":3.333333},{"circle":[50,50,36],"role":"line"},{"circle":[27.68,27.68,5],"role":"hint","space":"square"},{"circle":[72.32,27.68,5],"role":"hint","space":"square"},{"circle":[27.68,72.32,5],"role":"hint","space":"square"},{"circle":[72.32,72.32,5],"role":"hint","space":"square"}]},"piano":{"id":"piano","name":"Klavier","category":"living","size":{"w":140,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[4,70,96,70],"role":"thin"},{"repeat":7,"step":[12.5,0],"part":{"line":[12.5,70,12.5,94],"role":"hint"}},{"line":[4,22,96,22],"role":"hint","opacity":0.5}]},"plant":{"id":"plant","name":"Pflanze","category":"living","size":{"w":44,"h":44},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,38,18],"role":"thin"},{"circle":[34,58,18],"role":"thin"},{"circle":[66,58,18],"role":"thin"}]},"roundTable":{"id":"roundTable","name":"Runder Tisch","category":"living","size":{"w":100,"h":100},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"}]},"rug":{"id":"rug","name":"Teppich","category":"living","size":{"w":180,"h":120},"parts":[{"rect":[0,0,100,100],"rx":12,"role":"body","fillOpacity":0.08,"dash":[8,5]},{"rect":[10,10,80,80],"rx":8,"role":"detail","opacity":0.6}]},"sectional":{"id":"sectional","name":"Ecksofa","category":"living","size":{"w":230,"h":180},"parts":[{"polygon":[[0,0],[100,0],[100,100],[58,100],[58,55],[0,55]],"role":"body"},{"line":[0,16,100,16],"role":"line"},{"line":[9,16,9,55],"role":"line"},{"line":[58,16,58,100],"role":"line"}]},"sink":{"id":"sink","name":"Spüle","category":"kitchen","size":{"w":64,"h":48},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[12,18,76,50],"rx":8.333333,"role":"line"},{"circle":[50,10,5],"role":"line"}]},"sofa":{"id":"sofa","name":"Sofa","category":"living","size":{"w":170,"h":72},"parts":[{"rect":[0,0,100,100],"rx":5.555556},{"line":[0,30,100,30],"role":"line"},{"line":[12,30,12,100],"role":"line"},{"line":[88,30,88,100],"role":"line"}]},"stairs":{"id":"stairs","name":"Treppe","category":"utility","size":{"w":90,"h":170},"parts":[{"rect":[0,0,100,100],"rx":4.444444},{"repeat":6,"step":[0,14.285714],"part":{"line":[0,14.285714,100,14.285714],"role":"thin"}},{"line":[50,96.470588,50,3.529412],"role":"thin"},{"path":[["M",38,16],["L",50,2.352941],["L",62,16]],"role":"thin"}]},"stove":{"id":"stove","name":"Herd","category":"kitchen","size":{"w":64,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.25},{"circle":[28,28,16],"role":"line"},{"circle":[72,28,16],"role":"line"},{"circle":[28,72,16],"role":"line"},{"circle":[72,72,16],"role":"line"}]},"table":{"id":"table","name":"Tisch","category":"living","size":{"w":120,"h":80},"parts":[{"rect":[0,0,100,100],"rx":5}]},"toilet":{"id":"toilet","name":"WC","category":"bath","size":{"w":48,"h":68},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[10,0,80,22],"rx":6.25,"role":"line"},{"ellipse":[50,68,34,30],"role":"line"}]},"tv":{"id":"tv","name":"TV","category":"living","size":{"w":110,"h":18},"parts":[{"rect":[0,0,100,100],"rx":22.222222},{"line":[32,100,68,200],"role":"line"}]},"vanity":{"id":"vanity","name":"Waschtisch","category":"bath","size":{"w":110,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"ellipse":[50,56,20,26],"role":"line"},{"circle":[50,14,5],"role":"thin"}]},"wardrobe":{"id":"wardrobe","name":"Schrank","category":"bedroom","size":{"w":120,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"line":[50,0,50,100],"role":"line"},{"line":[44,40,44,60],"role":"line"},{"line":[56,40,56,60],"role":"line"}]},"washer":{"id":"washer","name":"Waschmaschine","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[16,9,4.5],"role":"thin"}]},"waterHeater":{"id":"waterHeater","name":"Boiler","category":"utility","size":{"w":52,"h":52},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,50,17],"role":"thin"}]},"shower":{"id":"shower","name":"Dusche","category":"bath","size":{"w":100,"h":80},"parts":[{"rect":[0,0,100,100],"rx":2},{"line":[8,8,92,92],"role":"detail","opacity":0.65},{"line":[8,92,92,8],"role":"detail","opacity":0.65},{"circle":[50,50,5],"role":"thin"},{"circle":[50,50,1.8],"role":"detail"}]},"semiRoundToilet":{"id":"semiRoundToilet","name":"WC halbrund","category":"bath","size":{"w":70,"h":90},"parts":[{"rect":[25,0,50,24],"rx":5,"role":"body"},{"line":[30,10,70,10],"role":"detail"},{"path":[["M",18,24],["L",82,24],["L",82,38],["C",82,70,68,94,50,94],["C",32,94,18,70,18,38],["Z"]],"role":"body"},{"path":[["M",28,34],["L",72,34],["L",72,42],["C",72,65,63,82,50,82],["C",37,82,28,65,28,42],["Z"]],"role":"line"},{"circle":[50,12,3],"role":"thin"}]},"semiRoundSink":{"id":"semiRoundSink","name":"Waschbecken halbrund","category":"bath","size":{"w":70,"h":50},"parts":[{"path":[["M",8,8],["L",92,8],["L",92,20],["C",92,62,73,92,50,92],["C",27,92,8,62,8,20],["Z"]],"role":"body"},{"path":[["M",18,20],["C",18,54,32,78,50,78],["C",68,78,82,54,82,20]],"role":"line"},{"circle":[50,47,5],"role":"thin"},{"circle":[50,14,3],"role":"detail"}]},"doubleRoundTub":{"id":"doubleRoundTub","name":"Badewanne beidseitig rund","category":"bath","size":{"w":160,"h":75},"parts":[{"path":[["M",24,4],["L",76,4],["C",92,4,100,25,100,50],["C",100,75,92,96,76,96],["L",24,96],["C",8,96,0,75,0,50],["C",0,25,8,4,24,4],["Z"]],"role":"body"},{"path":[["M",25,14],["L",75,14],["C",86,14,92,30,92,50],["C",92,70,86,86,75,86],["L",25,86],["C",14,86,8,70,8,50],["C",8,30,14,14,25,14],["Z"]],"role":"line"},{"circle":[50,76,4],"role":"thin"}]},"cornerShowerCurved":{"id":"cornerShowerCurved","name":"Eckdusche","category":"bath","size":{"w":100,"h":100},"parts":[{"path":[["M",100,0],["L",100,100],["L",94,100],["C",47,105,-5,53,0,6],["L",0,0],["Z"]],"role":"body"}]},"quarterTub":{"id":"quarterTub","name":"Eck-Whirlpool","category":"bath","size":{"w":140,"h":140},"parts":[{"path":[["M",100,0],["L",100,100],["C",50,100,0,50,0,0],["Z"]],"role":"body"},{"path":[["M",85,5],["C",90,5,95,10,95,15],["L",95,95],["C",55,95,5,45,5,5],["Z"]],"role":"line"},{"path":[["M",20,5],["C",75,10,90,25,95,80]],"role":"detail"}]},"oven":{"id":"oven","name":"Backofen","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[8,20,92,20],"role":"detail"},{"rect":[12,30,76,56],"rx":5,"role":"line"},{"line":[24,38,76,38],"role":"thin"},{"circle":[20,10,4.5],"role":"thin"},{"circle":[50,10,4.5],"role":"thin"},{"circle":[80,10,4.5],"role":"thin"}]}};
+    const furnitureTemplates = {"airHandler":{"id":"airHandler","name":"Lüftungsgerät","category":"utility","size":{"w":60,"h":56},"parts":[{"rect":[0,0,100,100],"rx":7.142857},{"line":[8,8,92,92],"role":"detail","opacity":0.8},{"line":[8,92,92,8],"role":"detail","opacity":0.8}]},"heatPump":{"id":"heatPump","name":"Wärmepumpe","category":"utility","size":{"w":90,"h":58},"parts":[{"rect":[0,0,100,100],"rx":6.5},{"circle":[36,50,30],"role":"line"},{"circle":[36,50,5],"role":"thin"},{"path":[["M",36,45],["C",23,25,18,30,25,47],["C",28,52,32,53,36,50]],"role":"detail"},{"path":[["M",41,50],["C",61,37,58,30,41,36],["C",36,39,35,44,36,50]],"role":"detail"},{"path":[["M",36,55],["C",49,75,55,70,47,54],["C",44,49,40,47,36,50]],"role":"detail"},{"path":[["M",31,50],["C",12,63,15,70,31,64],["C",36,61,37,56,36,50]],"role":"detail"},{"line":[72,14,72,86],"role":"line"},{"line":[79,22,91,22],"role":"thin"},{"line":[79,34,91,34],"role":"thin"},{"line":[79,66,91,66],"role":"thin"},{"line":[79,78,91,78],"role":"thin"}]},"bathtub":{"id":"bathtub","name":"Badewanne","category":"bath","size":{"w":150,"h":76},"parts":[{"rect":[0,0,100,100],"rx":5.263158},{"rect":[6,12,88,76],"rx":12,"role":"line"},{"circle":[14,50,5.5],"role":"thin"}]},"bed":{"id":"bed","name":"Bett","category":"bedroom","size":{"w":150,"h":200},"parts":[{"rect":[0,0,100,100],"rx":2.666667},{"line":[0,26,100,26],"role":"line"},{"rect":[10,6,34,14],"rx":2,"role":"thin"},{"rect":[56,6,34,14],"rx":2,"role":"thin"}]},"chair":{"id":"chair","name":"Stuhl","category":"living","size":{"w":44,"h":44},"parts":[{"rect":[0,0,100,100],"rx":9.090909},{"line":[0,22,100,22],"role":"line"}]},"desk":{"id":"desk","name":"Schreibtisch","category":"living","size":{"w":120,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,55,100,55],"role":"detail"}]},"dishwasher":{"id":"dishwasher","name":"Geschirrspüler","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"rect":[10,24,80,62],"rx":5,"role":"detail","opacity":0.8},{"line":[6,88,94,88],"role":"line"}]},"dryer":{"id":"dryer","name":"Trockner","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[50,56,13.5],"role":"detail"}]},"fishTank":{"id":"fishTank","name":"Aquarium","category":"living","size":{"w":100,"h":40},"parts":[{"rect":[0,0,100,100],"rx":10},{"rect":[5,12,90,76],"role":"hint"},{"ellipse":[32,40,7,9],"role":"thin"},{"path":[["M",39,40],["L",44,32],["L",44,48],["Z"]],"role":"solid"},{"ellipse":[68,60,7,9],"role":"thin"},{"path":[["M",61,60],["L",56,52],["L",56,68],["Z"]],"role":"solid"},{"circle":[82,32,4],"role":"hint"}]},"fridge":{"id":"fridge","name":"Kühlschrank","category":"kitchen","size":{"w":60,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,40,100,40],"role":"line"},{"line":[84,12,84,30],"role":"line"},{"line":[84,50,84,84],"role":"line"}]},"hotTub":{"id":"hotTub","name":"Whirlpool","category":"bath","size":{"w":120,"h":120},"parts":[{"rect":[0,0,100,100],"rx":3.333333},{"circle":[50,50,36],"role":"line"},{"circle":[27.68,27.68,5],"role":"hint","space":"square"},{"circle":[72.32,27.68,5],"role":"hint","space":"square"},{"circle":[27.68,72.32,5],"role":"hint","space":"square"},{"circle":[72.32,72.32,5],"role":"hint","space":"square"}]},"piano":{"id":"piano","name":"Klavier","category":"living","size":{"w":140,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[4,70,96,70],"role":"thin"},{"repeat":7,"step":[12.5,0],"part":{"line":[12.5,70,12.5,94],"role":"hint"}},{"line":[4,22,96,22],"role":"hint","opacity":0.5}]},"plant":{"id":"plant","name":"Pflanze","category":"living","size":{"w":44,"h":44},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,38,18],"role":"thin"},{"circle":[34,58,18],"role":"thin"},{"circle":[66,58,18],"role":"thin"}]},"roundTable":{"id":"roundTable","name":"Runder Tisch","category":"living","size":{"w":100,"h":100},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"}]},"rug":{"id":"rug","name":"Teppich","category":"living","size":{"w":180,"h":120},"parts":[{"rect":[0,0,100,100],"rx":12,"role":"body","fillOpacity":0.08,"dash":[8,5]},{"rect":[10,10,80,80],"rx":8,"role":"detail","opacity":0.6}]},"sectional":{"id":"sectional","name":"Ecksofa","category":"living","size":{"w":230,"h":180},"parts":[{"polygon":[[0,0],[100,0],[100,100],[58,100],[58,55],[0,55]],"role":"body"},{"line":[0,16,100,16],"role":"line"},{"line":[9,16,9,55],"role":"line"},{"line":[58,16,58,100],"role":"line"}]},"sink":{"id":"sink","name":"Spüle","category":"kitchen","size":{"w":64,"h":48},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[12,18,76,50],"rx":8.333333,"role":"line"},{"circle":[50,10,5],"role":"line"}]},"sofa":{"id":"sofa","name":"Sofa","category":"living","size":{"w":170,"h":72},"parts":[{"rect":[0,0,100,100],"rx":5.555556},{"line":[0,30,100,30],"role":"line"},{"line":[12,30,12,100],"role":"line"},{"line":[88,30,88,100],"role":"line"}]},"stairs":{"id":"stairs","name":"Treppe","category":"utility","size":{"w":90,"h":170},"parts":[{"rect":[0,0,100,100],"rx":4.444444},{"repeat":6,"step":[0,14.285714],"part":{"line":[0,14.285714,100,14.285714],"role":"thin"}},{"line":[50,96.470588,50,3.529412],"role":"thin"},{"path":[["M",38,16],["L",50,2.352941],["L",62,16]],"role":"thin"}]},"stove":{"id":"stove","name":"Herd","category":"kitchen","size":{"w":64,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.25},{"circle":[28,28,16],"role":"line"},{"circle":[72,28,16],"role":"line"},{"circle":[28,72,16],"role":"line"},{"circle":[72,72,16],"role":"line"}]},"table":{"id":"table","name":"Tisch","category":"living","size":{"w":120,"h":80},"parts":[{"rect":[0,0,100,100],"rx":5}]},"toilet":{"id":"toilet","name":"WC","category":"bath","size":{"w":48,"h":68},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[10,0,80,22],"rx":6.25,"role":"line"},{"ellipse":[50,68,34,30],"role":"line"}]},"tv":{"id":"tv","name":"TV","category":"living","size":{"w":110,"h":18},"parts":[{"rect":[0,0,100,100],"rx":22.222222},{"line":[32,100,68,200],"role":"line"}]},"vanity":{"id":"vanity","name":"Waschtisch","category":"bath","size":{"w":110,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"ellipse":[50,56,20,26],"role":"line"},{"circle":[50,14,5],"role":"thin"}]},"wardrobe":{"id":"wardrobe","name":"Schrank","category":"bedroom","size":{"w":120,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"line":[50,0,50,100],"role":"line"},{"line":[44,40,44,60],"role":"line"},{"line":[56,40,56,60],"role":"line"}]},"washer":{"id":"washer","name":"Waschmaschine","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[16,9,4.5],"role":"thin"}]},"waterHeater":{"id":"waterHeater","name":"Boiler","category":"utility","size":{"w":52,"h":52},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,50,17],"role":"thin"}]},"shower":{"id":"shower","name":"Dusche","category":"bath","size":{"w":100,"h":80},"parts":[{"rect":[0,0,100,100],"rx":2},{"line":[8,8,92,92],"role":"detail","opacity":0.65},{"line":[8,92,92,8],"role":"detail","opacity":0.65},{"circle":[50,50,5],"role":"thin"},{"circle":[50,50,1.8],"role":"detail"}]},"car":{"id":"car","name":"Kompaktwagen","category":"vehicle","size":{"w":96,"h":155},"parts":[
+{"path":[["M",34,2],["C",25,2,18,6,14,14],["C",10,22,8,34,7,48],["L",6,105],["C",6,121,10,136,19,146],["C",25,152,33,154,42,154],["L",58,154],["C",67,154,75,152,81,146],["C",90,136,94,121,94,105],["L",93,48],["C",92,34,90,22,86,14],["C",82,6,75,2,66,2],["Z"]],"role":"body"},
+{"path":[["M",29,24],["C",35,14,41,11,50,11],["C",59,11,65,14,71,24],["L",77,47],["L",23,47],["Z"]],"role":"line"},
+{"path":[["M",21,55],["L",79,55],["L",79,101],["L",21,101],["Z"]],"role":"line"},
+{"path":[["M",24,109],["L",76,109],["C",72,128,65,139,50,143],["C",35,139,28,128,24,109],["Z"]],"role":"line"},
+{"line":[50,11,50,143],"role":"hint"},
+{"path":[["M",22,51],["L",13,62],["L",13,94],["L",21,101]],"role":"detail"},
+{"path":[["M",78,51],["L",87,62],["L",87,94],["L",79,101]],"role":"detail"},
+{"path":[["M",13,26],["L",25,22],["L",22,35],["L",10,39]],"role":"detail"},
+{"path":[["M",87,26],["L",75,22],["L",78,35],["L",90,39]],"role":"detail"},
+{"rect":[0,37,7,27],"rx":3,"role":"solid"},
+{"rect":[93,37,7,27],"rx":3,"role":"solid"},
+{"rect":[0,96,7,27],"rx":3,"role":"solid"},
+{"rect":[93,96,7,27],"rx":3,"role":"solid"},
+{"path":[["M",18,130],["C",27,135,37,137,50,137],["C",63,137,73,135,82,130]],"role":"detail"},
+{"line":[20,139,34,139],"role":"detail"},
+{"line":[66,139,80,139],"role":"detail"},
+{"path":[["M",42,66],["L",42,92],["M",58,66],["L",58,92]],"role":"hint"}
+]},"motorcycle":{"id":"motorcycle","name":"Motorrad","category":"vehicle","size":{"w":60,"h":150},"parts":[{"ellipse":[50,10,12,20],"role":"body"},{"ellipse":[50,90,14,24],"role":"body"},{"path":[["M",42,25],["L",58,25],["L",64,50],["L",58,72],["L",42,72],["L",36,50],["Z"]],"role":"body"},{"path":[["M",43,45],["C",43,35,57,35,57,45],["L",57,65],["C",57,74,43,74,43,65],["Z"]],"role":"line"},{"line":[24,32,76,32],"role":"line"},{"line":[50,30,50,12],"role":"detail"},{"line":[38,78,25,94],"role":"detail"},{"line":[62,78,75,94],"role":"detail"}]},"bicycle":{"id":"bicycle","name":"Fahrrad","category":"vehicle","size":{"w":55,"h":170},"parts":[{"ellipse":[50,12,11,22],"role":"body"},{"ellipse":[50,88,11,22],"role":"body"},{"line":[50,28,50,72],"role":"line"},{"line":[50,40,31,58],"role":"line"},{"line":[31,58,50,72],"role":"line"},{"line":[31,58,69,58],"role":"line"},{"line":[69,58,50,40],"role":"line"},{"line":[31,58,24,48],"role":"detail"},{"line":[69,58,76,48],"role":"detail"},{"line":[35,34,65,34],"role":"line"},{"line":[50,72,50,78],"role":"detail"}]},"shelf":{"id":"shelf","name":"Regal","category":"storage","size":{"w":120,"h":35},"parts":[{"rect":[0,0,100,100],"rx":2,"role":"body"},{"line":[20,4,20,96],"role":"line"},{"line":[40,4,40,96],"role":"line"},{"line":[60,4,60,96],"role":"line"},{"line":[80,4,80,96],"role":"line"},{"line":[3,15,97,15],"role":"hint"},{"line":[3,85,97,85],"role":"hint"}]},"semiRoundToilet":{"id":"semiRoundToilet","name":"WC halbrund","category":"bath","size":{"w":70,"h":90},"parts":[{"rect":[25,0,50,24],"rx":5,"role":"body"},{"line":[30,10,70,10],"role":"detail"},{"path":[["M",18,24],["L",82,24],["L",82,38],["C",82,70,68,94,50,94],["C",32,94,18,70,18,38],["Z"]],"role":"body"},{"path":[["M",28,34],["L",72,34],["L",72,42],["C",72,65,63,82,50,82],["C",37,82,28,65,28,42],["Z"]],"role":"line"},{"circle":[50,12,3],"role":"thin"}]},"semiRoundSink":{"id":"semiRoundSink","name":"Waschbecken halbrund","category":"bath","size":{"w":70,"h":50},"parts":[{"path":[["M",8,8],["L",92,8],["L",92,20],["C",92,62,73,92,50,92],["C",27,92,8,62,8,20],["Z"]],"role":"body"},{"path":[["M",18,20],["C",18,54,32,78,50,78],["C",68,78,82,54,82,20]],"role":"line"},{"circle":[50,47,5],"role":"thin"},{"circle":[50,14,3],"role":"detail"}]},"doubleRoundTub":{"id":"doubleRoundTub","name":"Badewanne beidseitig rund","category":"bath","size":{"w":160,"h":75},"parts":[{"path":[["M",24,4],["L",76,4],["C",92,4,100,25,100,50],["C",100,75,92,96,76,96],["L",24,96],["C",8,96,0,75,0,50],["C",0,25,8,4,24,4],["Z"]],"role":"body"},{"path":[["M",25,14],["L",75,14],["C",86,14,92,30,92,50],["C",92,70,86,86,75,86],["L",25,86],["C",14,86,8,70,8,50],["C",8,30,14,14,25,14],["Z"]],"role":"line"},{"circle":[50,76,4],"role":"thin"}]},"cornerShowerCurved":{"id":"cornerShowerCurved","name":"Eckdusche","category":"bath","size":{"w":100,"h":100},"parts":[{"path":[["M",100,0],["L",100,100],["L",94,100],["C",47,105,-5,53,0,6],["L",0,0],["Z"]],"role":"body"}]},"quarterTub":{"id":"quarterTub","name":"Eck-Whirlpool","category":"bath","size":{"w":140,"h":140},"parts":[{"path":[["M",100,0],["L",100,100],["C",50,100,0,50,0,0],["Z"]],"role":"body"},{"path":[["M",85,5],["C",90,5,95,10,95,15],["L",95,95],["C",55,95,5,45,5,5],["Z"]],"role":"line"},{"path":[["M",20,5],["C",75,10,90,25,95,80]],"role":"detail"}]},"oven":{"id":"oven","name":"Backofen","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[8,20,92,20],"role":"detail"},{"rect":[12,30,76,56],"rx":5,"role":"line"},{"line":[24,38,76,38],"role":"thin"},{"circle":[20,10,4.5],"role":"thin"},{"circle":[50,10,4.5],"role":"thin"},{"circle":[80,10,4.5],"role":"thin"}]}};
 
     function furnitureRoleStyle(part) {
         const role = part.role || ((part.rect || part.ellipse || part.polygon) ? 'body' : 'line');
@@ -3382,25 +3400,22 @@ HTML;
 
         parts.push(`</g>`);
 
-        for (const w of floor.walls) {
-            const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
+        // Nicht ausgewählte Wände zuerst, die ausgewählte Wand zuletzt.
+        // Dadurch liegt die angeklickte Wand bei Kreuzungen/Überlagerungen vorne.
+        const selectedWallID = selected?.type === 'wall' ? selected.id : null;
+        const wallRenderOrder = selectedWallID
+            ? [
+                ...floor.walls.filter(w => w.id !== selectedWallID),
+                ...floor.walls.filter(w => w.id === selectedWallID)
+            ]
+            : floor.walls;
+
+        for (const w of wallRenderOrder) {
+            const sel = selectedWallID === w.id ? ' selected' : '';
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
                 `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
             );
-
-            if (state.mode !== 'view' && selected?.type === 'wall' && selected.id === w.id) {
-                // Wie bei Möbeln: kleine sichtbare Griffe direkt am Objekt.
-                // Jeder Griff verändert nur das zugehörige Wandende.
-                parts.push(
-                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${w.id}" ` +
-                    `cx="${w.x1}" cy="${w.y1}" r="2.8"/>`
-                );
-                parts.push(
-                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${w.id}" ` +
-                    `cx="${w.x2}" cy="${w.y2}" r="2.8"/>`
-                );
-            }
         }
 
         for (const o of floor.openings) {
@@ -3552,6 +3567,22 @@ HTML;
                     `<circle r="12"/>` +
                     `<text x="0" y="0">↕</text>` +
                     `</g>`
+                );
+            }
+        }
+
+        // Die Endpunkt-Griffe der ausgewählten Wand werden nach allen Wänden
+        // und Öffnungen gezeichnet und bleiben dadurch immer sichtbar/greifbar.
+        if (state.mode !== 'view' && selectedWallID) {
+            const selectedWall = floor.walls.find(w => w.id === selectedWallID);
+            if (selectedWall) {
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x1}" cy="${selectedWall.y1}" r="2.8"/>`
+                );
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x2}" cy="${selectedWall.y2}" r="2.8"/>`
                 );
             }
         }
@@ -4336,6 +4367,12 @@ HTML;
 
         if (selected.type === 'wall') {
             propTitle.textContent = 'Wand';
+            const wallLength = Math.round(
+                Math.hypot(
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0),
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0)
+                ) * 100
+            ) / 100;
             properties.innerHTML = `
                 <div class="row2">
                     <div class="field"><label>X1</label><input data-field="x1" type="number" value="${obj.x1}"></div>
@@ -4344,6 +4381,10 @@ HTML;
                 <div class="row2">
                     <div class="field"><label>X2</label><input data-field="x2" type="number" value="${obj.x2}"></div>
                     <div class="field"><label>Y2</label><input data-field="y2" type="number" value="${obj.y2}"></div>
+                </div>
+                <div class="field">
+                    <label>Länge</label>
+                    <input data-field="wallLength" type="number" min="1" step="1" value="${wallLength}">
                 </div>
             `;
         } else if (selected.type === 'opening') {
@@ -4761,7 +4802,21 @@ HTML;
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
 
-                if (selected.type === 'shape' && fieldName === 'shapeKind') {
+                if (selected.type === 'wall' && fieldName === 'wallLength') {
+                    const x1 = Number(obj.x1) || 0;
+                    const y1 = Number(obj.y1) || 0;
+                    const dx = (Number(obj.x2) || 0) - x1;
+                    const dy = (Number(obj.y2) || 0) - y1;
+                    const oldLength = Math.hypot(dx, dy);
+                    const length = Math.max(1, Number(value) || 1);
+
+                    // Startpunkt und Richtung bleiben unverändert,
+                    // nur der Endpunkt wird auf die neue Länge gesetzt.
+                    const ux = oldLength > 0.000001 ? dx / oldLength : 1;
+                    const uy = oldLength > 0.000001 ? dy / oldLength : 0;
+                    obj.x2 = x1 + ux * length;
+                    obj.y2 = y1 + uy * length;
+                } else if (selected.type === 'shape' && fieldName === 'shapeKind') {
                     const oldKind = obj.kind || 'rect';
                     const cx = oldKind === 'circle'
                         ? (Number(obj.x1) || 0)
@@ -8612,11 +8667,16 @@ JAVASCRIPT;
         // genauso dargestellt wie die Variable selbst. Für neue Darstellungen
         // wird weiter unten zusätzlich ein gezielter DIGITS-Fallback angewandt,
         // falls GetValueFormatted() nur den Rohwert zurückliefert.
+        $referencedProfileExists =
+            $profileName === '' ||
+            IPS_VariableProfileExists($profileName);
+
         $valueText = $this->GetFormattedVariableValue(
             $VariableID,
             $rawValue,
             (array) ($activePresentation['parameters'] ?? []),
-            $hasNewPresentation
+            $hasNewPresentation,
+            $referencedProfileExists
         );
         $legacyColorOn = '';
         $legacyCurrentColor = '';
@@ -8769,17 +8829,25 @@ JAVASCRIPT;
         int $VariableID,
         mixed $RawValue,
         array $Presentation,
-        bool $HasNewPresentation
+        bool $HasNewPresentation,
+        bool $ReferencedProfileExists = true
     ): string {
         $rawText = $this->FormatRawValue($RawValue);
         $formatted = '';
 
         // Legacy-Profile und aktuelle Symcon-Versionen mit neuer Darstellung:
         // Symcon selbst ist die erste Quelle für die sichtbare Formatierung.
-        try {
-            $formatted = (string) GetValueFormatted($VariableID);
-        } catch (Throwable $e) {
-            $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+        //
+        // Wichtig: Variablen können noch auf ein inzwischen gelöschtes Profil
+        // verweisen. Das darf die Variablenauswahl im Floorplan nicht blockieren.
+        // In diesem Fall GetValueFormatted() gar nicht erst aufrufen, weil Symcon
+        // sonst eine sichtbare Warnung "Profil ... existiert nicht" erzeugt.
+        if ($ReferencedProfileExists) {
+            try {
+                $formatted = (string) @GetValueFormatted($VariableID);
+            } catch (Throwable $e) {
+                $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+            }
         }
 
         if (!$HasNewPresentation || !is_numeric($RawValue)) {
