@@ -179,9 +179,9 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.14
 
-- Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nicht mehr unterhalb einer anderen Wand.
+- Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nach einem Klick darauf nicht mehr unterhalb einer anderen Wand.
 - Möbel in objekte umbenannt.
-- Drei neue Objekte: Regal, Auto, Motorrad, Fahrrad
+- Drei neue Objekte: Regal, Auto, Motorrad, Fahrrad.
 - Eine rote Fehlermeldung konnte auftauchen und den Editor blockieren, wenn ein bestimmtes Variablenprofil nicht mehr existierte. Stattdessen wird nun der Rohwert verarbeit.
 
 ### 1.13
