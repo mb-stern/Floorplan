@@ -8667,11 +8667,16 @@ JAVASCRIPT;
         // genauso dargestellt wie die Variable selbst. Für neue Darstellungen
         // wird weiter unten zusätzlich ein gezielter DIGITS-Fallback angewandt,
         // falls GetValueFormatted() nur den Rohwert zurückliefert.
+        $referencedProfileExists =
+            $profileName === '' ||
+            IPS_VariableProfileExists($profileName);
+
         $valueText = $this->GetFormattedVariableValue(
             $VariableID,
             $rawValue,
             (array) ($activePresentation['parameters'] ?? []),
-            $hasNewPresentation
+            $hasNewPresentation,
+            $referencedProfileExists
         );
         $legacyColorOn = '';
         $legacyCurrentColor = '';
@@ -8824,17 +8829,25 @@ JAVASCRIPT;
         int $VariableID,
         mixed $RawValue,
         array $Presentation,
-        bool $HasNewPresentation
+        bool $HasNewPresentation,
+        bool $ReferencedProfileExists = true
     ): string {
         $rawText = $this->FormatRawValue($RawValue);
         $formatted = '';
 
         // Legacy-Profile und aktuelle Symcon-Versionen mit neuer Darstellung:
         // Symcon selbst ist die erste Quelle für die sichtbare Formatierung.
-        try {
-            $formatted = (string) GetValueFormatted($VariableID);
-        } catch (Throwable $e) {
-            $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+        //
+        // Wichtig: Variablen können noch auf ein inzwischen gelöschtes Profil
+        // verweisen. Das darf die Variablenauswahl im Floorplan nicht blockieren.
+        // In diesem Fall GetValueFormatted() gar nicht erst aufrufen, weil Symcon
+        // sonst eine sichtbare Warnung "Profil ... existiert nicht" erzeugt.
+        if ($ReferencedProfileExists) {
+            try {
+                $formatted = (string) @GetValueFormatted($VariableID);
+            } catch (Throwable $e) {
+                $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+            }
         }
 
         if (!$HasNewPresentation || !is_numeric($RawValue)) {
