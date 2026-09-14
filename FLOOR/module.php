@@ -3382,25 +3382,22 @@ HTML;
 
         parts.push(`</g>`);
 
-        for (const w of floor.walls) {
-            const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
+        // Nicht ausgewählte Wände zuerst, die ausgewählte Wand zuletzt.
+        // Dadurch liegt die angeklickte Wand bei Kreuzungen/Überlagerungen vorne.
+        const selectedWallID = selected?.type === 'wall' ? selected.id : null;
+        const wallRenderOrder = selectedWallID
+            ? [
+                ...floor.walls.filter(w => w.id !== selectedWallID),
+                ...floor.walls.filter(w => w.id === selectedWallID)
+            ]
+            : floor.walls;
+
+        for (const w of wallRenderOrder) {
+            const sel = selectedWallID === w.id ? ' selected' : '';
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
                 `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
             );
-
-            if (state.mode !== 'view' && selected?.type === 'wall' && selected.id === w.id) {
-                // Wie bei Möbeln: kleine sichtbare Griffe direkt am Objekt.
-                // Jeder Griff verändert nur das zugehörige Wandende.
-                parts.push(
-                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${w.id}" ` +
-                    `cx="${w.x1}" cy="${w.y1}" r="2.8"/>`
-                );
-                parts.push(
-                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${w.id}" ` +
-                    `cx="${w.x2}" cy="${w.y2}" r="2.8"/>`
-                );
-            }
         }
 
         for (const o of floor.openings) {
@@ -3552,6 +3549,22 @@ HTML;
                     `<circle r="12"/>` +
                     `<text x="0" y="0">↕</text>` +
                     `</g>`
+                );
+            }
+        }
+
+        // Die Endpunkt-Griffe der ausgewählten Wand werden nach allen Wänden
+        // und Öffnungen gezeichnet und bleiben dadurch immer sichtbar/greifbar.
+        if (state.mode !== 'view' && selectedWallID) {
+            const selectedWall = floor.walls.find(w => w.id === selectedWallID);
+            if (selectedWall) {
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x1}" cy="${selectedWall.y1}" r="2.8"/>`
+                );
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x2}" cy="${selectedWall.y2}" r="2.8"/>`
                 );
             }
         }
@@ -4336,6 +4349,12 @@ HTML;
 
         if (selected.type === 'wall') {
             propTitle.textContent = 'Wand';
+            const wallLength = Math.round(
+                Math.hypot(
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0),
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0)
+                ) * 100
+            ) / 100;
             properties.innerHTML = `
                 <div class="row2">
                     <div class="field"><label>X1</label><input data-field="x1" type="number" value="${obj.x1}"></div>
@@ -4344,6 +4363,10 @@ HTML;
                 <div class="row2">
                     <div class="field"><label>X2</label><input data-field="x2" type="number" value="${obj.x2}"></div>
                     <div class="field"><label>Y2</label><input data-field="y2" type="number" value="${obj.y2}"></div>
+                </div>
+                <div class="field">
+                    <label>Länge</label>
+                    <input data-field="wallLength" type="number" min="1" step="1" value="${wallLength}">
                 </div>
             `;
         } else if (selected.type === 'opening') {
@@ -4761,7 +4784,21 @@ HTML;
                 const fieldName = input.dataset.field;
                 const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
 
-                if (selected.type === 'shape' && fieldName === 'shapeKind') {
+                if (selected.type === 'wall' && fieldName === 'wallLength') {
+                    const x1 = Number(obj.x1) || 0;
+                    const y1 = Number(obj.y1) || 0;
+                    const dx = (Number(obj.x2) || 0) - x1;
+                    const dy = (Number(obj.y2) || 0) - y1;
+                    const oldLength = Math.hypot(dx, dy);
+                    const length = Math.max(1, Number(value) || 1);
+
+                    // Startpunkt und Richtung bleiben unverändert,
+                    // nur der Endpunkt wird auf die neue Länge gesetzt.
+                    const ux = oldLength > 0.000001 ? dx / oldLength : 1;
+                    const uy = oldLength > 0.000001 ? dy / oldLength : 0;
+                    obj.x2 = x1 + ux * length;
+                    obj.y2 = y1 + uy * length;
+                } else if (selected.type === 'shape' && fieldName === 'shapeKind') {
                     const oldKind = obj.kind || 'rect';
                     const cx = oldKind === 'circle'
                         ? (Number(obj.x1) || 0)
