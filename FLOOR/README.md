@@ -181,7 +181,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 - Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nicht mehr unterhalb einer anderen Wand.
 - Möbel in objekte umbenannt
-- Drei neue Objekte, Auto, Motorrad, Fahrrad
+- Drei neue Objekte: Auto, Motorrad, Fahrrad
 
 ### 1.13
 
