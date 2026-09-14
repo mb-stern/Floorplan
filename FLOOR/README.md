@@ -169,13 +169,17 @@ Die benötigten Ressourcen werden lokal aus dem Modul bereitgestellt. Eine exter
 
 ## 📦 Installation
 
-Das Modul kann über den IP-Symcon Module Store bzw. die Modulverwaltung installiert werden.
+Das Modul kann über den IP-Symcon Module Store installiert werden.
 
 Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Grundriss erstellen.
 
 **Voraussetzung:** IP-Symcon ab Version 8.2.
 
 ## 📝 Änderungen
+
+### 1.14
+
+- Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nicht mehr unterhalb einer anderen Wand.
 
 ### 1.13
 
