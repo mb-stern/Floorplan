@@ -4255,75 +4255,27 @@ HTML;
         const length = Math.hypot(dx, dy);
         if (length < 1) return [];
 
-        const ux = dx / length, uy = dy / length;
         const thickness = Number(floor.wallThickness) || 12;
         const half = thickness / 2;
+        const points = [0, length];
 
-        // Liefert die tatsächliche Außen-/Innenkante am Wandende.
-        // Entscheidend: nicht den Endpunkt der Mittellinie benutzen, sondern
-        // die sichtbare Fläche der anschließenden Wand auf die Achse dieser
-        // Wand projizieren.
-        const endpointEdge = atStart => {
-            const ex = atStart ? x1 : x2;
-            const ey = atStart ? y1 : y2;
-            const base = atStart ? 0 : length;
-            const candidates = [];
+        // WICHTIG:
+        // Die gezeichneten Wand-Endpunkte sind die konstruktiven Enden der Wand.
+        // Außenmaß geht deshalb IMMER von Wandende zu Wandende und wird nicht
+        // auf die sichtbare/überdeckte Ecke einer anschließenden Wand gekürzt.
+        if (mode === 'outside') {
+            return points;
+        }
 
-            for (const other of floor.walls || []) {
-                if (other.id === w.id) continue;
-
-                const ax = Number(other.x1) || 0, ay = Number(other.y1) || 0;
-                const bx = Number(other.x2) || 0, by = Number(other.y2) || 0;
-                const ovx = bx - ax, ovy = by - ay;
-                const olen = Math.hypot(ovx, ovy);
-                if (olen < 1) continue;
-
-                // Abstand des Wandendes zur Mittellinie der anderen Wand.
-                let t = ((ex - ax) * ovx + (ey - ay) * ovy) / (olen * olen);
-                t = Math.max(0, Math.min(1, t));
-                const qx = ax + ovx * t, qy = ay + ovy * t;
-                if (Math.hypot(ex - qx, ey - qy) > half + 1.0) continue;
-
-                // Vier Ecken des sichtbaren Wand-Streifens.
-                const onx = -ovy / olen, ony = ovx / olen;
-                for (const [px, py] of [
-                    [ax + onx * half, ay + ony * half],
-                    [ax - onx * half, ay - ony * half],
-                    [bx + onx * half, by + ony * half],
-                    [bx - onx * half, by - ony * half]
-                ]) {
-                    const along = (px - x1) * ux + (py - y1) * uy;
-                    // Nur die Ecke in der Nähe dieses Wandendes berücksichtigen.
-                    if (Math.abs(along - base) <= thickness * 2.5) {
-                        candidates.push(along);
-                    }
-                }
-            }
-
-            if (!candidates.length) return base;
-
-            if (atStart) {
-                // Außen liegt vor dem Start, innen dahinter.
-                return mode === 'outside'
-                    ? Math.min(...candidates)
-                    : Math.max(...candidates.filter(v => v <= thickness * 2.5));
-            }
-
-            // Außen liegt hinter dem Ende, innen davor.
-            return mode === 'outside'
-                ? Math.max(...candidates)
-                : Math.min(...candidates.filter(v => v >= length - thickness * 2.5));
-        };
-
-        const points = [endpointEdge(true), endpointEdge(false)];
-
-        // Quer-/Zwischenwände als Maßkettenpunkte.
+        // Innenmaß: Sobald eine Quer-/Zwischenwand auf die Wand trifft,
+        // endet der freie Innenabschnitt an der zugewandten Kante dieser Querwand.
+        const intersections = [];
         for (const other of floor.walls || []) {
             if (other.id === w.id) continue;
             const hit = wallIntersectionData(w, other);
             if (!hit) continue;
 
-            const tol = 0.015;
+            const tol = 0.02;
             if (hit.t <= tol || hit.t >= 1 - tol || hit.u < -tol || hit.u > 1 + tol) continue;
 
             const odx = (Number(other.x2) || 0) - (Number(other.x1) || 0);
@@ -4336,13 +4288,24 @@ HTML;
 
             const projectedHalf = half / sinAngle;
             const center = hit.t * length;
-            points.push(center - projectedHalf, center + projectedHalf);
+            intersections.push({
+                left: Math.max(0, center - projectedHalf),
+                right: Math.min(length, center + projectedHalf)
+            });
+        }
+
+        intersections.sort((a,b)=>a.left-b.left);
+
+        // Innenmaßkette: Wandanfang -> Vorderkante Querwand,
+        // danach Hinterkante Querwand -> nächste Vorderkante usw.
+        for (const hit of intersections) {
+            points.push(hit.left, hit.right);
         }
 
         return points
             .filter(Number.isFinite)
-            .sort((a, b) => a - b)
-            .filter((v, i, arr) => i === 0 || Math.abs(v - arr[i - 1]) > 0.5);
+            .sort((a,b)=>a-b)
+            .filter((v,i,arr)=>i===0 || Math.abs(v-arr[i-1])>0.5);
     }
 
     function wallGraphicDimension(w, floor, side, mode) {
