@@ -1982,6 +1982,7 @@ HTML;
             name: 'Erdgeschoss',
             order: 1,
             wallThickness: 12,
+            showWallDimensions: false,
             walls: [],
             openings: [],
             items: [],
@@ -2007,6 +2008,9 @@ HTML;
             floor.wallThickness = Number.isFinite(wallThickness) && wallThickness > 0
                 ? Math.max(1, Math.min(60, wallThickness))
                 : 12;
+            if (typeof floor.showWallDimensions !== 'boolean') {
+                floor.showWallDimensions = false;
+            }
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             for (const opening of floor.openings) {
@@ -3412,9 +3416,14 @@ HTML;
 
         for (const w of wallRenderOrder) {
             const sel = selectedWallID === w.id ? ' selected' : '';
+            const dimensionTitle = floor.showWallDimensions === true
+                ? `<title>${escapeHtml(wallDimensionInfo(w, floor))}</title>`
+                : '';
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
-                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
+                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}">` +
+                dimensionTitle +
+                `</line>`
             );
         }
 
@@ -4146,6 +4155,53 @@ HTML;
         return o.shutterInvert === true ? 1 - amount : amount;
     }
 
+    function formatDimensionCm(value) {
+        const cm = Math.max(0, Number(value) || 0);
+        if (cm >= 100) {
+            return `${(cm / 100).toFixed(2)} m (${Math.round(cm * 10) / 10} cm)`;
+        }
+        return `${Math.round(cm * 10) / 10} cm`;
+    }
+
+    function wallDimensionInfo(w, floor) {
+        const length = Math.hypot(
+            (Number(w.x2) || 0) - (Number(w.x1) || 0),
+            (Number(w.y2) || 0) - (Number(w.y1) || 0)
+        );
+        const wallOpenings = (floor.openings || [])
+            .filter(o => o.wallId === w.id)
+            .map(o => {
+                const width = Math.min(Math.max(0, Number(o.length) || 0), length);
+                const center = Math.max(0, Math.min(length, (Number(o.position ?? .5) || 0) * length));
+                return {
+                    type: o.type === 'door' ? 'Tür' : 'Fenster',
+                    width,
+                    start: Math.max(0, center - width / 2),
+                    end: Math.min(length, center + width / 2)
+                };
+            })
+            .sort((a, b) => a.start - b.start);
+
+        const lines = [
+            `Wand – Innen-/Zeichenmaß: ${formatDimensionCm(length)}`,
+            `Mauerwerkdicke: ${formatDimensionCm(Number(floor.wallThickness) || 12)}`
+        ];
+
+        if (!wallOpenings.length) {
+            lines.push(`Freies Wandmaß: ${formatDimensionCm(length)}`);
+            return lines.join('\n');
+        }
+
+        let cursor = 0;
+        wallOpenings.forEach((o, index) => {
+            lines.push(`Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
+            lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(o.end - o.start)}`);
+            cursor = Math.max(cursor, o.end);
+        });
+        lines.push(`Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, length - cursor))}`);
+        return lines.join('\n');
+    }
+
     function openingGeometry(w, o) {
         const vx = w.x2 - w.x1;
         const vy = w.y2 - w.y1;
@@ -4348,6 +4404,13 @@ HTML;
                 <div class="field">
                     <label>Mauerwerkdicke</label>
                     <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
+                </div>
+                <div class="field checkbox-field">
+                    <label>
+                        <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
+                        Wandmaße bei Maus anzeigen
+                    </label>
+                    <small>1 Zeicheneinheit = 1 cm. Zeigt Wandlänge sowie Abstände und Breiten von Türen/Fenstern.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -5118,6 +5181,14 @@ HTML;
                     const floor = currentFloor();
                     floor.wallThickness = Math.max(1, Math.min(60, Number(input.value) || 12));
                     input.value = String(floor.wallThickness);
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showWallDimensions') {
+                    currentFloor().showWallDimensions = input.checked === true;
                     pushHistory();
                     markDirty();
                     render();
