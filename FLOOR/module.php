@@ -4211,6 +4211,65 @@ HTML;
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
+    function wallDimensionBreaks(w, floor, mode) {
+        const x1 = Number(w.x1) || 0;
+        const y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0;
+        const y2 = Number(w.y2) || 0;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.hypot(dx, dy);
+        if (length < 1) return [];
+
+        const ux = dx / length;
+        const uy = dy / length;
+        const half = (Number(floor.wallThickness) || 12) / 2;
+        const points = [];
+
+        // Wandenden: Innenmaß liegt bei angeschlossenen Wänden um 1/2 Wanddicke
+        // innerhalb, Außenmaß entsprechend außerhalb.
+        const startJoin = wallEndpointInset(w, floor, true);
+        const endJoin = wallEndpointInset(w, floor, false);
+        points.push(mode === 'inside' ? startJoin : -startJoin);
+        points.push(mode === 'inside' ? length - endJoin : length + endJoin);
+
+        // Quer-/Zwischenwände, die auf diese Wand treffen oder sie kreuzen.
+        for (const other of floor.walls || []) {
+            if (other.id === w.id) continue;
+
+            const ox1 = Number(other.x1) || 0;
+            const oy1 = Number(other.y1) || 0;
+            const ox2 = Number(other.x2) || 0;
+            const oy2 = Number(other.y2) || 0;
+            const odx = ox2 - ox1;
+            const ody = oy2 - oy1;
+
+            const cross = dx * ody - dy * odx;
+            if (Math.abs(cross) < 0.0001) continue;
+
+            const rx = ox1 - x1;
+            const ry = oy1 - y1;
+            const t = (rx * ody - ry * odx) / cross;
+            const u = (rx * dy - ry * dx) / cross;
+
+            // Schnittpunkt muss auf der Hauptwand und auf/nahe der Querwand liegen.
+            const tolerance = Math.max(0.01, (Number(floor.wallThickness) || 12) / Math.max(length, 1));
+            if (t < -tolerance || t > 1 + tolerance || u < -tolerance || u > 1 + tolerance) continue;
+
+            const along = t * length;
+
+            // Für die Maßkette beide Kanten der Querwand eintragen. Damit entstehen
+            // Wandabschnitt – Querwanddicke – Wandabschnitt wie im Architekturplan.
+            points.push(along - half);
+            points.push(along + half);
+        }
+
+        return points
+            .filter(v => Number.isFinite(v))
+            .sort((a, b) => a - b)
+            .filter((v, i, arr) => i === 0 || Math.abs(v - arr[i - 1]) > 0.5);
+    }
+
     function wallGraphicDimension(w, floor, side, mode) {
         const x1 = Number(w.x1) || 0;
         const y1 = Number(w.y1) || 0;
@@ -4226,47 +4285,48 @@ HTML;
         const nx = -uy * side;
         const ny = ux * side;
         const thickness = Number(floor.wallThickness) || 12;
-        const startJoin = wallEndpointInset(w, floor, true);
-        const endJoin = wallEndpointInset(w, floor, false);
+        const breaks = wallDimensionBreaks(w, floor, mode);
+        if (breaks.length < 2) return '';
 
-        let ax, ay, bx, by, measuredLength, offset;
-        if (mode === 'inside') {
-            ax = x1 + ux * startJoin;
-            ay = y1 + uy * startJoin;
-            bx = x2 - ux * endJoin;
-            by = y2 - uy * endJoin;
-            measuredLength = Math.max(0, centerLength - startJoin - endJoin);
-            offset = thickness / 2 + 12;
-        } else {
-            ax = x1 - ux * startJoin;
-            ay = y1 - uy * startJoin;
-            bx = x2 + ux * endJoin;
-            by = y2 + uy * endJoin;
-            measuredLength = centerLength + startJoin + endJoin;
-            offset = thickness / 2 + 30;
+        const offset = mode === 'inside' ? thickness / 2 + 12 : thickness / 2 + 30;
+        const ext = 7;
+        const pieces = [];
+
+        // Durchgehende Maßlinie plus Hilfslinien an jedem relevanten Punkt.
+        const first = breaks[0];
+        const last = breaks[breaks.length - 1];
+        const fx = x1 + ux * first, fy = y1 + uy * first;
+        const lx = x1 + ux * last, ly = y1 + uy * last;
+        const fmx = fx + nx * offset, fmy = fy + ny * offset;
+        const lmx = lx + nx * offset, lmy = ly + ny * offset;
+        pieces.push(`<line x1="${fmx}" y1="${fmy}" x2="${lmx}" y2="${lmy}"/>`);
+
+        for (const d of breaks) {
+            const px = x1 + ux * d;
+            const py = y1 + uy * d;
+            const mx = px + nx * offset;
+            const my = py + ny * offset;
+            pieces.push(`<line x1="${px}" y1="${py}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
+            pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
         }
 
-        const mx1 = ax + nx * offset;
-        const my1 = ay + ny * offset;
-        const mx2 = bx + nx * offset;
-        const my2 = by + ny * offset;
-        const ext = 7;
-        const tx = (mx1 + mx2) / 2 + nx * 5;
-        const ty = (my1 + my2) / 2 + ny * 5;
-        let angle = Math.atan2(my2 - my1, mx2 - mx1) * 180 / Math.PI;
-        if (angle > 90 || angle < -90) angle += 180;
+        // Jeden Abschnitt der Maßkette beschriften.
+        for (let i = 0; i < breaks.length - 1; i++) {
+            const a = breaks[i];
+            const b = breaks[i + 1];
+            const value = Math.max(0, b - a);
+            if (value < 0.5) continue;
 
-        const label = `${Math.round(measuredLength * 10) / 10}`;
-        return (
-            `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">` +
-            `<line x1="${ax}" y1="${ay}" x2="${mx1 + nx * ext}" y2="${my1 + ny * ext}"/>` +
-            `<line x1="${bx}" y1="${by}" x2="${mx2 + nx * ext}" y2="${my2 + ny * ext}"/>` +
-            `<line x1="${mx1}" y1="${my1}" x2="${mx2}" y2="${my2}"/>` +
-            `<line x1="${mx1 - ux * 4 - nx * 4}" y1="${my1 - uy * 4 - ny * 4}" x2="${mx1 + ux * 4 + nx * 4}" y2="${my1 + uy * 4 + ny * 4}"/>` +
-            `<line x1="${mx2 - ux * 4 - nx * 4}" y1="${my2 - uy * 4 - ny * 4}" x2="${mx2 + ux * 4 + nx * 4}" y2="${my2 + uy * 4 + ny * 4}"/>` +
-            `<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>` +
-            `</g>`
-        );
+            const mid = (a + b) / 2;
+            const tx = x1 + ux * mid + nx * (offset + 5);
+            const ty = y1 + uy * mid + ny * (offset + 5);
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (angle > 90 || angle < -90) angle += 180;
+            const label = `${Math.round(value * 10) / 10}`;
+            pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>`);
+        }
+
+        return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
     }
 
     function renderGraphicWallDimensions(floor) {
