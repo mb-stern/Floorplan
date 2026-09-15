@@ -4257,91 +4257,114 @@ HTML;
         const thickness=Number(floor.wallThickness)||12;
         const half=thickness/2;
 
-        // Liefert alle Querwände, die ein Wandende konstruktiv abschließen.
-        // Dabei wird bewusst eine Toleranz von einer halben Wanddicke benutzt:
-        // ein paar Millimeter/Zeicheneinheiten kürzer oder länger dürfen das
-        // Innenmaß nicht verändern.
-        function endConnections(atStart) {
-            const ex=atStart?x1:x2, ey=atStart?y1:y2;
-            const result=[];
+        // Maßgebend ist NICHT der gezeichnete Endpunkt dieser Wand.
+        // Maßgebend ist der geometrische Schnittpunkt mit der anschließenden
+        // Querwand und von dort deren reale Innen-/Außenkante.
+        function connectionAtEnd(atStart) {
+            const candidates=[];
 
             for(const other of floor.walls||[]) {
                 if(other.id===w.id) continue;
 
-                const ax=Number(other.x1)||0, ay=Number(other.y1)||0;
-                const bx=Number(other.x2)||0, by=Number(other.y2)||0;
-                const odx=bx-ax, ody=by-ay, olen=Math.hypot(odx,ody);
+                const hit=wallIntersectionData(w,other);
+                if(!hit) continue;
+
+                const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+                const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+                const olen=Math.hypot(odx,ody);
                 if(olen<1) continue;
 
                 const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
                 if(sinAngle<.05) continue;
 
-                // Unbegrenzte Projektion auf die Querwand; anschließend prüfen,
-                // ob der Endpunkt höchstens etwa bis zur Wandkante abweicht.
-                const q=((ex-ax)*odx+(ey-ay)*ody)/(olen*olen);
-                const qc=Math.max(0,Math.min(1,q));
-                const qx=ax+odx*qc, qy=ay+ody*qc;
-                const distance=Math.hypot(ex-qx,ey-qy);
-                if(distance>half+1.5) continue;
+                // Ein paar cm Zeichenabweichung am Wandende werden für die
+                // Vermassung ignoriert. Auch der Endpunkt der Querwand darf
+                // leicht vor/hinter dem rechnerischen Schnitt liegen.
+                const alongTolerance=Math.max(thickness*1.5, 15);
+                const tTolerance=alongTolerance/length;
+                const uTolerance=alongTolerance/olen;
 
+                const nearRequestedEnd=atStart
+                    ? Math.abs(hit.t)<=tTolerance
+                    : Math.abs(hit.t-1)<=tTolerance;
+
+                if(!nearRequestedEnd) continue;
+                if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+                const center=hit.t*length;
                 const projectedHalf=half/sinAngle;
-                result.push({projectedHalf});
+                const endpoint=atStart ? 0 : length;
+
+                candidates.push({
+                    center,
+                    projectedHalf,
+                    distance:Math.abs(center-endpoint)
+                });
             }
-            return result;
+
+            if(!candidates.length) return null;
+            candidates.sort((a,b)=>a.distance-b.distance);
+            return candidates[0];
         }
 
-        const startConnections=endConnections(true);
-        const endConnectionsList=endConnections(false);
+        const startConnection=connectionAtEnd(true);
+        const endConnection=connectionAtEnd(false);
 
-        // Innen: sobald eine Querwand das Ende abschließt, immer bis zu deren
-        // Innenkante messen. Kleine Über-/Unterstände des gezeichneten Endpunkts
-        // spielen dafür keine Rolle.
-        const startInside=startConnections.length
-            ? Math.max(...startConnections.map(c=>c.projectedHalf))
+        // Nur echte Kanten sind Maßpunkte:
+        // Start: außen = vor der Querwand, innen = hinter der Querwand.
+        // Ende:  innen = vor der Querwand, außen = hinter der Querwand.
+        const startOutside=startConnection
+            ? startConnection.center-startConnection.projectedHalf
             : 0;
-        const endInside=endConnectionsList.length
-            ? length-Math.max(...endConnectionsList.map(c=>c.projectedHalf))
+        const startInside=startConnection
+            ? startConnection.center+startConnection.projectedHalf
+            : 0;
+
+        const endInside=endConnection
+            ? endConnection.center-endConnection.projectedHalf
+            : length;
+        const endOutside=endConnection
+            ? endConnection.center+endConnection.projectedHalf
             : length;
 
         if(mode==='outside') {
-            // Außen darf nur länger werden, wenn die zu vermassende Wand
-            // tatsächlich über die Querwand-Außenkante hinausragt.
-            // Sonst endet das Maß an der Außenkante der Querwand.
-            const startOutside=startConnections.length
-                ? Math.min(0, -Math.max(...startConnections.map(c=>c.projectedHalf)))
-                : 0;
-            const endOutside=endConnectionsList.length
-                ? Math.max(length, length+Math.max(...endConnectionsList.map(c=>c.projectedHalf)))
-                : length;
             return [startOutside,endOutside];
         }
 
         const points=[startInside,endInside];
 
-        // Querwände innerhalb der Wand: Innenmaßkette immer an deren Kanten
-        // unterbrechen, niemals auf der Mittellinie.
+        // Innerhalb der Wand: jede Querwand unterbricht die Innenmaßkette
+        // an ihren beiden realen Wandkanten. Die Wandachse ist kein Maßpunkt.
         for(const other of floor.walls||[]) {
             if(other.id===w.id) continue;
+
             const hit=wallIntersectionData(w,other);
             if(!hit) continue;
-            const tol=.02;
-            if(hit.t<=tol||hit.t>=1-tol||hit.u<-tol||hit.u>1+tol) continue;
 
             const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
             const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
             const olen=Math.hypot(odx,ody);
             if(olen<1) continue;
+
             const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
             if(sinAngle<.05) continue;
 
-            const c=hit.t*length, h=half/sinAngle;
-            points.push(c-h,c+h);
+            const tolerance=Math.max(2/length, .01);
+            if(hit.t<=tolerance || hit.t>=1-tolerance) continue;
+
+            const uTolerance=Math.max(thickness,10)/olen;
+            if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+            const center=hit.t*length;
+            const projectedHalf=half/sinAngle;
+            points.push(center-projectedHalf,center+projectedHalf);
         }
 
-        return points.filter(Number.isFinite)
-            .filter(v=>v>=startInside-.5&&v<=endInside+.5)
+        return points
+            .filter(Number.isFinite)
+            .filter(v=>v>=startInside-.5 && v<=endInside+.5)
             .sort((a,b)=>a-b)
-            .filter((v,i,a)=>i===0||Math.abs(v-a[i-1])>.5);
+            .filter((v,i,a)=>i===0 || Math.abs(v-a[i-1])>.5);
     }
 
     function wallGraphicDimension(w, floor, side, mode) {
