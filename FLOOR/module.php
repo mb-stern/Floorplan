@@ -471,7 +471,7 @@ class Floorplan extends IPSModuleStrict
             stroke: var(--card-color, var(--fp-panel));
             stroke-width: 3px;
             fill: currentColor;
-            font-size: 27px;
+            font-size: 18px;
             font-weight: 600;
             text-anchor: middle;
             dominant-baseline: central;
@@ -4312,9 +4312,7 @@ HTML;
 
         const lines = [
             `Innenmaß: ${formatDimensionCm(insideLength)}`,
-            `Außenmaß: ${formatDimensionCm(outsideLength)}`,
-            `Wandmaß Mittellinie: ${formatDimensionCm(centerLength)}`,
-            `Mauerwerkdicke: ${formatDimensionCm(Number(floor.wallThickness) || 12)}`
+            `Außenmaß: ${formatDimensionCm(outsideLength)}`
         ];
 
         if (!wallOpenings.length) {
@@ -4535,19 +4533,19 @@ HTML;
                     <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
                 </div>
                 <div class="field">
-                    <label class="compact-check">
+                    <label class="check">
                         <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
                         Wandmaße bei Mausover
                     </label>
-                    <label class="compact-check">
+                    <label class="check">
                         <input type="checkbox" data-project="showInsideDimensions" ${floor.showInsideDimensions === true ? 'checked' : ''}>
-                        Innenmaße grafisch anzeigen
+                        Innenmaße anzeigen
                     </label>
-                    <label class="compact-check">
+                    <label class="check">
                         <input type="checkbox" data-project="showOutsideDimensions" ${floor.showOutsideDimensions === true ? 'checked' : ''}>
-                        Außenmaße grafisch anzeigen
+                        Außenmaße anzeigen
                     </label>
-                    <small>Maße in cm. Grafische Maßlinien werden wie auf einem Grundrissplan eingezeichnet.</small>
+                    <small>Maße in cm.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
