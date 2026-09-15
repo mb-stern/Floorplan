@@ -4211,6 +4211,27 @@ HTML;
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
+    function wallEndpointConnectedForDimension(w, floor, atStart) {
+        const px = Number(atStart ? w.x1 : w.x2) || 0;
+        const py = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+
+        for (const other of floor.walls || []) {
+            if (other.id === w.id) continue;
+            const ax = Number(other.x1) || 0, ay = Number(other.y1) || 0;
+            const bx = Number(other.x2) || 0, by = Number(other.y2) || 0;
+            const vx = bx - ax, vy = by - ay;
+            const len2 = vx * vx + vy * vy;
+            if (len2 < 0.0001) continue;
+
+            let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const qx = ax + vx * t, qy = ay + vy * t;
+            if (Math.hypot(px - qx, py - qy) <= tolerance) return true;
+        }
+        return false;
+    }
+
     function wallIntersectionData(w, other) {
         const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
         const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
@@ -4240,8 +4261,8 @@ HTML;
 
         // Die gespeicherte Wand ist die Mittellinie. Für echte Innen-/Außenmaße
         // müssen die Enden bis zur jeweiligen Wandkante korrigiert werden.
-        const startConnected = wallEndpointInset(w, floor, true) > 0;
-        const endConnected = wallEndpointInset(w, floor, false) > 0;
+        const startConnected = wallEndpointConnectedForDimension(w, floor, true);
+        const endConnected = wallEndpointConnectedForDimension(w, floor, false);
 
         if (mode === 'inside') {
             points.push(startConnected ? halfMain : 0);
@@ -4363,8 +4384,8 @@ HTML;
         const startInset = wallEndpointInset(w, floor, true);
         const endInset = wallEndpointInset(w, floor, false);
         const halfThickness = (Number(floor.wallThickness) || 12) / 2;
-        const startConnected = startInset > 0;
-        const endConnected = endInset > 0;
+        const startConnected = wallEndpointConnectedForDimension(w, floor, true);
+        const endConnected = wallEndpointConnectedForDimension(w, floor, false);
         const insideLength = Math.max(0, centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0));
         const outsideLength = centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
 
