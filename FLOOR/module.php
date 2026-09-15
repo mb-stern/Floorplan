@@ -461,6 +461,22 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer;
         }
 
+        .dimension-line {
+            stroke: currentColor;
+            stroke-width: 1.2;
+            fill: none;
+            opacity: 1;
+        }
+        .dimension-line text {
+            stroke: var(--card-color, var(--fp-panel));
+            stroke-width: 3px;
+            fill: currentColor;
+            font-size: 9px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: central;
+            paint-order: stroke fill;
+        }
         .wall.selected {
             stroke: #74b9ff;
         }
@@ -1983,6 +1999,8 @@ HTML;
             order: 1,
             wallThickness: 12,
             showWallDimensions: false,
+            showInsideDimensions: false,
+            showOutsideDimensions: false,
             walls: [],
             openings: [],
             items: [],
@@ -2010,6 +2028,12 @@ HTML;
                 : 12;
             if (typeof floor.showWallDimensions !== 'boolean') {
                 floor.showWallDimensions = false;
+            }
+            if (typeof floor.showInsideDimensions !== 'boolean') {
+                floor.showInsideDimensions = false;
+            }
+            if (typeof floor.showOutsideDimensions !== 'boolean') {
+                floor.showOutsideDimensions = false;
             }
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
@@ -3416,7 +3440,7 @@ HTML;
 
         for (const w of wallRenderOrder) {
             const sel = selectedWallID === w.id ? ' selected' : '';
-            const dimensionTitle = floor.showWallDimensions === true
+            const dimensionTitle = state.mode !== 'view' && floor.showWallDimensions === true
                 ? `<title>${escapeHtml(wallDimensionInfo(w, floor))}</title>`
                 : '';
             parts.push(
@@ -3810,6 +3834,12 @@ HTML;
         // und überdecken Möbel, Formen, Wände, Texte und sonstige Planinhalte.
         parts.push(...variableTopParts);
 
+        // Maßlinien als letzte SVG-Ebene zeichnen. So bleiben sie unabhängig
+        // von Wänden, Objekten und Variablen sichtbar.
+        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            parts.push(renderGraphicWallDimensions(floor));
+        }
+
         scene.innerHTML = parts.join('');
         setTransform();
         renderProperties();
@@ -4181,6 +4211,81 @@ HTML;
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
+    function wallGraphicDimension(w, floor, side, mode) {
+        const x1 = Number(w.x1) || 0;
+        const y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0;
+        const y2 = Number(w.y2) || 0;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const centerLength = Math.hypot(dx, dy);
+        if (centerLength < 1) return '';
+
+        const ux = dx / centerLength;
+        const uy = dy / centerLength;
+        const nx = -uy * side;
+        const ny = ux * side;
+        const thickness = Number(floor.wallThickness) || 12;
+        const startJoin = wallEndpointInset(w, floor, true);
+        const endJoin = wallEndpointInset(w, floor, false);
+
+        let ax, ay, bx, by, measuredLength, offset;
+        if (mode === 'inside') {
+            ax = x1 + ux * startJoin;
+            ay = y1 + uy * startJoin;
+            bx = x2 - ux * endJoin;
+            by = y2 - uy * endJoin;
+            measuredLength = Math.max(0, centerLength - startJoin - endJoin);
+            offset = thickness / 2 + 12;
+        } else {
+            ax = x1 - ux * startJoin;
+            ay = y1 - uy * startJoin;
+            bx = x2 + ux * endJoin;
+            by = y2 + uy * endJoin;
+            measuredLength = centerLength + startJoin + endJoin;
+            offset = thickness / 2 + 30;
+        }
+
+        const mx1 = ax + nx * offset;
+        const my1 = ay + ny * offset;
+        const mx2 = bx + nx * offset;
+        const my2 = by + ny * offset;
+        const ext = 7;
+        const tx = (mx1 + mx2) / 2 + nx * 5;
+        const ty = (my1 + my2) / 2 + ny * 5;
+        let angle = Math.atan2(my2 - my1, mx2 - mx1) * 180 / Math.PI;
+        if (angle > 90 || angle < -90) angle += 180;
+
+        const label = `${Math.round(measuredLength * 10) / 10}`;
+        return (
+            `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">` +
+            `<line x1="${ax}" y1="${ay}" x2="${mx1 + nx * ext}" y2="${my1 + ny * ext}"/>` +
+            `<line x1="${bx}" y1="${by}" x2="${mx2 + nx * ext}" y2="${my2 + ny * ext}"/>` +
+            `<line x1="${mx1}" y1="${my1}" x2="${mx2}" y2="${my2}"/>` +
+            `<line x1="${mx1 - ux * 4 - nx * 4}" y1="${my1 - uy * 4 - ny * 4}" x2="${mx1 + ux * 4 + nx * 4}" y2="${my1 + uy * 4 + ny * 4}"/>` +
+            `<line x1="${mx2 - ux * 4 - nx * 4}" y1="${my2 - uy * 4 - ny * 4}" x2="${mx2 + ux * 4 + nx * 4}" y2="${my2 + uy * 4 + ny * 4}"/>` +
+            `<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>` +
+            `</g>`
+        );
+    }
+
+    function renderGraphicWallDimensions(floor) {
+        // Bemaßung ist reine Editor-Hilfe und wird in der Live-Ansicht nie gezeigt.
+        if (state.mode === 'view') return '';
+        if (floor.showInsideDimensions !== true && floor.showOutsideDimensions !== true) return '';
+
+        const result = [];
+        for (const w of floor.walls || []) {
+            if (floor.showInsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, -1, 'inside'));
+            }
+            if (floor.showOutsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, 1, 'outside'));
+            }
+        }
+        return result.join('');
+    }
+
     function wallDimensionInfo(w, floor) {
         const centerLength = Math.hypot(
             (Number(w.x2) || 0) - (Number(w.x1) || 0),
@@ -4189,6 +4294,7 @@ HTML;
         const startInset = wallEndpointInset(w, floor, true);
         const endInset = wallEndpointInset(w, floor, false);
         const insideLength = Math.max(0, centerLength - startInset - endInset);
+        const outsideLength = centerLength + startInset + endInset;
 
         const wallOpenings = (floor.openings || [])
             .filter(o => o.wallId === w.id)
@@ -4205,7 +4311,8 @@ HTML;
             .sort((a, b) => a.start - b.start);
 
         const lines = [
-            `Wand-Innenmaß: ${formatDimensionCm(insideLength)}`,
+            `Innenmaß: ${formatDimensionCm(insideLength)}`,
+            `Außenmaß: ${formatDimensionCm(outsideLength)}`,
             `Wandmaß Mittellinie: ${formatDimensionCm(centerLength)}`,
             `Mauerwerkdicke: ${formatDimensionCm(Number(floor.wallThickness) || 12)}`
         ];
@@ -4216,11 +4323,11 @@ HTML;
 
         let cursor = startInset;
         wallOpenings.forEach((o, index) => {
-            lines.push(`Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
+            lines.push(`Innen – Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
             lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(Math.max(0, o.end - o.start))}`);
             cursor = Math.max(cursor, o.end);
         });
-        lines.push(`Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, centerLength - endInset - cursor))}`);
+        lines.push(`Innen – Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, centerLength - endInset - cursor))}`);
         return lines.join('\n');
     }
 
@@ -4432,7 +4539,15 @@ HTML;
                         <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
                         Wandmaße bei Mausover
                     </label>
-                    <small>Maße in cm. Zeigt Innenmaß sowie Abstände und Breiten von Türen/Fenstern.</small>
+                    <label class="compact-check">
+                        <input type="checkbox" data-project="showInsideDimensions" ${floor.showInsideDimensions === true ? 'checked' : ''}>
+                        Innenmaße grafisch anzeigen
+                    </label>
+                    <label class="compact-check">
+                        <input type="checkbox" data-project="showOutsideDimensions" ${floor.showOutsideDimensions === true ? 'checked' : ''}>
+                        Außenmaße grafisch anzeigen
+                    </label>
+                    <small>Maße in cm. Grafische Maßlinien werden wie auf einem Grundrissplan eingezeichnet.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -5211,6 +5326,22 @@ HTML;
 
                 if (input.dataset.project === 'showWallDimensions') {
                     currentFloor().showWallDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showInsideDimensions') {
+                    currentFloor().showInsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showOutsideDimensions') {
+                    currentFloor().showOutsideDimensions = input.checked === true;
                     pushHistory();
                     markDirty();
                     render();
