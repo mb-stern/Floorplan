@@ -461,6 +461,21 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer;
         }
 
+        .dimension-line {
+            stroke: currentColor;
+            stroke-width: 0.8;
+            fill: none;
+            opacity: .82;
+        }
+        .dimension-line text {
+            stroke: none;
+            fill: currentColor;
+            font-size: 8px;
+            font-weight: 500;
+            text-anchor: middle;
+            dominant-baseline: central;
+            paint-order: stroke;
+        }
         .wall.selected {
             stroke: #74b9ff;
         }
@@ -1983,6 +1998,8 @@ HTML;
             order: 1,
             wallThickness: 12,
             showWallDimensions: false,
+            showInsideDimensions: false,
+            showOutsideDimensions: false,
             walls: [],
             openings: [],
             items: [],
@@ -2010,6 +2027,12 @@ HTML;
                 : 12;
             if (typeof floor.showWallDimensions !== 'boolean') {
                 floor.showWallDimensions = false;
+            }
+            if (typeof floor.showInsideDimensions !== 'boolean') {
+                floor.showInsideDimensions = false;
+            }
+            if (typeof floor.showOutsideDimensions !== 'boolean') {
+                floor.showOutsideDimensions = false;
             }
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
@@ -2562,7 +2585,11 @@ HTML;
 
         // Nur bei einer Etage komplett ohne Wände noch Möbel/Texte als Fallback verwenden.
         if (!(floor.walls || []).length) {
-            for (const f of floor.furniture || []) {
+            if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            parts.push(renderGraphicWallDimensions(floor));
+        }
+
+        for (const f of floor.furniture || []) {
                 const x = Number(f.x) || 0;
                 const y = Number(f.y) || 0;
                 const halfW = Math.max(8, Number(f.width) || 100) / 2;
@@ -4181,6 +4208,73 @@ HTML;
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
+    function wallGraphicDimension(w, floor, side, mode) {
+        const x1 = Number(w.x1) || 0;
+        const y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0;
+        const y2 = Number(w.y2) || 0;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const centerLength = Math.hypot(dx, dy);
+        if (centerLength < 1) return '';
+
+        const ux = dx / centerLength;
+        const uy = dy / centerLength;
+        const nx = -uy * side;
+        const ny = ux * side;
+        const thickness = Number(floor.wallThickness) || 12;
+        const startInset = mode === 'inside' ? wallEndpointInset(w, floor, true) : 0;
+        const endInset = mode === 'inside' ? wallEndpointInset(w, floor, false) : 0;
+        const measuredLength = Math.max(0, centerLength - startInset - endInset);
+
+        // Innenmaß liegt nahe an der Wand, Außenmaß etwas weiter außen.
+        const offset = mode === 'inside'
+            ? thickness / 2 + 12
+            : thickness / 2 + 28;
+
+        const ax = x1 + ux * startInset;
+        const ay = y1 + uy * startInset;
+        const bx = x2 - ux * endInset;
+        const by = y2 - uy * endInset;
+        const mx1 = ax + nx * offset;
+        const my1 = ay + ny * offset;
+        const mx2 = bx + nx * offset;
+        const my2 = by + ny * offset;
+        const ext = 7;
+        const tx = (mx1 + mx2) / 2 + nx * 4;
+        const ty = (my1 + my2) / 2 + ny * 4;
+        let angle = Math.atan2(my2 - my1, mx2 - mx1) * 180 / Math.PI;
+        if (angle > 90 || angle < -90) angle += 180;
+
+        const label = `${Math.round(measuredLength * 10) / 10}`;
+        return (
+            `<g class="dimension-line" pointer-events="none">` +
+            `<line x1="${ax}" y1="${ay}" x2="${mx1 + nx * ext}" y2="${my1 + ny * ext}"/>` +
+            `<line x1="${bx}" y1="${by}" x2="${mx2 + nx * ext}" y2="${my2 + ny * ext}"/>` +
+            `<line x1="${mx1}" y1="${my1}" x2="${mx2}" y2="${my2}"/>` +
+            `<line x1="${mx1 - ux * 4 - nx * 4}" y1="${my1 - uy * 4 - ny * 4}" x2="${mx1 + ux * 4 + nx * 4}" y2="${my1 + uy * 4 + ny * 4}"/>` +
+            `<line x1="${mx2 - ux * 4 - nx * 4}" y1="${my2 - uy * 4 - ny * 4}" x2="${mx2 + ux * 4 + nx * 4}" y2="${my2 + uy * 4 + ny * 4}"/>` +
+            `<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>` +
+            `</g>`
+        );
+    }
+
+    function renderGraphicWallDimensions(floor) {
+        if (state.mode === 'view') return '';
+        if (floor.showInsideDimensions !== true && floor.showOutsideDimensions !== true) return '';
+
+        const result = [];
+        for (const w of floor.walls || []) {
+            if (floor.showInsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, -1, 'inside'));
+            }
+            if (floor.showOutsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, 1, 'outside'));
+            }
+        }
+        return result.join('');
+    }
+
     function wallDimensionInfo(w, floor) {
         const centerLength = Math.hypot(
             (Number(w.x2) || 0) - (Number(w.x1) || 0),
@@ -4432,7 +4526,15 @@ HTML;
                         <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
                         Wandmaße bei Mausover
                     </label>
-                    <small>Maße in cm. Zeigt Innenmaß sowie Abstände und Breiten von Türen/Fenstern.</small>
+                    <label class="compact-check">
+                        <input type="checkbox" data-project="showInsideDimensions" ${floor.showInsideDimensions === true ? 'checked' : ''}>
+                        Innenmaße grafisch anzeigen
+                    </label>
+                    <label class="compact-check">
+                        <input type="checkbox" data-project="showOutsideDimensions" ${floor.showOutsideDimensions === true ? 'checked' : ''}>
+                        Außenmaße grafisch anzeigen
+                    </label>
+                    <small>Maße in cm. Grafische Maßlinien werden wie auf einem Grundrissplan eingezeichnet.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -5211,6 +5313,22 @@ HTML;
 
                 if (input.dataset.project === 'showWallDimensions') {
                     currentFloor().showWallDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showInsideDimensions') {
+                    currentFloor().showInsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showOutsideDimensions') {
+                    currentFloor().showOutsideDimensions = input.checked === true;
                     pushHistory();
                     markDirty();
                     render();
