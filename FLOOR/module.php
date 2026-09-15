@@ -6084,6 +6084,17 @@ HTML;
             markDirty();
             setTool('');
             render();
+            return;
+        }
+
+        // Klick auf eine wirklich freie Fläche: aktuelle Auswahl aufheben.
+        // Dadurch zeigt die Eigenschaften-Seite wieder die Stockwerkeigenschaften.
+        if (!target && !rotateHandle && !resizeHandle && !tool) {
+            releasePropertiesControl();
+            selected = null;
+            wallStart = null;
+            preview = null;
+            render();
         }
     });
 
