@@ -4257,19 +4257,31 @@ HTML;
 
         const thickness = Number(floor.wallThickness) || 12;
         const half = thickness / 2;
-        const points = [0, length];
 
-        // WICHTIG:
-        // Die gezeichneten Wand-Endpunkte sind die konstruktiven Enden der Wand.
-        // Außenmaß geht deshalb IMMER von Wandende zu Wandende und wird nicht
-        // auf die sichtbare/überdeckte Ecke einer anschließenden Wand gekürzt.
+        // Die gespeicherte Linie ist die Wandachse. An einem Anschluss liegt
+        // die Innenkante 1/2 Wanddicke innerhalb und die Außenkante 1/2
+        // Wanddicke außerhalb des Achsenschnittpunkts.
+        const startJoined = wallEndpointConnectedForDimension(w, floor, true);
+        const endJoined   = wallEndpointConnectedForDimension(w, floor, false);
+
+        const startEdge = mode === 'outside'
+            ? (startJoined ? -half : 0)
+            : (startJoined ?  half : 0);
+
+        const endEdge = mode === 'outside'
+            ? (endJoined ? length + half : length)
+            : (endJoined ? length - half : length);
+
+        // Außenmaß ist ausschließlich Außenkante -> Außenkante.
         if (mode === 'outside') {
-            return points;
+            return [startEdge, endEdge];
         }
 
-        // Innenmaß: Sobald eine Quer-/Zwischenwand auf die Wand trifft,
-        // endet der freie Innenabschnitt an der zugewandten Kante dieser Querwand.
-        const intersections = [];
+        // Innenmaß: zusätzlich an jeder Querwand unterteilen. Gemessen wird
+        // jeweils nur bis zur ersten Kante der Querwand und danach ab deren
+        // zweiter Kante weiter.
+        const points = [startEdge, endEdge];
+
         for (const other of floor.walls || []) {
             if (other.id === w.id) continue;
             const hit = wallIntersectionData(w, other);
@@ -4288,24 +4300,14 @@ HTML;
 
             const projectedHalf = half / sinAngle;
             const center = hit.t * length;
-            intersections.push({
-                left: Math.max(0, center - projectedHalf),
-                right: Math.min(length, center + projectedHalf)
-            });
-        }
-
-        intersections.sort((a,b)=>a.left-b.left);
-
-        // Innenmaßkette: Wandanfang -> Vorderkante Querwand,
-        // danach Hinterkante Querwand -> nächste Vorderkante usw.
-        for (const hit of intersections) {
-            points.push(hit.left, hit.right);
+            points.push(center - projectedHalf, center + projectedHalf);
         }
 
         return points
             .filter(Number.isFinite)
-            .sort((a,b)=>a-b)
-            .filter((v,i,arr)=>i===0 || Math.abs(v-arr[i-1])>0.5);
+            .filter(v => v >= startEdge - 0.5 && v <= endEdge + 0.5)
+            .sort((a, b) => a - b)
+            .filter((v, i, arr) => i === 0 || Math.abs(v - arr[i - 1]) > 0.5);
     }
 
     function wallGraphicDimension(w, floor, side, mode) {
@@ -4430,8 +4432,11 @@ HTML;
         const halfThickness = (Number(floor.wallThickness) || 12) / 2;
         const startConnected = wallEndpointConnectedForDimension(w, floor, true);
         const endConnected = wallEndpointConnectedForDimension(w, floor, false);
-        const insideLength = Math.max(0, centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0));
-        const outsideLength = centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
+        const insideLength = Math.max(0,
+            centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0)
+        );
+        const outsideLength =
+            centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
 
         const wallOpenings = (floor.openings || [])
             .filter(o => o.wallId === w.id)
