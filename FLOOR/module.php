@@ -4249,65 +4249,65 @@ HTML;
     }
 
     function wallDimensionBreaks(w, floor, mode) {
-        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
-        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
-        const dx = x2 - x1, dy = y2 - y1;
-        const length = Math.hypot(dx, dy);
-        if (length < 1) return [];
+        const x1=Number(w.x1)||0, y1=Number(w.y1)||0;
+        const x2=Number(w.x2)||0, y2=Number(w.y2)||0;
+        const dx=x2-x1, dy=y2-y1, length=Math.hypot(dx,dy);
+        if(length<1) return [];
+        const thickness=Number(floor.wallThickness)||12, half=thickness/2;
 
-        const thickness = Number(floor.wallThickness) || 12;
-        const half = thickness / 2;
-
-        // Die gespeicherte Linie ist die Wandachse. An einem Anschluss liegt
-        // die Innenkante 1/2 Wanddicke innerhalb und die Außenkante 1/2
-        // Wanddicke außerhalb des Achsenschnittpunkts.
-        const startJoined = wallEndpointConnectedForDimension(w, floor, true);
-        const endJoined   = wallEndpointConnectedForDimension(w, floor, false);
-
-        const startEdge = mode === 'outside'
-            ? (startJoined ? -half : 0)
-            : (startJoined ?  half : 0);
-
-        const endEdge = mode === 'outside'
-            ? (endJoined ? length + half : length)
-            : (endJoined ? length - half : length);
-
-        // Außenmaß ist ausschließlich Außenkante -> Außenkante.
-        if (mode === 'outside') {
-            return [startEdge, endEdge];
+        function endpointEdges(atStart) {
+            const ex=atStart?x1:x2, ey=atStart?y1:y2;
+            const base=atStart?0:length, edges=[];
+            for(const other of floor.walls||[]) {
+                if(other.id===w.id) continue;
+                const ax=Number(other.x1)||0, ay=Number(other.y1)||0;
+                const bx=Number(other.x2)||0, by=Number(other.y2)||0;
+                const odx=bx-ax, ody=by-ay, olen=Math.hypot(odx,ody);
+                if(olen<1) continue;
+                let q=((ex-ax)*odx+(ey-ay)*ody)/(olen*olen);
+                q=Math.max(0,Math.min(1,q));
+                if(Math.hypot(ex-(ax+odx*q),ey-(ay+ody*q))>half+1) continue;
+                const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+                if(sinAngle<0.05) continue;
+                const h=half/sinAngle;
+                edges.push(base-h,base+h);
+            }
+            return edges;
         }
 
-        // Innenmaß: zusätzlich an jeder Querwand unterteilen. Gemessen wird
-        // jeweils nur bis zur ersten Kante der Querwand und danach ab deren
-        // zweiter Kante weiter.
-        const points = [startEdge, endEdge];
+        const se=endpointEdges(true), ee=endpointEdges(false);
+        const startEdge=mode==='outside'
+            ? (se.length?Math.min(...se):0)
+            : (se.length?Math.max(...se):0);
+        const endEdge=mode==='outside'
+            ? (ee.length?Math.max(...ee):length)
+            : (ee.length?Math.min(...ee):length);
 
-        for (const other of floor.walls || []) {
-            if (other.id === w.id) continue;
-            const hit = wallIntersectionData(w, other);
-            if (!hit) continue;
+        // Außen: nur äußerste reale Wandkanten.
+        if(mode==='outside') return [startEdge,endEdge];
 
-            const tol = 0.02;
-            if (hit.t <= tol || hit.t >= 1 - tol || hit.u < -tol || hit.u > 1 + tol) continue;
-
-            const odx = (Number(other.x2) || 0) - (Number(other.x1) || 0);
-            const ody = (Number(other.y2) || 0) - (Number(other.y1) || 0);
-            const olen = Math.hypot(odx, ody);
-            if (olen < 1) continue;
-
-            const sinAngle = Math.abs((dx * ody - dy * odx) / (length * olen));
-            if (sinAngle < 0.05) continue;
-
-            const projectedHalf = half / sinAngle;
-            const center = hit.t * length;
-            points.push(center - projectedHalf, center + projectedHalf);
+        // Innen: reale Innenkante bis zur jeweils nächsten Querwandkante.
+        // Die Achse/Mitte einer Wand wird niemals als Maßpunkt aufgenommen.
+        const points=[startEdge,endEdge];
+        for(const other of floor.walls||[]) {
+            if(other.id===w.id) continue;
+            const hit=wallIntersectionData(w,other);
+            if(!hit) continue;
+            const tol=.02;
+            if(hit.t<=tol||hit.t>=1-tol||hit.u<-tol||hit.u>1+tol) continue;
+            const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+            const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+            const olen=Math.hypot(odx,ody);
+            if(olen<1) continue;
+            const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+            if(sinAngle<.05) continue;
+            const c=hit.t*length, h=half/sinAngle;
+            points.push(c-h,c+h);
         }
-
-        return points
-            .filter(Number.isFinite)
-            .filter(v => v >= startEdge - 0.5 && v <= endEdge + 0.5)
-            .sort((a, b) => a - b)
-            .filter((v, i, arr) => i === 0 || Math.abs(v - arr[i - 1]) > 0.5);
+        return points.filter(Number.isFinite)
+            .filter(v=>v>=startEdge-.5&&v<=endEdge+.5)
+            .sort((a,b)=>a-b)
+            .filter((v,i,a)=>i===0||Math.abs(v-a[i-1])>.5);
     }
 
     function wallGraphicDimension(w, floor, side, mode) {
