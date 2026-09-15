@@ -4367,6 +4367,43 @@ HTML;
         return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
     }
 
+    function wallOutsideSide(w, floor) {
+        const walls = floor.walls || [];
+        if (!walls.length) return 1;
+
+        // Mittelpunkt des gesamten Wandgrundrisses.
+        let sx = 0, sy = 0, count = 0;
+        for (const wall of walls) {
+            sx += Number(wall.x1) || 0;
+            sy += Number(wall.y1) || 0;
+            sx += Number(wall.x2) || 0;
+            sy += Number(wall.y2) || 0;
+            count += 2;
+        }
+        const cx = sx / Math.max(1, count);
+        const cy = sy / Math.max(1, count);
+
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return 1;
+
+        // Beide Normalen prüfen. Die Seite, die vom Grundrisszentrum weg zeigt,
+        // ist die geometrische Außenseite. Dadurch ist die Richtung, in der die
+        // Wand gezeichnet wurde, egal.
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const toCenterX = cx - mx, toCenterY = cy - my;
+
+        // Normal für side=1 in wallGraphicDimension:
+        // nx=-uy, ny=ux.
+        const nx = -dy / len, ny = dx / len;
+        const dot = nx * toCenterX + ny * toCenterY;
+
+        // Zeigt side=1 zum Zentrum, liegt außen auf side=-1.
+        return dot > 0 ? -1 : 1;
+    }
+
     function renderGraphicWallDimensions(floor) {
         // Bemaßung ist reine Editor-Hilfe und wird in der Live-Ansicht nie gezeigt.
         if (state.mode === 'view') return '';
@@ -4374,11 +4411,12 @@ HTML;
 
         const result = [];
         for (const w of floor.walls || []) {
+            const outsideSide = wallOutsideSide(w, floor);
             if (floor.showInsideDimensions === true) {
-                result.push(wallGraphicDimension(w, floor, -1, 'inside'));
+                result.push(wallGraphicDimension(w, floor, -outsideSide, 'inside'));
             }
             if (floor.showOutsideDimensions === true) {
-                result.push(wallGraphicDimension(w, floor, 1, 'outside'));
+                result.push(wallGraphicDimension(w, floor, outsideSide, 'outside'));
             }
         }
         return result.join('');
