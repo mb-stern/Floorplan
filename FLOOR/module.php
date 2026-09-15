@@ -471,7 +471,7 @@ class Floorplan extends IPSModuleStrict
             stroke: var(--card-color, var(--fp-panel));
             stroke-width: 3px;
             fill: currentColor;
-            font-size: 9px;
+            font-size: 27px;
             font-weight: 600;
             text-anchor: middle;
             dominant-baseline: central;
