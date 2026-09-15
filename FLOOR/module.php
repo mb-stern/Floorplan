@@ -4163,42 +4163,64 @@ HTML;
         return `${Math.round(cm * 10) / 10} cm`;
     }
 
+    function wallEndpointInset(w, floor, atStart) {
+        const x = Number(atStart ? w.x1 : w.x2) || 0;
+        const y = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+        const joined = (floor.walls || []).some(other => {
+            if (other.id === w.id) return false;
+            return (
+                Math.hypot((Number(other.x1) || 0) - x, (Number(other.y1) || 0) - y) <= tolerance ||
+                Math.hypot((Number(other.x2) || 0) - x, (Number(other.y2) || 0) - y) <= tolerance
+            );
+        });
+
+        // Die gespeicherte Wand läuft auf ihrer Mittellinie. Wenn am Endpunkt
+        // eine weitere Wand anschliesst, liegt die sichtbare Innenkante um eine
+        // halbe Wanddicke innerhalb dieses Mittellinien-Schnittpunkts.
+        return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
+    }
+
     function wallDimensionInfo(w, floor) {
-        const length = Math.hypot(
+        const centerLength = Math.hypot(
             (Number(w.x2) || 0) - (Number(w.x1) || 0),
             (Number(w.y2) || 0) - (Number(w.y1) || 0)
         );
+        const startInset = wallEndpointInset(w, floor, true);
+        const endInset = wallEndpointInset(w, floor, false);
+        const insideLength = Math.max(0, centerLength - startInset - endInset);
+
         const wallOpenings = (floor.openings || [])
             .filter(o => o.wallId === w.id)
             .map(o => {
-                const width = Math.min(Math.max(0, Number(o.length) || 0), length);
-                const center = Math.max(0, Math.min(length, (Number(o.position ?? .5) || 0) * length));
+                const width = Math.min(Math.max(0, Number(o.length) || 0), centerLength);
+                const center = Math.max(0, Math.min(centerLength, (Number(o.position ?? .5) || 0) * centerLength));
                 return {
                     type: o.type === 'door' ? 'Tür' : 'Fenster',
                     width,
-                    start: Math.max(0, center - width / 2),
-                    end: Math.min(length, center + width / 2)
+                    start: Math.max(startInset, center - width / 2),
+                    end: Math.min(centerLength - endInset, center + width / 2)
                 };
             })
             .sort((a, b) => a.start - b.start);
 
         const lines = [
-            `Wand – Innen-/Zeichenmaß: ${formatDimensionCm(length)}`,
+            `Wand-Innenmaß: ${formatDimensionCm(insideLength)}`,
+            `Wandmaß Mittellinie: ${formatDimensionCm(centerLength)}`,
             `Mauerwerkdicke: ${formatDimensionCm(Number(floor.wallThickness) || 12)}`
         ];
 
         if (!wallOpenings.length) {
-            lines.push(`Freies Wandmaß: ${formatDimensionCm(length)}`);
             return lines.join('\n');
         }
 
-        let cursor = 0;
+        let cursor = startInset;
         wallOpenings.forEach((o, index) => {
             lines.push(`Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
-            lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(o.end - o.start)}`);
+            lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(Math.max(0, o.end - o.start))}`);
             cursor = Math.max(cursor, o.end);
         });
-        lines.push(`Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, length - cursor))}`);
+        lines.push(`Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, centerLength - endInset - cursor))}`);
         return lines.join('\n');
     }
 
@@ -4405,12 +4427,12 @@ HTML;
                     <label>Mauerwerkdicke</label>
                     <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
                 </div>
-                <div class="field checkbox-field">
-                    <label>
+                <div class="field">
+                    <label class="compact-check">
                         <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
-                        Wandmaße bei Maus anzeigen
+                        Wandmaße bei Mausover
                     </label>
-                    <small>1 Zeicheneinheit = 1 cm. Zeigt Wandlänge sowie Abstände und Breiten von Türen/Fenstern.</small>
+                    <small>Maße in cm. Zeigt Innenmaß sowie Abstände und Breiten von Türen/Fenstern.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
