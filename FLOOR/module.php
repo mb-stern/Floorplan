@@ -4211,79 +4211,93 @@ HTML;
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
+    function wallIntersectionData(w, other) {
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const ox1 = Number(other.x1) || 0, oy1 = Number(other.y1) || 0;
+        const ox2 = Number(other.x2) || 0, oy2 = Number(other.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const odx = ox2 - ox1, ody = oy2 - oy1;
+        const cross = dx * ody - dy * odx;
+        if (Math.abs(cross) < 0.0001) return null;
+
+        const rx = ox1 - x1, ry = oy1 - y1;
+        const t = (rx * ody - ry * odx) / cross;
+        const u = (rx * dy - ry * dx) / cross;
+        return {t, u};
+    }
+
     function wallDimensionBreaks(w, floor, mode) {
-        const x1 = Number(w.x1) || 0;
-        const y1 = Number(w.y1) || 0;
-        const x2 = Number(w.x2) || 0;
-        const y2 = Number(w.y2) || 0;
-        const dx = x2 - x1;
-        const dy = y2 - y1;
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
         const length = Math.hypot(dx, dy);
         if (length < 1) return [];
 
-        const ux = dx / length;
-        const uy = dy / length;
-        const half = (Number(floor.wallThickness) || 12) / 2;
+        const wallThickness = Number(floor.wallThickness) || 12;
+        const halfMain = wallThickness / 2;
         const points = [];
 
-        // Wandenden: Innenmaß liegt bei angeschlossenen Wänden um 1/2 Wanddicke
-        // innerhalb, Außenmaß entsprechend außerhalb.
-        const startJoin = wallEndpointInset(w, floor, true);
-        const endJoin = wallEndpointInset(w, floor, false);
-        points.push(mode === 'inside' ? startJoin : -startJoin);
-        points.push(mode === 'inside' ? length - endJoin : length + endJoin);
+        // Die gespeicherte Wand ist die Mittellinie. Für echte Innen-/Außenmaße
+        // müssen die Enden bis zur jeweiligen Wandkante korrigiert werden.
+        const startConnected = wallEndpointInset(w, floor, true) > 0;
+        const endConnected = wallEndpointInset(w, floor, false) > 0;
 
-        // Quer-/Zwischenwände, die auf diese Wand treffen oder sie kreuzen.
+        if (mode === 'inside') {
+            points.push(startConnected ? halfMain : 0);
+            points.push(endConnected ? length - halfMain : length);
+        } else {
+            points.push(startConnected ? -halfMain : 0);
+            points.push(endConnected ? length + halfMain : length);
+        }
+
+        // Jede Quer-/Zwischenwand erzeugt zwei echte Kanten in der Maßkette.
+        // Die Kantenbreite entlang der Hauptwand hängt vom Schnittwinkel ab.
         for (const other of floor.walls || []) {
             if (other.id === w.id) continue;
+            const hit = wallIntersectionData(w, other);
+            if (!hit) continue;
 
-            const ox1 = Number(other.x1) || 0;
-            const oy1 = Number(other.y1) || 0;
-            const ox2 = Number(other.x2) || 0;
-            const oy2 = Number(other.y2) || 0;
-            const odx = ox2 - ox1;
-            const ody = oy2 - oy1;
+            // Auch T-Anschlüsse erfassen: Endpunkt der Querwand darf exakt auf
+            // der Hauptwand liegen. Kleine Toleranz für Raster/Rundung.
+            const tol = 0.015;
+            if (hit.t < -tol || hit.t > 1 + tol || hit.u < -tol || hit.u > 1 + tol) continue;
 
-            const cross = dx * ody - dy * odx;
-            if (Math.abs(cross) < 0.0001) continue;
+            const odx = (Number(other.x2) || 0) - (Number(other.x1) || 0);
+            const ody = (Number(other.y2) || 0) - (Number(other.y1) || 0);
+            const otherLength = Math.hypot(odx, ody);
+            if (otherLength < 1) continue;
 
-            const rx = ox1 - x1;
-            const ry = oy1 - y1;
-            const t = (rx * ody - ry * odx) / cross;
-            const u = (rx * dy - ry * dx) / cross;
+            const sinAngle = Math.abs((dx * ody - dy * odx) / (length * otherLength));
+            if (sinAngle < 0.05) continue;
 
-            // Schnittpunkt muss auf der Hauptwand und auf/nahe der Querwand liegen.
-            const tolerance = Math.max(0.01, (Number(floor.wallThickness) || 12) / Math.max(length, 1));
-            if (t < -tolerance || t > 1 + tolerance || u < -tolerance || u > 1 + tolerance) continue;
+            const otherThickness = Number(floor.wallThickness) || 12;
+            const projectedHalfWidth = (otherThickness / 2) / sinAngle;
+            const center = hit.t * length;
 
-            const along = t * length;
-
-            // Für die Maßkette beide Kanten der Querwand eintragen. Damit entstehen
-            // Wandabschnitt – Querwanddicke – Wandabschnitt wie im Architekturplan.
-            points.push(along - half);
-            points.push(along + half);
+            // Nur echte innere Schnittpunkte als Unterteilung. Endanschlüsse
+            // werden bereits oben als Innen-/Außenkante behandelt.
+            if (center > 0.5 && center < length - 0.5) {
+                points.push(center - projectedHalfWidth);
+                points.push(center + projectedHalfWidth);
+            }
         }
 
         return points
-            .filter(v => Number.isFinite(v))
+            .filter(Number.isFinite)
             .sort((a, b) => a - b)
             .filter((v, i, arr) => i === 0 || Math.abs(v - arr[i - 1]) > 0.5);
     }
 
     function wallGraphicDimension(w, floor, side, mode) {
-        const x1 = Number(w.x1) || 0;
-        const y1 = Number(w.y1) || 0;
-        const x2 = Number(w.x2) || 0;
-        const y2 = Number(w.y2) || 0;
-        const dx = x2 - x1;
-        const dy = y2 - y1;
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
         const centerLength = Math.hypot(dx, dy);
         if (centerLength < 1) return '';
 
-        const ux = dx / centerLength;
-        const uy = dy / centerLength;
-        const nx = -uy * side;
-        const ny = ux * side;
+        const ux = dx / centerLength, uy = dy / centerLength;
+        const nx = -uy * side, ny = ux * side;
         const thickness = Number(floor.wallThickness) || 12;
         const breaks = wallDimensionBreaks(w, floor, mode);
         if (breaks.length < 2) return '';
@@ -4291,39 +4305,34 @@ HTML;
         const offset = mode === 'inside' ? thickness / 2 + 12 : thickness / 2 + 30;
         const ext = 7;
         const pieces = [];
+        const first = breaks[0], last = breaks[breaks.length - 1];
 
-        // Durchgehende Maßlinie plus Hilfslinien an jedem relevanten Punkt.
-        const first = breaks[0];
-        const last = breaks[breaks.length - 1];
-        const fx = x1 + ux * first, fy = y1 + uy * first;
-        const lx = x1 + ux * last, ly = y1 + uy * last;
-        const fmx = fx + nx * offset, fmy = fy + ny * offset;
-        const lmx = lx + nx * offset, lmy = ly + ny * offset;
-        pieces.push(`<line x1="${fmx}" y1="${fmy}" x2="${lmx}" y2="${lmy}"/>`);
+        const pointAt = d => ({x: x1 + ux * d, y: y1 + uy * d});
+        const f = pointAt(first), l = pointAt(last);
+        pieces.push(`<line x1="${f.x + nx * offset}" y1="${f.y + ny * offset}" x2="${l.x + nx * offset}" y2="${l.y + ny * offset}"/>`);
 
         for (const d of breaks) {
-            const px = x1 + ux * d;
-            const py = y1 + uy * d;
-            const mx = px + nx * offset;
-            const my = py + ny * offset;
-            pieces.push(`<line x1="${px}" y1="${py}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
+            const p = pointAt(d);
+            const mx = p.x + nx * offset, my = p.y + ny * offset;
+            pieces.push(`<line x1="${p.x}" y1="${p.y}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
             pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
         }
 
-        // Jeden Abschnitt der Maßkette beschriften.
-        for (let i = 0; i < breaks.length - 1; i++) {
-            const a = breaks[i];
-            const b = breaks[i + 1];
-            const value = Math.max(0, b - a);
-            if (value < 0.5) continue;
+        // Außenmaß: eine einzige Gesamtmaßzahl von Außenkante zu Außenkante.
+        // Innenmaß: Maßkette mit allen Zwischen-/Querwandkanten.
+        const segments = mode === 'outside'
+            ? [[first, last]]
+            : breaks.slice(0, -1).map((a, i) => [a, breaks[i + 1]]);
 
+        for (const [a, b] of segments) {
+            const value = b - a;
+            if (value < 0.5) continue;
             const mid = (a + b) / 2;
             const tx = x1 + ux * mid + nx * (offset + 5);
             const ty = y1 + uy * mid + ny * (offset + 5);
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             if (angle > 90 || angle < -90) angle += 180;
-            const label = `${Math.round(value * 10) / 10}`;
-            pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>`);
+            pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${Math.round(value * 10) / 10}</text>`);
         }
 
         return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
@@ -4353,8 +4362,11 @@ HTML;
         );
         const startInset = wallEndpointInset(w, floor, true);
         const endInset = wallEndpointInset(w, floor, false);
-        const insideLength = Math.max(0, centerLength - startInset - endInset);
-        const outsideLength = centerLength + startInset + endInset;
+        const halfThickness = (Number(floor.wallThickness) || 12) / 2;
+        const startConnected = startInset > 0;
+        const endConnected = endInset > 0;
+        const insideLength = Math.max(0, centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0));
+        const outsideLength = centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
 
         const wallOpenings = (floor.openings || [])
             .filter(o => o.wallId === w.id)
