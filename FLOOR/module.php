@@ -4255,53 +4255,88 @@ HTML;
         const length = Math.hypot(dx, dy);
         if (length < 1) return [];
 
-        const wallThickness = Number(floor.wallThickness) || 12;
-        const halfMain = wallThickness / 2;
-        const points = [];
+        const ux = dx / length, uy = dy / length;
+        const thickness = Number(floor.wallThickness) || 12;
+        const half = thickness / 2;
 
-        // Die gespeicherte Wand ist die Mittellinie. Für echte Innen-/Außenmaße
-        // müssen die Enden bis zur jeweiligen Wandkante korrigiert werden.
-        const startConnected = wallEndpointConnectedForDimension(w, floor, true);
-        const endConnected = wallEndpointConnectedForDimension(w, floor, false);
+        // Liefert die tatsächliche Außen-/Innenkante am Wandende.
+        // Entscheidend: nicht den Endpunkt der Mittellinie benutzen, sondern
+        // die sichtbare Fläche der anschließenden Wand auf die Achse dieser
+        // Wand projizieren.
+        const endpointEdge = atStart => {
+            const ex = atStart ? x1 : x2;
+            const ey = atStart ? y1 : y2;
+            const base = atStart ? 0 : length;
+            const candidates = [];
 
-        if (mode === 'inside') {
-            points.push(startConnected ? halfMain : 0);
-            points.push(endConnected ? length - halfMain : length);
-        } else {
-            points.push(startConnected ? -halfMain : 0);
-            points.push(endConnected ? length + halfMain : length);
-        }
+            for (const other of floor.walls || []) {
+                if (other.id === w.id) continue;
 
-        // Jede Quer-/Zwischenwand erzeugt zwei echte Kanten in der Maßkette.
-        // Die Kantenbreite entlang der Hauptwand hängt vom Schnittwinkel ab.
+                const ax = Number(other.x1) || 0, ay = Number(other.y1) || 0;
+                const bx = Number(other.x2) || 0, by = Number(other.y2) || 0;
+                const ovx = bx - ax, ovy = by - ay;
+                const olen = Math.hypot(ovx, ovy);
+                if (olen < 1) continue;
+
+                // Abstand des Wandendes zur Mittellinie der anderen Wand.
+                let t = ((ex - ax) * ovx + (ey - ay) * ovy) / (olen * olen);
+                t = Math.max(0, Math.min(1, t));
+                const qx = ax + ovx * t, qy = ay + ovy * t;
+                if (Math.hypot(ex - qx, ey - qy) > half + 1.0) continue;
+
+                // Vier Ecken des sichtbaren Wand-Streifens.
+                const onx = -ovy / olen, ony = ovx / olen;
+                for (const [px, py] of [
+                    [ax + onx * half, ay + ony * half],
+                    [ax - onx * half, ay - ony * half],
+                    [bx + onx * half, by + ony * half],
+                    [bx - onx * half, by - ony * half]
+                ]) {
+                    const along = (px - x1) * ux + (py - y1) * uy;
+                    // Nur die Ecke in der Nähe dieses Wandendes berücksichtigen.
+                    if (Math.abs(along - base) <= thickness * 2.5) {
+                        candidates.push(along);
+                    }
+                }
+            }
+
+            if (!candidates.length) return base;
+
+            if (atStart) {
+                // Außen liegt vor dem Start, innen dahinter.
+                return mode === 'outside'
+                    ? Math.min(...candidates)
+                    : Math.max(...candidates.filter(v => v <= thickness * 2.5));
+            }
+
+            // Außen liegt hinter dem Ende, innen davor.
+            return mode === 'outside'
+                ? Math.max(...candidates)
+                : Math.min(...candidates.filter(v => v >= length - thickness * 2.5));
+        };
+
+        const points = [endpointEdge(true), endpointEdge(false)];
+
+        // Quer-/Zwischenwände als Maßkettenpunkte.
         for (const other of floor.walls || []) {
             if (other.id === w.id) continue;
             const hit = wallIntersectionData(w, other);
             if (!hit) continue;
 
-            // Auch T-Anschlüsse erfassen: Endpunkt der Querwand darf exakt auf
-            // der Hauptwand liegen. Kleine Toleranz für Raster/Rundung.
             const tol = 0.015;
-            if (hit.t < -tol || hit.t > 1 + tol || hit.u < -tol || hit.u > 1 + tol) continue;
+            if (hit.t <= tol || hit.t >= 1 - tol || hit.u < -tol || hit.u > 1 + tol) continue;
 
             const odx = (Number(other.x2) || 0) - (Number(other.x1) || 0);
             const ody = (Number(other.y2) || 0) - (Number(other.y1) || 0);
-            const otherLength = Math.hypot(odx, ody);
-            if (otherLength < 1) continue;
+            const olen = Math.hypot(odx, ody);
+            if (olen < 1) continue;
 
-            const sinAngle = Math.abs((dx * ody - dy * odx) / (length * otherLength));
+            const sinAngle = Math.abs((dx * ody - dy * odx) / (length * olen));
             if (sinAngle < 0.05) continue;
 
-            const otherThickness = Number(floor.wallThickness) || 12;
-            const projectedHalfWidth = (otherThickness / 2) / sinAngle;
+            const projectedHalf = half / sinAngle;
             const center = hit.t * length;
-
-            // Nur echte innere Schnittpunkte als Unterteilung. Endanschlüsse
-            // werden bereits oben als Innen-/Außenkante behandelt.
-            if (center > 0.5 && center < length - 0.5) {
-                points.push(center - projectedHalfWidth);
-                points.push(center + projectedHalfWidth);
-            }
+            points.push(center - projectedHalf, center + projectedHalf);
         }
 
         return points
