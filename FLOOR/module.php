@@ -4334,8 +4334,16 @@ HTML;
 
         for (const d of breaks) {
             const p = pointAt(d);
+
+            // Die Hilfslinie muss an der tatsächlich vermassten Kante beginnen:
+            // innen an der Innenkante, außen an der Außenkante – niemals an der
+            // gespeicherten Wand-Mittellinie.
+            const measuredEdgeOffset = mode === 'inside' ? thickness / 2 : thickness / 2;
+            const edgeX = p.x + nx * measuredEdgeOffset;
+            const edgeY = p.y + ny * measuredEdgeOffset;
+
             const mx = p.x + nx * offset, my = p.y + ny * offset;
-            pieces.push(`<line x1="${p.x}" y1="${p.y}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
+            pieces.push(`<line x1="${edgeX}" y1="${edgeY}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
             pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
         }
 
