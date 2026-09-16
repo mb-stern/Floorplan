@@ -1037,10 +1037,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
-               dürfen durch den Variablenwert nicht hindurchscheinen. */
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            /* Test: Hintergrund der Kachel direkt durchscheinen lassen. */
+            fill: transparent;
+            fill-opacity: 0;
             stroke: currentColor;
             stroke-width: 1.2;
             vector-effect: non-scaling-stroke;
@@ -1048,8 +1047,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            fill: transparent;
+            fill-opacity: 0;
             stroke: #5f5f5f;
         }
 
