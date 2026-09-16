@@ -253,10 +253,10 @@ class Floorplan extends IPSModuleStrict
     <style>
         :root {
             --fp-bg: transparent;
-            --fp-panel: var(--card-color, rgba(38,38,38,.96));
-            --fp-panel-2: var(--card-color, rgba(54,54,54,.96));
-            --fp-border: color-mix(in srgb, var(--content-color, #f2f2f2) 16%, transparent);
-            --fp-text: var(--content-color, #f2f2f2);
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
+            --fp-border: rgba(255,255,255,.16);
+            --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
             --fp-grid: rgba(255,255,255,.14);
             --fp-accent: #4da3ff;
@@ -265,10 +265,10 @@ class Floorplan extends IPSModuleStrict
 
         html[data-theme="light"] {
             --fp-bg: transparent;
-            --fp-panel: var(--card-color, rgba(232,232,232,.98));
-            --fp-panel-2: var(--card-color, rgba(218,218,218,.98));
-            --fp-border: color-mix(in srgb, var(--content-color, #111111) 34%, transparent);
-            --fp-text: var(--content-color, #111111);
+            --fp-panel: rgba(232,232,232,.98);
+            --fp-panel-2: rgba(218,218,218,.98);
+            --fp-border: rgba(0,0,0,.34);
+            --fp-text: #111111;
             --fp-muted: #444444;
             --fp-grid: rgba(0,0,0,.24);
             --fp-accent: #1769aa;
@@ -1032,10 +1032,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* IPSView stellt --card-color nicht zuverlässig wie die native
-               Symcon-Visualisierung bereit. Die Floorplan-Themefarbe ist bereits
-               für Dark/Light definiert und funktioniert in beiden Umgebungen. */
-            fill: var(--fp-panel);
+            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
+               dürfen durch den Variablenwert nicht hindurchscheinen. */
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
@@ -1044,7 +1043,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--fp-panel);
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: #5f5f5f;
         }
@@ -3133,38 +3132,28 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        // HTML-SDK ist die einzige Theme-Quelle. Keine separate IPSView-Logik:
-        // Wir lassen den Browser --content-color an einem echten Element auflösen.
-        // Damit funktioniert es auch, wenn der Host die Variable nicht direkt auf
-        // documentElement, sondern auf body/einem umgebenden SDK-Container setzt.
-        const probe = document.createElement('span');
-        probe.style.cssText =
-            'position:absolute;left:-10000px;top:-10000px;' +
-            'visibility:hidden;pointer-events:none;color:var(--content-color);';
-        document.body.appendChild(probe);
-
-        const resolved = getComputedStyle(probe).color;
-        probe.remove();
+        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
+        if (!probe) probe = getComputedStyle(document.body).color;
 
         let dark = null;
-        const m = String(resolved || '').match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
         if (m) {
-            const lum =
-                (0.299 * Number(m[1]) +
-                 0.587 * Number(m[2]) +
-                 0.114 * Number(m[3])) / 255;
-            // --content-color ist die SDK-Textfarbe:
-            // helle Schrift => dunkles Theme.
+            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
             dark = lum > 0.5;
+        } else if (probe && probe[0] === '#' && probe.length >= 7) {
+            const r = parseInt(probe.substr(1, 2), 16);
+            const g = parseInt(probe.substr(3, 2), 16);
+            const b = parseInt(probe.substr(5, 2), 16);
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
         }
 
-        // Nur falls der Host die HTML-SDK-Variable wirklich nicht bereitstellt.
         if (dark === null) {
-            dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
         }
 
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     }
+
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
