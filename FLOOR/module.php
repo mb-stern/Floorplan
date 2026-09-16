@@ -3132,47 +3132,25 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        const rootStyle = getComputedStyle(document.documentElement);
-        const contentColor = rootStyle.getPropertyValue('--content-color').trim();
-        const cardColor = rootStyle.getPropertyValue('--card-color').trim();
-        const accentColor = rootStyle.getPropertyValue('--accent-color').trim();
+        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
+        if (!probe) probe = getComputedStyle(document.body).color;
 
-        // Vollständiges HTML-SDK: Theme wie bisher aus der vom Host gelieferten
-        // Textfarbe bestimmen. Helle Textfarbe = dunkles Theme.
-        if (cardColor || accentColor) {
-            let dark = null;
-            const m = contentColor.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-            if (m) {
-                const lum = (0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])) / 255;
-                dark = lum > 0.5;
-            } else if (contentColor[0] === '#' && contentColor.length >= 7) {
-                const r = parseInt(contentColor.substr(1, 2), 16);
-                const g = parseInt(contentColor.substr(3, 2), 16);
-                const b = parseInt(contentColor.substr(5, 2), 16);
-                dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
-            }
-            if (dark === null) {
-                dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-            }
-            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            return;
+        let dark = null;
+        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        if (m) {
+            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
+            dark = lum > 0.5;
+        } else if (probe && probe[0] === '#' && probe.length >= 7) {
+            const r = parseInt(probe.substr(1, 2), 16);
+            const g = parseInt(probe.substr(3, 2), 16);
+            const b = parseInt(probe.substr(5, 2), 16);
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
         }
 
-        // IPSView TileHTML:
-        // Die Diagnose hat gezeigt, dass IPSView --content-color liefert,
-        // --card-color und --accent-color jedoch nicht. Außerdem meldet der
-        // eingebettete Browser unabhängig von der View prefers-color-scheme: dark.
-        //
-        // In genau diesem unvollständigen SDK-Fall verwenden wir deshalb die
-        // helle Floorplan-Darstellung als Fallback. Das normale Symcon HTML-SDK
-        // bleibt davon vollständig unberührt.
-        if (contentColor) {
-            document.documentElement.setAttribute('data-theme', 'light');
-            return;
+        if (dark === null) {
+            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
         }
 
-        // Letzter Fallback, falls überhaupt keine SDK-Farbe vorhanden ist.
-        const dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     }
 
