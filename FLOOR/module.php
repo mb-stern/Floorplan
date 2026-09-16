@@ -1032,9 +1032,10 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
-               dürfen durch den Variablenwert nicht hindurchscheinen. */
-            fill: var(--card-color, var(--fp-panel));
+            /* IPSView stellt --card-color nicht zuverlässig wie die native
+               Symcon-Visualisierung bereit. Die Floorplan-Themefarbe ist bereits
+               für Dark/Light definiert und funktioniert in beiden Umgebungen. */
+            fill: var(--fp-panel);
             fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
@@ -1043,7 +1044,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--card-color, var(--fp-panel));
+            fill: var(--fp-panel);
             fill-opacity: 1;
             stroke: #5f5f5f;
         }
@@ -3132,23 +3133,57 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
-        if (!probe) probe = getComputedStyle(document.body).color;
+        const rootStyle = getComputedStyle(document.documentElement);
+
+        const luminance = value => {
+            const probe = String(value || '').trim();
+            let m = probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+            if (m) {
+                return (0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])) / 255;
+            }
+            if (probe[0] === '#' && probe.length >= 7) {
+                const r = parseInt(probe.substr(1, 2), 16);
+                const g = parseInt(probe.substr(3, 2), 16);
+                const b = parseInt(probe.substr(5, 2), 16);
+                if ([r, g, b].every(Number.isFinite)) {
+                    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                }
+            }
+            return null;
+        };
 
         let dark = null;
-        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-        if (m) {
-            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
-            dark = lum > 0.5;
-        } else if (probe && probe[0] === '#' && probe.length >= 7) {
-            const r = parseInt(probe.substr(1, 2), 16);
-            const g = parseInt(probe.substr(3, 2), 16);
-            const b = parseInt(probe.substr(5, 2), 16);
-            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+
+        // Native Symcon-Visualisierung: --content-color ist die Textfarbe.
+        // Helle Textfarbe bedeutet dunkles Theme.
+        const contentLum = luminance(rootStyle.getPropertyValue('--content-color'));
+        if (contentLum !== null) {
+            dark = contentLum > 0.5;
         }
 
+        // IPSView stellt --content-color nicht immer bereit. Falls vorhanden,
+        // deshalb die Karten-/Hintergrundfarbe auswerten:
+        // dunkler Hintergrund bedeutet dunkles Theme.
         if (dark === null) {
-            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+            const cardCandidates = [
+                '--card-color',
+                '--card-background-color',
+                '--background-color'
+            ];
+            for (const name of cardCandidates) {
+                const cardLum = luminance(rootStyle.getPropertyValue(name));
+                if (cardLum !== null) {
+                    dark = cardLum < 0.5;
+                    break;
+                }
+            }
+        }
+
+        // Wichtig: NICHT getComputedStyle(body).color verwenden.
+        // Diese Farbe kommt bereits aus --fp-text und erzeugte in IPSView
+        // einen Zirkelschluss, durch den die Ansicht immer als dunkel erkannt wurde.
+        if (dark === null) {
+            dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
         }
 
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
