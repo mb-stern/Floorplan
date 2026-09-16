@@ -4392,7 +4392,6 @@ HTML;
 
         const pointAt = d => ({x: x1 + ux * d, y: y1 + uy * d});
         const f = pointAt(first), l = pointAt(last);
-        pieces.push(`<line x1="${f.x + nx * offset}" y1="${f.y + ny * offset}" x2="${l.x + nx * offset}" y2="${l.y + ny * offset}"/>`);
 
         for (const d of breaks) {
             const p = pointAt(d);
@@ -4418,13 +4417,42 @@ HTML;
         for (const [a, b] of segments) {
             const value = b - a;
             if (value < 0.5) continue;
+
             const mid = (a + b) / 2;
-            const tx = x1 + ux * mid + nx * (offset + 5);
-            const ty = y1 + uy * mid + ny * (offset + 5);
+            const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
+            const label = String(Math.round(value * 10) / 10);
+
+            // Professionelle Vermassung: Die Zahl sitzt mittig in einer echten
+            // Unterbrechung der Maßlinie. Die Lücke passt sich Schriftgröße und
+            // Anzahl der Ziffern an.
+            const estimatedTextWidth = Math.max(
+                dimensionFontSize * 1.2,
+                label.length * dimensionFontSize * 0.62
+            );
+            const halfGap = Math.min(
+                (b - a) * 0.38,
+                (estimatedTextWidth + Math.max(8, dimensionFontSize * 0.55)) / 2
+            );
+            const leftEnd = mid - halfGap;
+            const rightStart = mid + halfGap;
+
+            const pa = pointAt(a);
+            const pb = pointAt(b);
+            const pl = pointAt(leftEnd);
+            const pr = pointAt(rightStart);
+
+            if (leftEnd > a + 0.5) {
+                pieces.push(`<line x1="${pa.x + nx * offset}" y1="${pa.y + ny * offset}" x2="${pl.x + nx * offset}" y2="${pl.y + ny * offset}"/>`);
+            }
+            if (rightStart < b - 0.5) {
+                pieces.push(`<line x1="${pr.x + nx * offset}" y1="${pr.y + ny * offset}" x2="${pb.x + nx * offset}" y2="${pb.y + ny * offset}"/>`);
+            }
+
+            const tx = x1 + ux * mid + nx * offset;
+            const ty = y1 + uy * mid + ny * offset;
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             if (angle > 90 || angle < -90) angle += 180;
-            const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
-            pieces.push(`<text x="${tx}" y="${ty}" font-size="${dimensionFontSize}" transform="rotate(${angle} ${tx} ${ty})">${Math.round(value * 10) / 10}</text>`);
+            pieces.push(`<text x="${tx}" y="${ty}" font-size="${dimensionFontSize}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>`);
         }
 
         return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
