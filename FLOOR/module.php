@@ -1032,10 +1032,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* IPSView stellt --card-color nicht zuverlässig wie die native
-               Symcon-Visualisierung bereit. Die Floorplan-Themefarbe ist bereits
-               für Dark/Light definiert und funktioniert in beiden Umgebungen. */
-            fill: var(--fp-panel);
+            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
+               dürfen durch den Variablenwert nicht hindurchscheinen. */
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
@@ -1044,7 +1043,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--fp-panel);
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: #5f5f5f;
         }
