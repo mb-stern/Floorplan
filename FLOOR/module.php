@@ -9218,18 +9218,12 @@ JAVASCRIPT;
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
-        // Nicht jede Variable mit Action-ID ist in der aktuellen Darstellung
-        // tatsächlich bedienbar. Bei neuen Darstellungen gilt deshalb nur
-        // requestAction=true als echte Bedienfreigabe.
-        if ($hasLegacyProfile) {
-            $canAction = $actionID > 0;
-        } elseif ($hasNewPresentation) {
-            $canAction =
-                $actionID > 0 &&
-                $this->PresentationAllowsRequestAction($activePresentationID);
-        } else {
-            $canAction = false;
-        }
+        // Für die Bedienbarkeit ist die an der Variable hinterlegte Aktion
+        // maßgeblich. Die Präsentation bestimmt Darstellung/Formatierung, darf
+        // die Bedienung in IPSView aber nicht zusätzlich sperren. Andernfalls
+        // wird das Gerät im Live-Modus als "status-only" markiert und durch
+        // pointer-events:none vollständig unklickbar.
+        $canAction = $actionID > 0;
 
         $objectInfo = IPS_GetObject($VariableID);
 
