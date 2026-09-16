@@ -253,10 +253,10 @@ class Floorplan extends IPSModuleStrict
     <style>
         :root {
             --fp-bg: transparent;
-            --fp-panel: rgba(38,38,38,.96);
-            --fp-panel-2: rgba(54,54,54,.96);
-            --fp-border: rgba(255,255,255,.16);
-            --fp-text: #f2f2f2;
+            --fp-panel: var(--card-color, rgba(38,38,38,.96));
+            --fp-panel-2: var(--card-color, rgba(54,54,54,.96));
+            --fp-border: color-mix(in srgb, var(--content-color, #f2f2f2) 16%, transparent);
+            --fp-text: var(--content-color, #f2f2f2);
             --fp-muted: #b8b8b8;
             --fp-grid: rgba(255,255,255,.14);
             --fp-accent: #4da3ff;
@@ -265,10 +265,10 @@ class Floorplan extends IPSModuleStrict
 
         html[data-theme="light"] {
             --fp-bg: transparent;
-            --fp-panel: rgba(232,232,232,.98);
-            --fp-panel-2: rgba(218,218,218,.98);
-            --fp-border: rgba(0,0,0,.34);
-            --fp-text: #111111;
+            --fp-panel: var(--card-color, rgba(232,232,232,.98));
+            --fp-panel-2: var(--card-color, rgba(218,218,218,.98));
+            --fp-border: color-mix(in srgb, var(--content-color, #111111) 34%, transparent);
+            --fp-text: var(--content-color, #111111);
             --fp-muted: #444444;
             --fp-grid: rgba(0,0,0,.24);
             --fp-accent: #1769aa;
@@ -3133,62 +3133,38 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        const rootStyle = getComputedStyle(document.documentElement);
+        // HTML-SDK ist die einzige Theme-Quelle. Keine separate IPSView-Logik:
+        // Wir lassen den Browser --content-color an einem echten Element auflösen.
+        // Damit funktioniert es auch, wenn der Host die Variable nicht direkt auf
+        // documentElement, sondern auf body/einem umgebenden SDK-Container setzt.
+        const probe = document.createElement('span');
+        probe.style.cssText =
+            'position:absolute;left:-10000px;top:-10000px;' +
+            'visibility:hidden;pointer-events:none;color:var(--content-color);';
+        document.body.appendChild(probe);
 
-        const luminance = value => {
-            const probe = String(value || '').trim();
-            let m = probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-            if (m) {
-                return (0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])) / 255;
-            }
-            if (probe[0] === '#' && probe.length >= 7) {
-                const r = parseInt(probe.substr(1, 2), 16);
-                const g = parseInt(probe.substr(3, 2), 16);
-                const b = parseInt(probe.substr(5, 2), 16);
-                if ([r, g, b].every(Number.isFinite)) {
-                    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                }
-            }
-            return null;
-        };
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
 
         let dark = null;
-
-        // Native Symcon-Visualisierung: --content-color ist die Textfarbe.
-        // Helle Textfarbe bedeutet dunkles Theme.
-        const contentLum = luminance(rootStyle.getPropertyValue('--content-color'));
-        if (contentLum !== null) {
-            dark = contentLum > 0.5;
+        const m = String(resolved || '').match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        if (m) {
+            const lum =
+                (0.299 * Number(m[1]) +
+                 0.587 * Number(m[2]) +
+                 0.114 * Number(m[3])) / 255;
+            // --content-color ist die SDK-Textfarbe:
+            // helle Schrift => dunkles Theme.
+            dark = lum > 0.5;
         }
 
-        // IPSView stellt --content-color nicht immer bereit. Falls vorhanden,
-        // deshalb die Karten-/Hintergrundfarbe auswerten:
-        // dunkler Hintergrund bedeutet dunkles Theme.
-        if (dark === null) {
-            const cardCandidates = [
-                '--card-color',
-                '--card-background-color',
-                '--background-color'
-            ];
-            for (const name of cardCandidates) {
-                const cardLum = luminance(rootStyle.getPropertyValue(name));
-                if (cardLum !== null) {
-                    dark = cardLum < 0.5;
-                    break;
-                }
-            }
-        }
-
-        // Wichtig: NICHT getComputedStyle(body).color verwenden.
-        // Diese Farbe kommt bereits aus --fp-text und erzeugte in IPSView
-        // einen Zirkelschluss, durch den die Ansicht immer als dunkel erkannt wurde.
+        // Nur falls der Host die HTML-SDK-Variable wirklich nicht bereitstellt.
         if (dark === null) {
             dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
         }
 
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     }
-
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
