@@ -1037,10 +1037,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
-               dürfen durch den Variablenwert nicht hindurchscheinen. */
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            /* Hintergrund kommt durch die echte SVG-Aussparung darunter. */
+            fill: transparent;
+            fill-opacity: 0;
             stroke: currentColor;
             stroke-width: 1.2;
             vector-effect: non-scaling-stroke;
@@ -1048,8 +1047,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            fill: transparent;
+            fill-opacity: 0;
             stroke: #5f5f5f;
         }
 
@@ -3236,6 +3235,10 @@ HTML;
         // zuverlässig anklickbar.
         const shutterControlParts = [];
         const variableTopParts = [];
+        // Transparente Variablenboxen brauchen eine echte Aussparung in den
+        // darunterliegenden Floorplan-Ebenen. So scheint der reale Tile-/IPSView-
+        // Hintergrund durch, ohne dass Wände, Möbel usw. durch die Box sichtbar sind.
+        const variableFrameCutoutParts = [];
         // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
         // gesammelt und nach den Möbeln nochmals gezeichnet.
         // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
@@ -3776,6 +3779,13 @@ HTML;
                 : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
             const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
 
+            if (showValue && item.valueFrame === true) {
+                variableFrameCutoutParts.push(
+                    `<rect x="${Number(item.x) + valueFrameX}" y="${Number(item.y) + valueFrameY}" ` +
+                    `width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4" fill="black"/>`
+                );
+            }
+
             variableTopParts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
@@ -3830,22 +3840,35 @@ HTML;
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
 
-        // Immer als letzte Ebene: Rollladen-Steuerung bleibt sichtbar und klickbar,
-        // selbst wenn an derselben Position ein Möbelstück oder Gerät liegt.
+        // Immer als letzte Ebene der Basis: Rollladen-Steuerung bleibt sichtbar und anklickbar.
         parts.push(...shutterControlParts);
 
-        // Variablen-/Geräteebene immer ganz oben rendern.
-        // Dadurch bleiben insbesondere Werte und deren Rahmen vollständig sichtbar
-        // und überdecken Möbel, Formen, Wände, Texte und sonstige Planinhalte.
-        parts.push(...variableTopParts);
-
-        // Maßlinien als letzte SVG-Ebene zeichnen. So bleiben sie unabhängig
-        // von Wänden, Objekten und Variablen sichtbar.
-        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
-            parts.push(renderGraphicWallDimensions(floor));
+        // V2 Variablenbox-Aussparung:
+        // Alle bisherigen Floorplan-Ebenen werden an den Werteboxen wirklich ausgeschnitten.
+        // Die Variablen selbst werden danach unmaskiert darübergelegt. Dadurch ist innerhalb
+        // der Box exakt derselbe reale Tile-/IPSView-Hintergrund sichtbar wie außerhalb.
+        let basePlanHtml = parts.join('');
+        if (variableFrameCutoutParts.length > 0) {
+            basePlanHtml =
+                `<defs><mask id="variableFrameBackgroundMask" maskUnits="userSpaceOnUse" ` +
+                `x="-100000" y="-100000" width="200000" height="200000">` +
+                `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+                variableFrameCutoutParts.join('') +
+                `</mask></defs>` +
+                `<g mask="url(#variableFrameBackgroundMask)">${basePlanHtml}</g>`;
         }
 
-        scene.innerHTML = parts.join('');
+        const finalParts = [basePlanHtml];
+
+        // Variablen-/Geräteebene unmaskiert ganz oben.
+        finalParts.push(...variableTopParts);
+
+        // Maßlinien bleiben wie bisher als letzte SVG-Ebene sichtbar.
+        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            finalParts.push(renderGraphicWallDimensions(floor));
+        }
+
+        scene.innerHTML = finalParts.join('');
         setTransform();
         renderProperties();
         renderFloorSelect();
