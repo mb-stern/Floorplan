@@ -252,23 +252,24 @@ class Floorplan extends IPSModuleStrict
     <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
     <style>
         :root {
+            /* Farben ausschließlich aus den vom HTML-SDK gelieferten Variablen. */
             --fp-bg: transparent;
-            --fp-panel: rgba(38,38,38,.96);
-            --fp-panel-2: rgba(54,54,54,.96);
-            --fp-border: rgba(255,255,255,.16);
-            --fp-text: #f2f2f2;
-            --fp-muted: #b8b8b8;
-            --fp-grid: rgba(255,255,255,.14);
-            --fp-accent: #4da3ff;
+            --fp-panel: var(--card-color);
+            --fp-panel-2: color-mix(in srgb, var(--card-color) 92%, var(--content-color) 8%);
+            --fp-border: color-mix(in srgb, var(--content-color) 20%, transparent);
+            --fp-text: var(--content-color);
+            --fp-muted: color-mix(in srgb, var(--content-color) 68%, transparent);
+            --fp-grid: color-mix(in srgb, var(--content-color) 14%, transparent);
+            --fp-accent: var(--accent-color);
             --fp-danger: #e35d6a;
         }
 
         html[data-theme="light"] {
             --fp-bg: transparent;
-            --fp-panel: rgba(232,232,232,.98);
-            --fp-panel-2: rgba(218,218,218,.98);
-            --fp-border: rgba(0,0,0,.34);
-            --fp-text: #111111;
+            --fp-panel: var(--card-color, rgba(232,232,232,.98));
+            --fp-panel-2: var(--card-color, rgba(218,218,218,.98));
+            --fp-border: color-mix(in srgb, var(--content-color, #111111) 34%, transparent);
+            --fp-text: var(--content-color, #111111);
             --fp-muted: #444444;
             --fp-grid: rgba(0,0,0,.24);
             --fp-accent: #1769aa;
@@ -1032,9 +1033,10 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
-               dürfen durch den Variablenwert nicht hindurchscheinen. */
-            fill: var(--card-color, var(--fp-panel));
+            /* IPSView stellt --card-color nicht zuverlässig wie die native
+               Symcon-Visualisierung bereit. Die Floorplan-Themefarbe ist bereits
+               für Dark/Light definiert und funktioniert in beiden Umgebungen. */
+            fill: var(--fp-panel);
             fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
@@ -1043,7 +1045,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--card-color, var(--fp-panel));
+            fill: var(--fp-panel);
             fill-opacity: 1;
             stroke: #5f5f5f;
         }
@@ -1691,6 +1693,131 @@ class Floorplan extends IPSModuleStrict
             padding: 6px 14px 0;
             color: var(--fp-muted);
             font-size: 11px;
+        }
+
+
+        /* ================================================================
+           SDK-FARBSCHEMA
+           Keine eigene Light/Dark-Erkennung und keine IPSView-Sonderfarben.
+           Der Host liefert --content-color, --card-color und --accent-color.
+           ================================================================ */
+        html, body { color: var(--content-color); }
+
+        .wall {
+            stroke: color-mix(in srgb, var(--content-color) 78%, var(--card-color) 22%);
+        }
+        .wall.selected,
+        .opening.selected .opening-line,
+        .drawing-shape.selection-shape { stroke: var(--accent-color); }
+
+        .drawing-shape {
+            stroke: color-mix(in srgb, var(--content-color) 72%, var(--card-color) 28%);
+        }
+
+        .opening-gap { stroke: var(--card-color); }
+        .opening-line {
+            stroke: color-mix(in srgb, var(--content-color) 68%, var(--card-color) 32%);
+        }
+        .opening-state-open,
+        .opening-line.opening-state-open { stroke: var(--accent-color); }
+        .opening-shutter {
+            stroke: color-mix(in srgb, var(--content-color) 58%, var(--card-color) 42%);
+        }
+        .opening-shutter-slat {
+            stroke: color-mix(in srgb, var(--content-color) 45%, var(--card-color) 55%);
+        }
+
+        .furniture {
+            color: color-mix(in srgb, var(--content-color) 72%, var(--card-color) 28%);
+        }
+        .furniture [fill="currentColor"] {
+            fill: color-mix(in srgb, var(--content-color) 8%, var(--card-color) 92%) !important;
+            stroke: currentColor !important;
+        }
+        .furniture [fill="none"] { stroke: currentColor !important; }
+        .furniture.selected [fill="currentColor"],
+        .furniture.selected [fill="none"] { stroke: var(--accent-color) !important; }
+
+        .device circle,
+        .device .climate-panel {
+            fill: color-mix(in srgb, var(--card-color) 94%, var(--content-color) 6%);
+            stroke: color-mix(in srgb, var(--content-color) 48%, var(--card-color) 52%);
+        }
+        .device .climate-panel-display {
+            fill: color-mix(in srgb, var(--content-color) 7%, var(--card-color) 93%);
+            stroke: color-mix(in srgb, var(--content-color) 42%, var(--card-color) 58%);
+        }
+        .device .climate-panel-dot {
+            fill: color-mix(in srgb, var(--content-color) 65%, var(--card-color) 35%);
+        }
+        .device-glyph,
+        .device-icon-html {
+            color: color-mix(in srgb, var(--content-color) 78%, var(--card-color) 22%);
+        }
+
+        .runtime-value {
+            fill: var(--content-color) !important;
+            stroke: color-mix(in srgb, var(--card-color) 65%, transparent);
+        }
+        .runtime-value-frame {
+            fill: var(--card-color);
+            fill-opacity: 1;
+            stroke: color-mix(in srgb, var(--content-color) 38%, var(--card-color) 62%);
+        }
+
+        .device-label,
+        .plan-text,
+        .furniture-label {
+            fill: var(--content-color);
+            color: var(--content-color);
+        }
+
+        .grid-line { stroke: var(--fp-grid); }
+
+        .resize-handle,
+        .rotate-handle {
+            fill: var(--content-color);
+            stroke: var(--accent-color);
+        }
+        .rotate-handle-line { stroke: var(--accent-color); }
+
+        .shutter-control circle:not(.shutter-hit) {
+            fill: var(--card-color);
+            stroke: var(--content-color);
+        }
+        .shutter-control text { fill: var(--content-color); }
+
+        .dimension-line { stroke: var(--content-color); }
+        .dimension-line text {
+            fill: var(--content-color);
+            stroke: var(--card-color);
+        }
+
+        button,
+        input,
+        select,
+        .toolbar button,
+        .toolbar select,
+        .field input,
+        .field select,
+        #viewbar select,
+        #viewbar button,
+        .modal-actions button,
+        .control-associations button,
+        .control-actions button,
+        #controlRangeApply,
+        .stream-popup-actions button {
+            color: var(--content-color);
+            background: var(--fp-panel-2);
+            border-color: var(--fp-border);
+        }
+
+        .toolbar,
+        .sidebar,
+        .modal,
+        .control-modal {
+            background: var(--card-color);
+            color: var(--content-color);
         }
 
 </style>
@@ -3132,28 +3259,9 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
-        if (!probe) probe = getComputedStyle(document.body).color;
-
-        let dark = null;
-        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-        if (m) {
-            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
-            dark = lum > 0.5;
-        } else if (probe && probe[0] === '#' && probe.length >= 7) {
-            const r = parseInt(probe.substr(1, 2), 16);
-            const g = parseInt(probe.substr(3, 2), 16);
-            const b = parseInt(probe.substr(5, 2), 16);
-            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
-        }
-
-        if (dark === null) {
-            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
-        }
-
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        // Keine eigene Theme-Erkennung: Farben kommen direkt aus dem HTML-SDK.
+        document.documentElement.removeAttribute('data-theme');
     }
-
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
