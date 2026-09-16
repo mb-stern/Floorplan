@@ -253,10 +253,10 @@ class Floorplan extends IPSModuleStrict
     <style>
         :root {
             --fp-bg: transparent;
-            --fp-panel: var(--card-color, rgba(38,38,38,.96));
-            --fp-panel-2: var(--card-color, rgba(54,54,54,.96));
-            --fp-border: color-mix(in srgb, var(--content-color, #f2f2f2) 16%, transparent);
-            --fp-text: var(--content-color, #f2f2f2);
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
+            --fp-border: rgba(255,255,255,.16);
+            --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
             --fp-grid: rgba(255,255,255,.14);
             --fp-accent: #4da3ff;
@@ -265,10 +265,10 @@ class Floorplan extends IPSModuleStrict
 
         html[data-theme="light"] {
             --fp-bg: transparent;
-            --fp-panel: var(--card-color, rgba(232,232,232,.98));
-            --fp-panel-2: var(--card-color, rgba(218,218,218,.98));
-            --fp-border: color-mix(in srgb, var(--content-color, #111111) 34%, transparent);
-            --fp-text: var(--content-color, #111111);
+            --fp-panel: rgba(232,232,232,.98);
+            --fp-panel-2: rgba(218,218,218,.98);
+            --fp-border: rgba(0,0,0,.34);
+            --fp-text: #111111;
             --fp-muted: #444444;
             --fp-grid: rgba(0,0,0,.24);
             --fp-accent: #1769aa;
@@ -1032,10 +1032,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* IPSView stellt --card-color nicht zuverlässig wie die native
-               Symcon-Visualisierung bereit. Die Floorplan-Themefarbe ist bereits
-               für Dark/Light definiert und funktioniert in beiden Umgebungen. */
-            fill: var(--fp-panel);
+            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
+               dürfen durch den Variablenwert nicht hindurchscheinen. */
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: currentColor;
             stroke-width: 1.2;
@@ -1044,7 +1043,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--fp-panel);
+            fill: var(--card-color, var(--fp-panel));
             fill-opacity: 1;
             stroke: #5f5f5f;
         }
@@ -1810,10 +1809,6 @@ class Floorplan extends IPSModuleStrict
 __FLOORPLAN_EDITOR_JAVASCRIPT__
 </script>
 
-
-
-    <!-- Temporäre Diagnose; verändert die Floorplan-Farbgebung nicht. -->
-    <div id="htmlSdkThemeDiag" style="position:fixed;left:8px;top:8px;z-index:2147483647;max-width:calc(100vw - 16px);padding:8px 10px;background:rgba(0,0,0,.88);color:#fff;border:1px solid #fff;border-radius:6px;font:12px/1.35 monospace;white-space:pre-wrap;pointer-events:none;">Theme-Diagnose wird geladen …</div>
 
 </body>
 </html>
@@ -3137,38 +3132,50 @@ HTML;
     // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
     // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
     function detectTheme() {
-        // HTML-SDK ist die einzige Theme-Quelle. Keine separate IPSView-Logik:
-        // Wir lassen den Browser --content-color an einem echten Element auflösen.
-        // Damit funktioniert es auch, wenn der Host die Variable nicht direkt auf
-        // documentElement, sondern auf body/einem umgebenden SDK-Container setzt.
-        const probe = document.createElement('span');
-        probe.style.cssText =
-            'position:absolute;left:-10000px;top:-10000px;' +
-            'visibility:hidden;pointer-events:none;color:var(--content-color);';
-        document.body.appendChild(probe);
+        const rootStyle = getComputedStyle(document.documentElement);
+        const contentColor = rootStyle.getPropertyValue('--content-color').trim();
+        const cardColor = rootStyle.getPropertyValue('--card-color').trim();
+        const accentColor = rootStyle.getPropertyValue('--accent-color').trim();
 
-        const resolved = getComputedStyle(probe).color;
-        probe.remove();
-
-        let dark = null;
-        const m = String(resolved || '').match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
-        if (m) {
-            const lum =
-                (0.299 * Number(m[1]) +
-                 0.587 * Number(m[2]) +
-                 0.114 * Number(m[3])) / 255;
-            // --content-color ist die SDK-Textfarbe:
-            // helle Schrift => dunkles Theme.
-            dark = lum > 0.5;
+        // Vollständiges HTML-SDK: Theme wie bisher aus der vom Host gelieferten
+        // Textfarbe bestimmen. Helle Textfarbe = dunkles Theme.
+        if (cardColor || accentColor) {
+            let dark = null;
+            const m = contentColor.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+            if (m) {
+                const lum = (0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])) / 255;
+                dark = lum > 0.5;
+            } else if (contentColor[0] === '#' && contentColor.length >= 7) {
+                const r = parseInt(contentColor.substr(1, 2), 16);
+                const g = parseInt(contentColor.substr(3, 2), 16);
+                const b = parseInt(contentColor.substr(5, 2), 16);
+                dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+            }
+            if (dark === null) {
+                dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+            }
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            return;
         }
 
-        // Nur falls der Host die HTML-SDK-Variable wirklich nicht bereitstellt.
-        if (dark === null) {
-            dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        // IPSView TileHTML:
+        // Die Diagnose hat gezeigt, dass IPSView --content-color liefert,
+        // --card-color und --accent-color jedoch nicht. Außerdem meldet der
+        // eingebettete Browser unabhängig von der View prefers-color-scheme: dark.
+        //
+        // In genau diesem unvollständigen SDK-Fall verwenden wir deshalb die
+        // helle Floorplan-Darstellung als Fallback. Das normale Symcon HTML-SDK
+        // bleibt davon vollständig unberührt.
+        if (contentColor) {
+            document.documentElement.setAttribute('data-theme', 'light');
+            return;
         }
 
+        // Letzter Fallback, falls überhaupt keine SDK-Farbe vorhanden ist.
+        const dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     }
+
 
     function renderEditorGrid(parts) {
         if (state.mode !== 'edit' || !editorShowGrid) return;
@@ -7824,62 +7831,6 @@ HTML;
             render();
         }
     }, 1000);
-
-
-    function updateHtmlSdkThemeDiagnostic() {
-        const box = document.getElementById('htmlSdkThemeDiag');
-        if (!box) return;
-        const root = document.documentElement;
-        const body = document.body;
-        const app = document.getElementById('app');
-        const rs = getComputedStyle(root);
-        const bs = getComputedStyle(body);
-        const as = app ? getComputedStyle(app) : null;
-
-        const cssVar = name => [
-            ['html', rs.getPropertyValue(name)],
-            ['body', bs.getPropertyValue(name)],
-            ['app', as ? as.getPropertyValue(name) : '']
-        ].map(([where, value]) =>
-            `${where}=${String(value || '').trim() || '<leer>'}`
-        ).join(' | ');
-
-        let parentInfo = '<kein Zugriff>';
-        try {
-            if (window.parent && window.parent !== window) {
-                const pd = window.parent.document;
-                parentInfo =
-                    `html.bg=${getComputedStyle(pd.documentElement).backgroundColor}; ` +
-                    `body.bg=${pd.body ? getComputedStyle(pd.body).backgroundColor : '<kein body>'}`;
-            } else {
-                parentInfo = '<kein iframe/parent>';
-            }
-        } catch (e) {
-            parentInfo = `<cross-origin: ${e && e.name ? e.name : 'Fehler'}>`;
-        }
-
-        const dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-        const light = !!(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
-
-        box.textContent =
-            'HTML-SDK / IPSView Theme-Diagnose\n' +
-            `data-theme: ${root.getAttribute('data-theme') || '<nicht gesetzt>'}\n` +
-            `--content-color: ${cssVar('--content-color')}\n` +
-            `--card-color: ${cssVar('--card-color')}\n` +
-            `--accent-color: ${cssVar('--accent-color')}\n` +
-            `--card-background-color: ${cssVar('--card-background-color')}\n` +
-            `html color/bg: ${rs.color} / ${rs.backgroundColor}\n` +
-            `body color/bg: ${bs.color} / ${bs.backgroundColor}\n` +
-            `app color/bg: ${as ? as.color : '<kein app>'} / ${as ? as.backgroundColor : '<kein app>'}\n` +
-            `prefers dark/light: ${dark} / ${light}\n` +
-            `parent: ${parentInfo}\n` +
-            `UA: ${navigator.userAgent}`;
-    }
-
-    updateHtmlSdkThemeDiagnostic();
-    window.addEventListener('load', updateHtmlSdkThemeDiagnostic);
-    setTimeout(updateHtmlSdkThemeDiagnostic, 250);
-    setTimeout(updateHtmlSdkThemeDiagnostic, 1000);
 
 })().catch(error => {
     console.error('Floorplan konnte nicht initialisiert werden:', error);
