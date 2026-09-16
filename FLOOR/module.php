@@ -5555,6 +5555,16 @@ HTML;
                     return;
                 }
 
+                if (input.dataset.project === 'dimensionFontSize') {
+                    const floor = currentFloor();
+                    floor.dimensionFontSize = Math.max(8, Math.min(48, Number(input.value) || 18));
+                    input.value = String(floor.dimensionFontSize);
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
                 if (input.dataset.project === 'floorOrder') {
                     const floor = currentFloor();
                     const oldIndex = state.floors.findIndex(f => f.id === floor.id);
