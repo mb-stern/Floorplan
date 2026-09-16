@@ -177,6 +177,11 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.15
+
+- Ein Fehler in in der Bedienung im IPS-View im Live Modus wurde behoben.
+- In den Stockwerk- Eigenschaften lassen sich nun Tooltips und Vermassung der Mauern einblenden, für alle die es genauer haben möchten.
+
 ### 1.14
 
 - Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nach einem Klick darauf nicht mehr unterhalb einer anderen Wand.
