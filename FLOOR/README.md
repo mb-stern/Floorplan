@@ -177,6 +177,11 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.16
+
+- Unscharfe Schrift der neuen Vermassung unter IPS-View behoben.
+- Die Schrift der Vermassung lässt sich nun in der Grösse konfigurieren.
+
 ### 1.15
 
 - Ein Fehler in in der Bedienung im IPS-View im Live Modus wurde behoben.
