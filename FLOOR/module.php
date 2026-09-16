@@ -471,8 +471,9 @@ class Floorplan extends IPSModuleStrict
             stroke: var(--card-color, var(--fp-panel));
             stroke-width: 3px;
             fill: currentColor;
-            font-size: 18px;
-            font-weight: 600;
+            font-size: var(--dimension-font-size, 18px);
+            font-family: var(--dimension-font-family, Arial, Helvetica, sans-serif);
+            font-weight: var(--dimension-font-weight, 600);
             text-anchor: middle;
             dominant-baseline: central;
             paint-order: stroke fill;
@@ -4421,7 +4422,12 @@ HTML;
             pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${Math.round(value * 10) / 10}</text>`);
         }
 
-        return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
+        const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
+        const dimensionFontFamily = String(floor.dimensionFontFamily || 'Arial').replace(/[<>"']/g, '');
+        const dimensionFontWeight = ['400', '500', '600', '700'].includes(String(floor.dimensionFontWeight))
+            ? String(floor.dimensionFontWeight)
+            : '600';
+        return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none" style="--dimension-font-size:${dimensionFontSize}px;--dimension-font-family:${dimensionFontFamily};--dimension-font-weight:${dimensionFontWeight}">${pieces.join('')}</g>`;
     }
 
     function wallOutsideSide(w, floor) {
@@ -4745,6 +4751,32 @@ HTML;
                         Außenmaße anzeigen
                     </label>
                     <small>Maße in cm.</small>
+                </div>
+                <div class="field">
+                    <label>Schrift Vermassung</label>
+                    <div class="row2">
+                        <div>
+                            <label>Größe (px)</label>
+                            <input type="number" min="8" max="48" step="1" data-project="dimensionFontSize" value="${Number(floor.dimensionFontSize) || 18}">
+                        </div>
+                        <div>
+                            <label>Stärke</label>
+                            <select data-project="dimensionFontWeight">
+                                <option value="400" ${String(floor.dimensionFontWeight || '600') === '400' ? 'selected' : ''}>Normal</option>
+                                <option value="500" ${String(floor.dimensionFontWeight || '600') === '500' ? 'selected' : ''}>Mittel</option>
+                                <option value="600" ${String(floor.dimensionFontWeight || '600') === '600' ? 'selected' : ''}>Halbfett</option>
+                                <option value="700" ${String(floor.dimensionFontWeight || '600') === '700' ? 'selected' : ''}>Fett</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label>Schriftart</label>
+                    <select data-project="dimensionFontFamily">
+                        <option value="Arial" ${String(floor.dimensionFontFamily || 'Arial') === 'Arial' ? 'selected' : ''}>Arial</option>
+                        <option value="Segoe UI" ${String(floor.dimensionFontFamily || 'Arial') === 'Segoe UI' ? 'selected' : ''}>Segoe UI</option>
+                        <option value="Tahoma" ${String(floor.dimensionFontFamily || 'Arial') === 'Tahoma' ? 'selected' : ''}>Tahoma</option>
+                        <option value="Verdana" ${String(floor.dimensionFontFamily || 'Arial') === 'Verdana' ? 'selected' : ''}>Verdana</option>
+                        <option value="sans-serif" ${String(floor.dimensionFontFamily || 'Arial') === 'sans-serif' ? 'selected' : ''}>System Sans-Serif</option>
+                    </select>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
