@@ -461,6 +461,22 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer;
         }
 
+        .dimension-line {
+            stroke: currentColor;
+            stroke-width: 1.2;
+            fill: none;
+            opacity: 1;
+        }
+        .dimension-line text {
+            stroke: var(--card-color, var(--fp-panel));
+            stroke-width: 3px;
+            fill: currentColor;
+            font-size: 18px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: central;
+            paint-order: stroke fill;
+        }
         .wall.selected {
             stroke: #74b9ff;
         }
@@ -1982,6 +1998,9 @@ HTML;
             name: 'Erdgeschoss',
             order: 1,
             wallThickness: 12,
+            showWallDimensions: false,
+            showInsideDimensions: false,
+            showOutsideDimensions: false,
             walls: [],
             openings: [],
             items: [],
@@ -2007,6 +2026,15 @@ HTML;
             floor.wallThickness = Number.isFinite(wallThickness) && wallThickness > 0
                 ? Math.max(1, Math.min(60, wallThickness))
                 : 12;
+            if (typeof floor.showWallDimensions !== 'boolean') {
+                floor.showWallDimensions = false;
+            }
+            if (typeof floor.showInsideDimensions !== 'boolean') {
+                floor.showInsideDimensions = false;
+            }
+            if (typeof floor.showOutsideDimensions !== 'boolean') {
+                floor.showOutsideDimensions = false;
+            }
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
             for (const opening of floor.openings) {
@@ -3412,9 +3440,14 @@ HTML;
 
         for (const w of wallRenderOrder) {
             const sel = selectedWallID === w.id ? ' selected' : '';
+            const dimensionTitle = state.mode !== 'view' && floor.showWallDimensions === true
+                ? `<title>${escapeHtml(wallDimensionInfo(w, floor))}</title>`
+                : '';
             parts.push(
                 `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
-                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
+                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}">` +
+                dimensionTitle +
+                `</line>`
             );
         }
 
@@ -3801,6 +3834,12 @@ HTML;
         // und überdecken Möbel, Formen, Wände, Texte und sonstige Planinhalte.
         parts.push(...variableTopParts);
 
+        // Maßlinien als letzte SVG-Ebene zeichnen. So bleiben sie unabhängig
+        // von Wänden, Objekten und Variablen sichtbar.
+        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            parts.push(renderGraphicWallDimensions(floor));
+        }
+
         scene.innerHTML = parts.join('');
         setTransform();
         renderProperties();
@@ -4146,6 +4185,349 @@ HTML;
         return o.shutterInvert === true ? 1 - amount : amount;
     }
 
+    function formatDimensionCm(value) {
+        const cm = Math.max(0, Number(value) || 0);
+        if (cm >= 100) {
+            return `${(cm / 100).toFixed(2)} m (${Math.round(cm * 10) / 10} cm)`;
+        }
+        return `${Math.round(cm * 10) / 10} cm`;
+    }
+
+    function wallEndpointInset(w, floor, atStart) {
+        const x = Number(atStart ? w.x1 : w.x2) || 0;
+        const y = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+        const joined = (floor.walls || []).some(other => {
+            if (other.id === w.id) return false;
+            return (
+                Math.hypot((Number(other.x1) || 0) - x, (Number(other.y1) || 0) - y) <= tolerance ||
+                Math.hypot((Number(other.x2) || 0) - x, (Number(other.y2) || 0) - y) <= tolerance
+            );
+        });
+
+        // Die gespeicherte Wand läuft auf ihrer Mittellinie. Wenn am Endpunkt
+        // eine weitere Wand anschliesst, liegt die sichtbare Innenkante um eine
+        // halbe Wanddicke innerhalb dieses Mittellinien-Schnittpunkts.
+        return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
+    }
+
+    function wallEndpointConnectedForDimension(w, floor, atStart) {
+        const px = Number(atStart ? w.x1 : w.x2) || 0;
+        const py = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+
+        for (const other of floor.walls || []) {
+            if (other.id === w.id) continue;
+            const ax = Number(other.x1) || 0, ay = Number(other.y1) || 0;
+            const bx = Number(other.x2) || 0, by = Number(other.y2) || 0;
+            const vx = bx - ax, vy = by - ay;
+            const len2 = vx * vx + vy * vy;
+            if (len2 < 0.0001) continue;
+
+            let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const qx = ax + vx * t, qy = ay + vy * t;
+            if (Math.hypot(px - qx, py - qy) <= tolerance) return true;
+        }
+        return false;
+    }
+
+    function wallIntersectionData(w, other) {
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const ox1 = Number(other.x1) || 0, oy1 = Number(other.y1) || 0;
+        const ox2 = Number(other.x2) || 0, oy2 = Number(other.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const odx = ox2 - ox1, ody = oy2 - oy1;
+        const cross = dx * ody - dy * odx;
+        if (Math.abs(cross) < 0.0001) return null;
+
+        const rx = ox1 - x1, ry = oy1 - y1;
+        const t = (rx * ody - ry * odx) / cross;
+        const u = (rx * dy - ry * dx) / cross;
+        return {t, u};
+    }
+
+    function wallDimensionBreaks(w, floor, mode) {
+        const x1=Number(w.x1)||0, y1=Number(w.y1)||0;
+        const x2=Number(w.x2)||0, y2=Number(w.y2)||0;
+        const dx=x2-x1, dy=y2-y1, length=Math.hypot(dx,dy);
+        if(length<1) return [];
+
+        const thickness=Number(floor.wallThickness)||12;
+        const half=thickness/2;
+
+        // Maßgebend ist NICHT der gezeichnete Endpunkt dieser Wand.
+        // Maßgebend ist der geometrische Schnittpunkt mit der anschließenden
+        // Querwand und von dort deren reale Innen-/Außenkante.
+        function connectionAtEnd(atStart) {
+            const candidates=[];
+
+            for(const other of floor.walls||[]) {
+                if(other.id===w.id) continue;
+
+                const hit=wallIntersectionData(w,other);
+                if(!hit) continue;
+
+                const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+                const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+                const olen=Math.hypot(odx,ody);
+                if(olen<1) continue;
+
+                const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+                if(sinAngle<.05) continue;
+
+                // Ein paar cm Zeichenabweichung am Wandende werden für die
+                // Vermassung ignoriert. Auch der Endpunkt der Querwand darf
+                // leicht vor/hinter dem rechnerischen Schnitt liegen.
+                const alongTolerance=Math.max(thickness*1.5, 15);
+                const tTolerance=alongTolerance/length;
+                const uTolerance=alongTolerance/olen;
+
+                const nearRequestedEnd=atStart
+                    ? Math.abs(hit.t)<=tTolerance
+                    : Math.abs(hit.t-1)<=tTolerance;
+
+                if(!nearRequestedEnd) continue;
+                if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+                const center=hit.t*length;
+                const projectedHalf=half/sinAngle;
+                const endpoint=atStart ? 0 : length;
+
+                candidates.push({
+                    center,
+                    projectedHalf,
+                    distance:Math.abs(center-endpoint)
+                });
+            }
+
+            if(!candidates.length) return null;
+            candidates.sort((a,b)=>a.distance-b.distance);
+            return candidates[0];
+        }
+
+        const startConnection=connectionAtEnd(true);
+        const endConnection=connectionAtEnd(false);
+
+        // Nur echte Kanten sind Maßpunkte:
+        // Start: außen = vor der Querwand, innen = hinter der Querwand.
+        // Ende:  innen = vor der Querwand, außen = hinter der Querwand.
+        const startOutside=startConnection
+            ? startConnection.center-startConnection.projectedHalf
+            : 0;
+        const startInside=startConnection
+            ? startConnection.center+startConnection.projectedHalf
+            : 0;
+
+        const endInside=endConnection
+            ? endConnection.center-endConnection.projectedHalf
+            : length;
+        const endOutside=endConnection
+            ? endConnection.center+endConnection.projectedHalf
+            : length;
+
+        if(mode==='outside') {
+            return [startOutside,endOutside];
+        }
+
+        const points=[startInside,endInside];
+
+        // Innerhalb der Wand: jede Querwand unterbricht die Innenmaßkette
+        // an ihren beiden realen Wandkanten. Die Wandachse ist kein Maßpunkt.
+        for(const other of floor.walls||[]) {
+            if(other.id===w.id) continue;
+
+            const hit=wallIntersectionData(w,other);
+            if(!hit) continue;
+
+            const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+            const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+            const olen=Math.hypot(odx,ody);
+            if(olen<1) continue;
+
+            const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+            if(sinAngle<.05) continue;
+
+            const tolerance=Math.max(2/length, .01);
+            if(hit.t<=tolerance || hit.t>=1-tolerance) continue;
+
+            const uTolerance=Math.max(thickness,10)/olen;
+            if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+            const center=hit.t*length;
+            const projectedHalf=half/sinAngle;
+            points.push(center-projectedHalf,center+projectedHalf);
+        }
+
+        return points
+            .filter(Number.isFinite)
+            .filter(v=>v>=startInside-.5 && v<=endInside+.5)
+            .sort((a,b)=>a-b)
+            .filter((v,i,a)=>i===0 || Math.abs(v-a[i-1])>.5);
+    }
+
+    function wallGraphicDimension(w, floor, side, mode) {
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const centerLength = Math.hypot(dx, dy);
+        if (centerLength < 1) return '';
+
+        const ux = dx / centerLength, uy = dy / centerLength;
+        const nx = -uy * side, ny = ux * side;
+        const thickness = Number(floor.wallThickness) || 12;
+        const breaks = wallDimensionBreaks(w, floor, mode);
+        if (breaks.length < 2) return '';
+
+        const offset = mode === 'inside' ? thickness / 2 + 12 : thickness / 2 + 30;
+        const ext = 7;
+        const pieces = [];
+        const first = breaks[0], last = breaks[breaks.length - 1];
+
+        const pointAt = d => ({x: x1 + ux * d, y: y1 + uy * d});
+        const f = pointAt(first), l = pointAt(last);
+        pieces.push(`<line x1="${f.x + nx * offset}" y1="${f.y + ny * offset}" x2="${l.x + nx * offset}" y2="${l.y + ny * offset}"/>`);
+
+        for (const d of breaks) {
+            const p = pointAt(d);
+
+            // Die Hilfslinie muss an der tatsächlich vermassten Kante beginnen:
+            // innen an der Innenkante, außen an der Außenkante – niemals an der
+            // gespeicherten Wand-Mittellinie.
+            const measuredEdgeOffset = mode === 'inside' ? thickness / 2 : thickness / 2;
+            const edgeX = p.x + nx * measuredEdgeOffset;
+            const edgeY = p.y + ny * measuredEdgeOffset;
+
+            const mx = p.x + nx * offset, my = p.y + ny * offset;
+            pieces.push(`<line x1="${edgeX}" y1="${edgeY}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
+            pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
+        }
+
+        // Außenmaß: eine einzige Gesamtmaßzahl von Außenkante zu Außenkante.
+        // Innenmaß: Maßkette mit allen Zwischen-/Querwandkanten.
+        const segments = mode === 'outside'
+            ? [[first, last]]
+            : breaks.slice(0, -1).map((a, i) => [a, breaks[i + 1]]);
+
+        for (const [a, b] of segments) {
+            const value = b - a;
+            if (value < 0.5) continue;
+            const mid = (a + b) / 2;
+            const tx = x1 + ux * mid + nx * (offset + 5);
+            const ty = y1 + uy * mid + ny * (offset + 5);
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (angle > 90 || angle < -90) angle += 180;
+            pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${Math.round(value * 10) / 10}</text>`);
+        }
+
+        return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
+    }
+
+    function wallOutsideSide(w, floor) {
+        const walls = floor.walls || [];
+        if (!walls.length) return 1;
+
+        // Mittelpunkt des gesamten Wandgrundrisses.
+        let sx = 0, sy = 0, count = 0;
+        for (const wall of walls) {
+            sx += Number(wall.x1) || 0;
+            sy += Number(wall.y1) || 0;
+            sx += Number(wall.x2) || 0;
+            sy += Number(wall.y2) || 0;
+            count += 2;
+        }
+        const cx = sx / Math.max(1, count);
+        const cy = sy / Math.max(1, count);
+
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return 1;
+
+        // Beide Normalen prüfen. Die Seite, die vom Grundrisszentrum weg zeigt,
+        // ist die geometrische Außenseite. Dadurch ist die Richtung, in der die
+        // Wand gezeichnet wurde, egal.
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const toCenterX = cx - mx, toCenterY = cy - my;
+
+        // Normal für side=1 in wallGraphicDimension:
+        // nx=-uy, ny=ux.
+        const nx = -dy / len, ny = dx / len;
+        const dot = nx * toCenterX + ny * toCenterY;
+
+        // Zeigt side=1 zum Zentrum, liegt außen auf side=-1.
+        return dot > 0 ? -1 : 1;
+    }
+
+    function renderGraphicWallDimensions(floor) {
+        // Bemaßung ist reine Editor-Hilfe und wird in der Live-Ansicht nie gezeigt.
+        if (state.mode === 'view') return '';
+        if (floor.showInsideDimensions !== true && floor.showOutsideDimensions !== true) return '';
+
+        const result = [];
+        for (const w of floor.walls || []) {
+            const outsideSide = wallOutsideSide(w, floor);
+            if (floor.showInsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, -outsideSide, 'inside'));
+            }
+            if (floor.showOutsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, outsideSide, 'outside'));
+            }
+        }
+        return result.join('');
+    }
+
+    function wallDimensionInfo(w, floor) {
+        const centerLength = Math.hypot(
+            (Number(w.x2) || 0) - (Number(w.x1) || 0),
+            (Number(w.y2) || 0) - (Number(w.y1) || 0)
+        );
+        const startInset = wallEndpointInset(w, floor, true);
+        const endInset = wallEndpointInset(w, floor, false);
+        const halfThickness = (Number(floor.wallThickness) || 12) / 2;
+        const startConnected = wallEndpointConnectedForDimension(w, floor, true);
+        const endConnected = wallEndpointConnectedForDimension(w, floor, false);
+        const insideLength = Math.max(0,
+            centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0)
+        );
+        const outsideLength =
+            centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
+
+        const wallOpenings = (floor.openings || [])
+            .filter(o => o.wallId === w.id)
+            .map(o => {
+                const width = Math.min(Math.max(0, Number(o.length) || 0), centerLength);
+                const center = Math.max(0, Math.min(centerLength, (Number(o.position ?? .5) || 0) * centerLength));
+                return {
+                    type: o.type === 'door' ? 'Tür' : 'Fenster',
+                    width,
+                    start: Math.max(startInset, center - width / 2),
+                    end: Math.min(centerLength - endInset, center + width / 2)
+                };
+            })
+            .sort((a, b) => a.start - b.start);
+
+        const lines = [
+            `Innenmaß: ${formatDimensionCm(insideLength)}`,
+            `Außenmaß: ${formatDimensionCm(outsideLength)}`
+        ];
+
+        if (!wallOpenings.length) {
+            return lines.join('\n');
+        }
+
+        let cursor = startInset;
+        wallOpenings.forEach((o, index) => {
+            lines.push(`Innen – Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
+            lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(Math.max(0, o.end - o.start))}`);
+            cursor = Math.max(cursor, o.end);
+        });
+        lines.push(`Innen – Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, centerLength - endInset - cursor))}`);
+        return lines.join('\n');
+    }
+
     function openingGeometry(w, o) {
         const vx = w.x2 - w.x1;
         const vy = w.y2 - w.y1;
@@ -4348,6 +4730,21 @@ HTML;
                 <div class="field">
                     <label>Mauerwerkdicke</label>
                     <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
+                </div>
+                <div class="field">
+                    <label class="check">
+                        <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
+                        Wandmaße bei Mausover
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" data-project="showInsideDimensions" ${floor.showInsideDimensions === true ? 'checked' : ''}>
+                        Innenmaße anzeigen
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" data-project="showOutsideDimensions" ${floor.showOutsideDimensions === true ? 'checked' : ''}>
+                        Außenmaße anzeigen
+                    </label>
+                    <small>Maße in cm.</small>
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -5124,6 +5521,30 @@ HTML;
                     return;
                 }
 
+                if (input.dataset.project === 'showWallDimensions') {
+                    currentFloor().showWallDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showInsideDimensions') {
+                    currentFloor().showInsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showOutsideDimensions') {
+                    currentFloor().showOutsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
                 if (input.dataset.project === 'floorOrder') {
                     const floor = currentFloor();
                     const oldIndex = state.floors.findIndex(f => f.id === floor.id);
@@ -5861,6 +6282,17 @@ HTML;
             pushHistory();
             markDirty();
             setTool('');
+            render();
+            return;
+        }
+
+        // Klick auf eine wirklich freie Fläche: aktuelle Auswahl aufheben.
+        // Dadurch zeigt die Eigenschaften-Seite wieder die Stockwerkeigenschaften.
+        if (!target && !rotateHandle && !resizeHandle && !tool) {
+            releasePropertiesControl();
+            selected = null;
+            wallStart = null;
+            preview = null;
             render();
         }
     });
@@ -8786,18 +9218,12 @@ JAVASCRIPT;
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
-        // Nicht jede Variable mit Action-ID ist in der aktuellen Darstellung
-        // tatsächlich bedienbar. Bei neuen Darstellungen gilt deshalb nur
-        // requestAction=true als echte Bedienfreigabe.
-        if ($hasLegacyProfile) {
-            $canAction = $actionID > 0;
-        } elseif ($hasNewPresentation) {
-            $canAction =
-                $actionID > 0 &&
-                $this->PresentationAllowsRequestAction($activePresentationID);
-        } else {
-            $canAction = false;
-        }
+        // Für die Bedienbarkeit ist die an der Variable hinterlegte Aktion
+        // maßgeblich. Die Präsentation bestimmt Darstellung/Formatierung, darf
+        // die Bedienung in IPSView aber nicht zusätzlich sperren. Andernfalls
+        // wird das Gerät im Live-Modus als "status-only" markiert und durch
+        // pointer-events:none vollständig unklickbar.
+        $canAction = $actionID > 0;
 
         $objectInfo = IPS_GetObject($VariableID);
 
