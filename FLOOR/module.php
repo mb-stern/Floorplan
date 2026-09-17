@@ -9261,7 +9261,15 @@ JAVASCRIPT;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    if ((float) $association['value'] !== (float) $rawValue) {
+                    // String-Variablen müssen gegen String-Assoziationen exakt
+                    // verglichen werden (z. B. NOT_CHARGING -> Lädt nicht).
+                    // Eine Umwandlung nach float würde beliebige Texte zu 0
+                    // machen und dadurch die falsche Assoziation treffen.
+                    $associationMatches = $variableType === 3
+                        ? (string) ($association['value'] ?? '') === (string) $rawValue
+                        : (float) ($association['value'] ?? 0) === (float) $rawValue;
+
+                    if (!$associationMatches) {
                         continue;
                     }
 

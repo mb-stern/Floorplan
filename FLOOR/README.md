@@ -177,6 +177,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.17
+
+- Assotiationen von String-Variablen werden nun korrekt übernommen.
+
 ### 1.16
 
 - Unscharfe Schrift der neuen Vermassung unter IPS-View behoben.
