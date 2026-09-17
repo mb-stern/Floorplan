@@ -468,14 +468,19 @@ class Floorplan extends IPSModuleStrict
             opacity: 1;
         }
         .dimension-line text {
-            stroke: var(--card-color, var(--fp-panel));
-            stroke-width: 3px;
             fill: currentColor;
-            font-size: 18px;
-            font-weight: 600;
+            stroke: rgba(0,0,0,.35);
+            stroke-width: 2px;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
+            text-rendering: geometricPrecision;
             text-anchor: middle;
             dominant-baseline: central;
-            paint-order: stroke fill;
+            paint-order: stroke;
         }
         .wall.selected {
             stroke: #74b9ff;
@@ -1032,10 +1037,9 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Undurchsichtiger Hintergrund: Möbel, Wände, Fenster usw.
-               dürfen durch den Variablenwert nicht hindurchscheinen. */
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            /* Hintergrund kommt durch die echte SVG-Aussparung darunter. */
+            fill: transparent;
+            fill-opacity: 0;
             stroke: currentColor;
             stroke-width: 1.2;
             vector-effect: non-scaling-stroke;
@@ -1043,8 +1047,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         html[data-theme="light"] .runtime-value-frame {
-            fill: var(--card-color, var(--fp-panel));
-            fill-opacity: 1;
+            fill: transparent;
+            fill-opacity: 0;
             stroke: #5f5f5f;
         }
 
@@ -3231,6 +3235,10 @@ HTML;
         // zuverlässig anklickbar.
         const shutterControlParts = [];
         const variableTopParts = [];
+        // Transparente Variablenboxen brauchen eine echte Aussparung in den
+        // darunterliegenden Floorplan-Ebenen. So scheint der reale Tile-/IPSView-
+        // Hintergrund durch, ohne dass Wände, Möbel usw. durch die Box sichtbar sind.
+        const variableFrameCutoutParts = [];
         // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
         // gesammelt und nach den Möbeln nochmals gezeichnet.
         // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
@@ -3771,6 +3779,13 @@ HTML;
                 : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
             const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
 
+            if (showValue && item.valueFrame === true) {
+                variableFrameCutoutParts.push(
+                    `<rect x="${Number(item.x) + valueFrameX}" y="${Number(item.y) + valueFrameY}" ` +
+                    `width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4" fill="black"/>`
+                );
+            }
+
             variableTopParts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
@@ -3825,22 +3840,35 @@ HTML;
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
 
-        // Immer als letzte Ebene: Rollladen-Steuerung bleibt sichtbar und klickbar,
-        // selbst wenn an derselben Position ein Möbelstück oder Gerät liegt.
+        // Immer als letzte Ebene der Basis: Rollladen-Steuerung bleibt sichtbar und anklickbar.
         parts.push(...shutterControlParts);
 
-        // Variablen-/Geräteebene immer ganz oben rendern.
-        // Dadurch bleiben insbesondere Werte und deren Rahmen vollständig sichtbar
-        // und überdecken Möbel, Formen, Wände, Texte und sonstige Planinhalte.
-        parts.push(...variableTopParts);
-
-        // Maßlinien als letzte SVG-Ebene zeichnen. So bleiben sie unabhängig
-        // von Wänden, Objekten und Variablen sichtbar.
-        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
-            parts.push(renderGraphicWallDimensions(floor));
+        // V2 Variablenbox-Aussparung:
+        // Alle bisherigen Floorplan-Ebenen werden an den Werteboxen wirklich ausgeschnitten.
+        // Die Variablen selbst werden danach unmaskiert darübergelegt. Dadurch ist innerhalb
+        // der Box exakt derselbe reale Tile-/IPSView-Hintergrund sichtbar wie außerhalb.
+        let basePlanHtml = parts.join('');
+        if (variableFrameCutoutParts.length > 0) {
+            basePlanHtml =
+                `<defs><mask id="variableFrameBackgroundMask" maskUnits="userSpaceOnUse" ` +
+                `x="-100000" y="-100000" width="200000" height="200000">` +
+                `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+                variableFrameCutoutParts.join('') +
+                `</mask></defs>` +
+                `<g mask="url(#variableFrameBackgroundMask)">${basePlanHtml}</g>`;
         }
 
-        scene.innerHTML = parts.join('');
+        const finalParts = [basePlanHtml];
+
+        // Variablen-/Geräteebene unmaskiert ganz oben.
+        finalParts.push(...variableTopParts);
+
+        // Maßlinien bleiben wie bisher als letzte SVG-Ebene sichtbar.
+        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            finalParts.push(renderGraphicWallDimensions(floor));
+        }
+
+        scene.innerHTML = finalParts.join('');
         setTransform();
         renderProperties();
         renderFloorSelect();
@@ -4387,7 +4415,6 @@ HTML;
 
         const pointAt = d => ({x: x1 + ux * d, y: y1 + uy * d});
         const f = pointAt(first), l = pointAt(last);
-        pieces.push(`<line x1="${f.x + nx * offset}" y1="${f.y + ny * offset}" x2="${l.x + nx * offset}" y2="${l.y + ny * offset}"/>`);
 
         for (const d of breaks) {
             const p = pointAt(d);
@@ -4413,12 +4440,42 @@ HTML;
         for (const [a, b] of segments) {
             const value = b - a;
             if (value < 0.5) continue;
+
             const mid = (a + b) / 2;
-            const tx = x1 + ux * mid + nx * (offset + 5);
-            const ty = y1 + uy * mid + ny * (offset + 5);
+            const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
+            const label = String(Math.round(value * 10) / 10);
+
+            // Professionelle Vermassung: Die Zahl sitzt mittig in einer echten
+            // Unterbrechung der Maßlinie. Die Lücke passt sich Schriftgröße und
+            // Anzahl der Ziffern an.
+            const estimatedTextWidth = Math.max(
+                dimensionFontSize * 1.2,
+                label.length * dimensionFontSize * 0.62
+            );
+            const halfGap = Math.min(
+                (b - a) * 0.38,
+                (estimatedTextWidth + Math.max(8, dimensionFontSize * 0.55)) / 2
+            );
+            const leftEnd = mid - halfGap;
+            const rightStart = mid + halfGap;
+
+            const pa = pointAt(a);
+            const pb = pointAt(b);
+            const pl = pointAt(leftEnd);
+            const pr = pointAt(rightStart);
+
+            if (leftEnd > a + 0.5) {
+                pieces.push(`<line x1="${pa.x + nx * offset}" y1="${pa.y + ny * offset}" x2="${pl.x + nx * offset}" y2="${pl.y + ny * offset}"/>`);
+            }
+            if (rightStart < b - 0.5) {
+                pieces.push(`<line x1="${pr.x + nx * offset}" y1="${pr.y + ny * offset}" x2="${pb.x + nx * offset}" y2="${pb.y + ny * offset}"/>`);
+            }
+
+            const tx = x1 + ux * mid + nx * offset;
+            const ty = y1 + uy * mid + ny * offset;
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             if (angle > 90 || angle < -90) angle += 180;
-            pieces.push(`<text x="${tx}" y="${ty}" transform="rotate(${angle} ${tx} ${ty})">${Math.round(value * 10) / 10}</text>`);
+            pieces.push(`<text x="${tx}" y="${ty}" font-size="${dimensionFontSize}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>`);
         }
 
         return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
@@ -4745,6 +4802,10 @@ HTML;
                         Außenmaße anzeigen
                     </label>
                     <small>Maße in cm.</small>
+                </div>
+                <div class="field">
+                    <label>Schriftgröße Vermassung (px)</label>
+                    <input type="number" min="8" max="48" step="1" data-project="dimensionFontSize" value="${Number(floor.dimensionFontSize) || 18}">
                 </div>
                 <div class="field">
                     <label>Elemente</label>
@@ -5539,6 +5600,16 @@ HTML;
 
                 if (input.dataset.project === 'showOutsideDimensions') {
                     currentFloor().showOutsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'dimensionFontSize') {
+                    const floor = currentFloor();
+                    floor.dimensionFontSize = Math.max(8, Math.min(48, Number(input.value) || 18));
+                    input.value = String(floor.dimensionFontSize);
                     pushHistory();
                     markDirty();
                     render();
