@@ -179,7 +179,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.17
 
-- Assotiationen von String-Variablen werden nun korrekt übernommen.
+- Assoziationen von String-Variablen werden nun korrekt übernommen.
 
 ### 1.16
 
