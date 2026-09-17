@@ -9174,21 +9174,13 @@ JAVASCRIPT;
             $profileName === '' ||
             IPS_VariableProfileExists($profileName);
 
-        // String-Variablen enthalten bereits den anzuzeigenden Text als aktuellen
-        // Variablenwert. GetValueFormatted() kann bei String-Präsentationen einen
-        // abweichenden Darstellungstext liefern. Für Strings deshalb immer den
-        // tatsächlich aktuell in IP-Symcon gespeicherten Wert anzeigen.
-        if ($variableType === 3) {
-            $valueText = (string) $rawValue;
-        } else {
-            $valueText = $this->GetFormattedVariableValue(
-                $VariableID,
-                $rawValue,
-                (array) ($activePresentation['parameters'] ?? []),
-                $hasNewPresentation,
-                $referencedProfileExists
-            );
-        }
+        $valueText = $this->GetFormattedVariableValue(
+            $VariableID,
+            $rawValue,
+            (array) ($activePresentation['parameters'] ?? []),
+            $hasNewPresentation,
+            $referencedProfileExists
+        );
         $legacyColorOn = '';
         $legacyCurrentColor = '';
         $newIntegerStatusColor = '';
