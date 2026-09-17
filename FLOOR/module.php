@@ -6753,7 +6753,16 @@ HTML;
         const selectedClass = isSelectable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
         const rowClass = isSelectable ? ' variable' : '';
         const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
-        const value = (isVariable || isStream) ? escapeHtml(node.valueText || '') : '';
+        let value = (isVariable || isStream) ? escapeHtml(node.valueText || '') : '';
+        // TEMPORÄRE DIAGNOSE: Bei String-Variablen im Objektbaum den von PHP
+        // gelieferten Anzeigewert UND Rohwert gleichzeitig sichtbar machen.
+        // So lässt sich eindeutig erkennen, ob der Wert bereits serverseitig
+        // falsch aufbereitet wird oder erst später im JavaScript verloren geht.
+        if (isVariable && Number(node.variableType) === 3) {
+            const diagnosticValueText = String(node.valueText ?? '');
+            const diagnosticRawValue = String(node.rawValue ?? '');
+            value = `WERT: ${escapeHtml(diagnosticValueText)} | RAW: ${escapeHtml(diagnosticRawValue)} | String`;
+        }
         const typeTitle = isVariable
             ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
             : escapeHtml(node.objectTypeName || '');
@@ -9174,13 +9183,21 @@ JAVASCRIPT;
             $profileName === '' ||
             IPS_VariableProfileExists($profileName);
 
-        $valueText = $this->GetFormattedVariableValue(
-            $VariableID,
-            $rawValue,
-            (array) ($activePresentation['parameters'] ?? []),
-            $hasNewPresentation,
-            $referencedProfileExists
-        );
+        // String-Variablen enthalten bereits den anzuzeigenden Text als aktuellen
+        // Variablenwert. GetValueFormatted() kann bei String-Präsentationen einen
+        // abweichenden Darstellungstext liefern. Für Strings deshalb immer den
+        // tatsächlich aktuell in IP-Symcon gespeicherten Wert anzeigen.
+        if ($variableType === 3) {
+            $valueText = (string) $rawValue;
+        } else {
+            $valueText = $this->GetFormattedVariableValue(
+                $VariableID,
+                $rawValue,
+                (array) ($activePresentation['parameters'] ?? []),
+                $hasNewPresentation,
+                $referencedProfileExists
+            );
+        }
         $legacyColorOn = '';
         $legacyCurrentColor = '';
         $newIntegerStatusColor = '';
@@ -9260,22 +9277,29 @@ JAVASCRIPT;
                 }
                 $profileSummary = implode(' · ', $parts);
 
-                foreach ($associations as $association) {
-                    if ((float) $association['value'] !== (float) $rawValue) {
-                        continue;
-                    }
+                // Legacy-Assoziationen besitzen numerische Werte und dürfen deshalb
+                // nur bei Bool/Integer/Float gegen den aktuellen Rohwert verglichen werden.
+                // Bei String-Variablen würde der bisherige Float-Cast jeden nichtnumerischen
+                // Text (z. B. "nicht laden") zu 0 machen und dadurch fälschlich die
+                // Assoziation mit Wert 0 (z. B. "laden") als sichtbaren Wert übernehmen.
+                if ($variableType !== 3) {
+                    foreach ($associations as $association) {
+                        if ((float) $association['value'] !== (float) $rawValue) {
+                            continue;
+                        }
 
-                    if ($association['name'] !== '') {
-                        $valueText = $association['name'];
-                    }
+                        if ($association['name'] !== '') {
+                            $valueText = $association['name'];
+                        }
 
-                    // Aktuelle Farbe der passenden Legacy-Assoziation.
-                    // Keine Änderung am Icon oder an der Variablenauswahl.
-                    $associationColor = (int) ($association['color'] ?? -1);
-                    if ($hasLegacyProfile && $associationColor >= 0) {
-                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                        // Aktuelle Farbe der passenden Legacy-Assoziation.
+                        // Keine Änderung am Icon oder an der Variablenauswahl.
+                        $associationColor = (int) ($association['color'] ?? -1);
+                        if ($hasLegacyProfile && $associationColor >= 0) {
+                            $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                        }
+                        break;
                     }
-                    break;
                 }
 
                 // $valueText kommt bereits aus GetValueFormatted(). Dadurch
