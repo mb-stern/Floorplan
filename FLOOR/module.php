@@ -1801,17 +1801,9 @@ class Floorplan extends IPSModuleStrict
         <aside class="sidebar">
             <h3 id="propTitle">Projekteigenschaften</h3>
             <div id="properties"></div>
-            <div class="help">
+            <div id="selectionHelp" class="help">
                 <b>Bedienung</b><br>
-                Wand: Start- und Endpunkt anklicken.<br>
-                Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Objekte: 28 Easy-Floorplan-Symbole + 10 eigene Symbole verfügbar.<br>
-                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
-                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
-                Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
-                − / +: manuell heraus- oder hineinzoomen.<br>
-                Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
+                Element auswählen, um die passende Bedienhilfe anzuzeigen.
             </div>
         </aside>
     </div>
@@ -1932,6 +1924,7 @@ HTML;
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
+    const selectionHelp = document.getElementById('selectionHelp');
     const floorSelect = document.getElementById('floorSelect');
 
     let resizeFitTimer = null;
@@ -4924,6 +4917,66 @@ HTML;
         return html;
     }
 
+    function renderSelectionHelp() {
+        if (!selectionHelp) return;
+
+        if (!selected) {
+            selectionHelp.innerHTML = `
+                <b>Bedienung – Etage</b><br>
+                Hier werden die Eigenschaften der aktuellen Etage eingestellt.<br>
+                Mittlere Maustaste: Grundriss verschieben.<br>
+                − / +: manuell zoomen.<br>
+                Einpassen: aktuelle Etage vollständig einpassen.
+            `;
+            return;
+        }
+
+        const helpByType = {
+            item: `
+                <b>Bedienung – Gerät</b><br>
+                Gerät anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern.<br>
+                Variable, Icon und Darstellung rechts konfigurieren.<br>
+                Entf: ausgewähltes Gerät löschen.
+            `,
+            wall: `
+                <b>Bedienung – Wand</b><br>
+                Wand anklicken und rechts konfigurieren.<br>
+                Start- und Endpunkt können direkt verschoben werden.<br>
+                Entf: ausgewählte Wand löschen.
+            `,
+            opening: `
+                <b>Bedienung – Tür/Fenster</b><br>
+                Element anklicken und entlang der Wand verschieben.<br>
+                Breite und weitere Eigenschaften rechts konfigurieren.<br>
+                Entf: ausgewähltes Element löschen.
+            `,
+            furniture: `
+                <b>Bedienung – Objekt</b><br>
+                Objekt anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern und bei Bedarf drehen.<br>
+                Entf: ausgewähltes Objekt löschen.
+            `,
+            shape: `
+                <b>Bedienung – Form</b><br>
+                Form anklicken und verschieben.<br>
+                Größe, Drehung, Füllung und Darstellung rechts konfigurieren.<br>
+                Entf: ausgewählte Form löschen.
+            `,
+            text: `
+                <b>Bedienung – Text</b><br>
+                Text anklicken und verschieben.<br>
+                Inhalt und Darstellung rechts konfigurieren.<br>
+                Entf: ausgewählten Text löschen.
+            `
+        };
+
+        selectionHelp.innerHTML = helpByType[selected.type] || `
+            <b>Bedienung</b><br>
+            Das ausgewählte Element kann rechts konfiguriert werden.
+        `;
+    }
+
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
@@ -4945,6 +4998,8 @@ HTML;
         if (propertiesControlActive || propertiesSelectOpen || activePropertyControl) {
             return;
         }
+
+        renderSelectionHelp();
         const floor = currentFloor();
 
         if (!selected) {
