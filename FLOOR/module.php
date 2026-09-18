@@ -5178,17 +5178,25 @@ HTML;
                 </div>
                 ${canConfigureStatusColor(obj) ? `
                     <div class="field">
-                        <label>${obj.colorControlEnabled === true && itemColorControlCss(obj)
-                            ? 'Aktuelle Leuchtfarbe'
-                            : (Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe')}</label>
-                        <input data-field="statusColor" type="color"
-                            value="${obj.colorControlEnabled === true && itemColorControlCss(obj)
-                                ? itemColorControlCss(obj)
-                                : normalizeStatusColor(obj.statusColor)}"
-                            ${obj.colorControlEnabled === true && itemColorControlCss(obj) ? 'disabled' : ''}>
-                        ${obj.colorControlEnabled === true && itemColorControlCss(obj)
-                            ? `<div class="profile-hint">Die Statusfarbe folgt automatisch der ausgewählten Leuchtfarbe.</div>`
-                            : (Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : '')}
+                        ${(() => {
+                            const configuredLightColor = (
+                                obj.colorControlEnabled === true &&
+                                Number(obj.colorVariableID || 0) > 0 &&
+                                Number(obj._colorVariableType) === 1
+                            ) ? integerColorToCss(obj._colorVariableRawValue) : '';
+
+                            return `
+                                <label>${configuredLightColor
+                                    ? 'Aktuelle Leuchtfarbe'
+                                    : (Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe')}</label>
+                                <input data-field="statusColor" type="color"
+                                    value="${configuredLightColor || normalizeStatusColor(obj.statusColor)}"
+                                    ${configuredLightColor ? 'disabled' : ''}>
+                                ${configuredLightColor
+                                    ? `<div class="profile-hint">Die Statusfarbe folgt automatisch der ausgewählten Leuchtfarbe.</div>`
+                                    : (Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : '')}
+                            `;
+                        })()}
                     </div>
                 ` : (
                     hasAutomaticIntegerStatusColor(obj)
