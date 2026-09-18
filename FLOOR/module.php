@@ -5647,7 +5647,24 @@ HTML;
                 }
 
                 pushHistory();
-                markDirty();
+
+                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
+                    clearTimeout(saveTimer);
+                    saveTimer = null;
+                    dirty = true;
+                    statusEl.textContent = 'Speichert Farbsteuerung …';
+                    Promise.resolve(requestAction('save', JSON.stringify(state)))
+                        .then(() => {
+                            dirty = false;
+                            statusEl.textContent = 'Gespeichert';
+                        })
+                        .catch(e => {
+                            statusEl.textContent = 'Speichern fehlgeschlagen';
+                            console.error(e);
+                        });
+                } else {
+                    markDirty();
+                }
 
                 render();
             });
@@ -7194,7 +7211,7 @@ HTML;
         });
     }
 
-    function assignVariable(variableID) {
+    async function assignVariable(variableID) {
         if (!variablePickerTarget) return;
 
         const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
@@ -7432,7 +7449,27 @@ HTML;
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
         pushHistory();
-        markDirty();
+
+        if (entityType === 'item' && field === 'colorVariableID') {
+            // Wie die übrigen Variablen liegt auch die Farbvariable im normalen
+            // Floorplan-Projekt. Hier warten wir zusätzlich auf den echten
+            // RequestAction-save, damit ein direkt folgendes ApplyChanges/Modulupdate
+            // die Auswahl nicht mehr überholen kann.
+            clearTimeout(saveTimer);
+            saveTimer = null;
+            dirty = true;
+            statusEl.textContent = 'Speichert Farbvariable …';
+            try {
+                await requestAction('save', JSON.stringify(state));
+                dirty = false;
+                statusEl.textContent = 'Gespeichert';
+            } catch (e) {
+                statusEl.textContent = 'Speichern fehlgeschlagen';
+                console.error(e);
+            }
+        } else {
+            markDirty();
+        }
 
         render();
         refreshPropertiesAfterStructuralChange();
