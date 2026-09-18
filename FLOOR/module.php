@@ -4943,37 +4943,37 @@ HTML;
                 String: Wert bzw. vorhandene String-Assoziation anzeigen; ohne Aktion reine Statusanzeige.<br>
                 Variablen ohne Aktion sind nur Statusanzeigen und nicht bedienbar.<br>
                 Icon und Statusdarstellung werden soweit möglich aus IP-Symcon übernommen und können angepasst werden.<br>
-                Entf: ausgewähltes Gerät löschen.
+                Löschen: ausgewähltes Gerät löschen.
             `,
             wall: `
                 <b>Bedienung – Wand</b><br>
                 Wand anklicken und über die Eigenschaften konfigurieren.<br>
                 Start- und Endpunkt können direkt verschoben werden.<br>
-                Entf: ausgewählte Wand löschen.
+                Löschen: ausgewählte Wand löschen.
             `,
             opening: `
                 <b>Bedienung – Tür/Fenster</b><br>
                 Element anklicken und entlang der Wand verschieben.<br>
                 Breite und weitere Eigenschaften konfigurieren.<br>
-                Entf: ausgewähltes Element löschen.
+                Löschen: ausgewähltes Element löschen.
             `,
             furniture: `
                 <b>Bedienung – Objekt</b><br>
                 Objekt anklicken und mit der Maus verschieben.<br>
                 Größe über den Resize-Punkt ändern und bei Bedarf drehen.<br>
-                Entf: ausgewähltes Objekt löschen.
+                Löschen: ausgewähltes Objekt löschen.
             `,
             shape: `
                 <b>Bedienung – Form</b><br>
                 Form anklicken und verschieben.<br>
                 Größe, Drehung, Füllung und Darstellung konfigurieren.<br>
-                Entf: ausgewählte Form löschen.
+                Löschen: ausgewählte Form löschen.
             `,
             text: `
                 <b>Bedienung – Text</b><br>
                 Text anklicken und verschieben.<br>
                 Inhalt und Darstellung konfigurieren.<br>
-                Entf: ausgewählten Text löschen.
+                Löschen: ausgewählten Text löschen.
             `
         };
 
