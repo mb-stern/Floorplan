@@ -144,6 +144,8 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.18
 
 - Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer/HexColor zu steuern (zb Hue-Lampen).
+- Hilfemenu im Editor funktionsbezogen angepasst.
+- Menu im Editor passt sich nun dynamisch auf einer Zeile ein, um den Arbeitsbereich so gross als möglich zu behalten.
 
 ### 1.17
 
