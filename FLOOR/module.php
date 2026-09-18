@@ -347,6 +347,10 @@ class Floorplan extends IPSModuleStrict
 
         .toolbar .spacer { flex: 1 1 0; min-width: 0; }
 
+        .toolbar .status:empty {
+            display: none;
+        }
+
         .status {
             color: var(--fp-muted);
             font-size: clamp(9px, .68vw, 12px);
@@ -2319,7 +2323,10 @@ HTML;
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         scene.classList.toggle('runtime-view', isView);
-        statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
+        // Im Editor keinen dauerhaften Modus-Text anzeigen. Der freie Platz
+        // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
+        // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
+        statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : '');
 
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
