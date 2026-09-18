@@ -179,7 +179,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.18
 
-- Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer zu steuern (zb Hue-Lampen).
+- Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer/HexColor zu steuern (zb Hue-Lampen).
 
 ### 1.17
 
