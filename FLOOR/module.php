@@ -1090,7 +1090,45 @@ class Floorplan extends IPSModuleStrict
         }
 
         .control-slider { min-width: 260px; padding: 6px 2px; }
-        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .device-color-picker-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 4px;
+    }
+
+    .device-color-picker-circle {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        padding: 0;
+        border: 2px solid var(--content-color, currentColor);
+        border-radius: 50%;
+        background: transparent;
+        cursor: pointer;
+        overflow: hidden;
+    }
+
+    .device-color-picker-circle::-webkit-color-swatch-wrapper {
+        padding: 0;
+    }
+
+    .device-color-picker-circle::-webkit-color-swatch {
+        border: 0;
+        border-radius: 50%;
+    }
+
+    .device-color-picker-circle::-moz-color-swatch {
+        border: 0;
+        border-radius: 50%;
+    }
+
+    .device-color-picker-circle:disabled {
+        cursor: default;
+        opacity: .55;
+    }
+
+    .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
         .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
         .control-slider-row button {
             width: 38px;
@@ -5444,6 +5482,12 @@ HTML;
                     refreshPropertiesAfterStructuralChange();
                 }
 
+                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
+                    // Die Zuordnung bleibt gespeichert, nur die Bedienung wird ein-/ausgeblendet.
+                    // Eigenschaften sofort neu aufbauen, damit kein weiterer Klick nötig ist.
+                    refreshPropertiesAfterStructuralChange();
+                }
+
                 if (selected.type === 'item' && fieldName === 'statusColor') {
                     obj.statusColorManual = true;
                 }
@@ -7536,7 +7580,11 @@ HTML;
             html += `
                 <div class="field" style="margin-top:10px">
                     <label>Farbe</label>
-                    <input type="color" data-control-color value="${currentColor}"${disabled}>
+                    <div class="device-color-picker-row">
+                        <input class="device-color-picker-circle" type="color" data-control-color
+                            value="${currentColor}"${disabled} title="Farbe auswählen">
+                        <span class="profile-hint">${escapeHtml(currentColor)}</span>
+                    </div>
                     ${item._colorVariableCanAction === true
                         ? '<div class="profile-hint">Farbe auswählen – der Integer-Hexwert wird direkt an IP-Symcon gesendet.</div>'
                         : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
