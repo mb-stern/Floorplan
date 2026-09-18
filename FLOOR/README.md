@@ -177,6 +177,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.18
+
+- Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer zu steuern (zb Hue-Lampen).
+
 ### 1.17
 
 - Assoziationen von String-Variablen werden nun korrekt übernommen.
