@@ -5647,24 +5647,7 @@ HTML;
                 }
 
                 pushHistory();
-
-                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
-                    clearTimeout(saveTimer);
-                    saveTimer = null;
-                    dirty = true;
-                    statusEl.textContent = 'Speichert Farbsteuerung …';
-                    Promise.resolve(requestAction('save', JSON.stringify(state)))
-                        .then(() => {
-                            dirty = false;
-                            statusEl.textContent = 'Gespeichert';
-                        })
-                        .catch(e => {
-                            statusEl.textContent = 'Speichern fehlgeschlagen';
-                            console.error(e);
-                        });
-                } else {
-                    markDirty();
-                }
+                markDirty();
 
                 render();
             });
@@ -7211,7 +7194,7 @@ HTML;
         });
     }
 
-    async function assignVariable(variableID) {
+    function assignVariable(variableID) {
         if (!variablePickerTarget) return;
 
         const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
@@ -7449,27 +7432,7 @@ HTML;
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
         pushHistory();
-
-        if (entityType === 'item' && field === 'colorVariableID') {
-            // Wie die übrigen Variablen liegt auch die Farbvariable im normalen
-            // Floorplan-Projekt. Hier warten wir zusätzlich auf den echten
-            // RequestAction-save, damit ein direkt folgendes ApplyChanges/Modulupdate
-            // die Auswahl nicht mehr überholen kann.
-            clearTimeout(saveTimer);
-            saveTimer = null;
-            dirty = true;
-            statusEl.textContent = 'Speichert Farbvariable …';
-            try {
-                await requestAction('save', JSON.stringify(state));
-                dirty = false;
-                statusEl.textContent = 'Gespeichert';
-            } catch (e) {
-                statusEl.textContent = 'Speichern fehlgeschlagen';
-                console.error(e);
-            }
-        } else {
-            markDirty();
-        }
+        markDirty();
 
         render();
         refreshPropertiesAfterStructuralChange();
@@ -8171,10 +8134,31 @@ HTML;
 
                     for (const item of floor.items || []) {
                         if (Number(item.colorVariableID || 0) === variableID) {
-                            for (const [key, value] of Object.entries(meta)) {
-                                if (!key.startsWith('_')) continue;
-                                const suffix = key.slice(1);
-                                item[`_colorVariable${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`] = value;
+                            const colorRuntimeMap = {
+                                _variablePath: '_colorVariablePath',
+                                _valueText: '_colorVariableValueText',
+                                _rawValue: '_colorVariableRawValue',
+                                _variableType: '_colorVariableType',
+                                _profileName: '_colorVariableProfileName',
+                                _profileSummary: '_colorVariableProfileSummary',
+                                _profile: '_colorVariableProfile',
+                                _canAction: '_colorVariableCanAction',
+                                _objectIcon: '_colorVariableObjectIcon',
+                                _hasLegacyProfile: '_colorVariableHasLegacyProfile',
+                                _hasNewPresentation: '_colorVariableHasNewPresentation',
+                                _presentationIconOff: '_colorVariablePresentationIconOff',
+                                _presentationIconOn: '_colorVariablePresentationIconOn',
+                                _presentationIcon: '_colorVariablePresentationIcon',
+                                _glowColor: '_colorVariableGlowColor',
+                                _glowIntensity: '_colorVariableGlowIntensity',
+                                _legacyColorOn: '_colorVariableLegacyColorOn',
+                                _legacyCurrentColor: '_colorVariableLegacyCurrentColor',
+                                _newIntegerStatusColor: '_colorVariableNewIntegerStatusColor'
+                            };
+                            for (const [sourceKey, targetKey] of Object.entries(colorRuntimeMap)) {
+                                if (Object.prototype.hasOwnProperty.call(meta, sourceKey)) {
+                                    item[targetKey] = meta[sourceKey];
+                                }
                             }
                         }
                     }
@@ -8907,13 +8891,36 @@ JAVASCRIPT;
 
                     try {
                         $meta = $this->GetVariableRuntimeMeta($colorID);
-                        foreach ($meta as $key => $value) {
-                            if (!str_starts_with($key, '_')) {
-                                continue;
+
+                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
+                        // Variablen verwenden. Insbesondere wird aus _variableType
+                        // _colorVariableType (nicht _colorVariableVariableType).
+                        $runtimeMap = [
+                            '_variablePath'          => '_colorVariablePath',
+                            '_valueText'             => '_colorVariableValueText',
+                            '_rawValue'              => '_colorVariableRawValue',
+                            '_variableType'          => '_colorVariableType',
+                            '_profileName'           => '_colorVariableProfileName',
+                            '_profileSummary'        => '_colorVariableProfileSummary',
+                            '_profile'               => '_colorVariableProfile',
+                            '_canAction'             => '_colorVariableCanAction',
+                            '_objectIcon'            => '_colorVariableObjectIcon',
+                            '_hasLegacyProfile'      => '_colorVariableHasLegacyProfile',
+                            '_hasNewPresentation'    => '_colorVariableHasNewPresentation',
+                            '_presentationIconOff'   => '_colorVariablePresentationIconOff',
+                            '_presentationIconOn'    => '_colorVariablePresentationIconOn',
+                            '_presentationIcon'      => '_colorVariablePresentationIcon',
+                            '_glowColor'             => '_colorVariableGlowColor',
+                            '_glowIntensity'         => '_colorVariableGlowIntensity',
+                            '_legacyColorOn'         => '_colorVariableLegacyColorOn',
+                            '_legacyCurrentColor'    => '_colorVariableLegacyCurrentColor',
+                            '_newIntegerStatusColor' => '_colorVariableNewIntegerStatusColor'
+                        ];
+
+                        foreach ($runtimeMap as $sourceKey => $targetKey) {
+                            if (array_key_exists($sourceKey, $meta)) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $meta[$sourceKey];
                             }
-                            $suffix = substr($key, 1);
-                            $targetKey = '_colorVariable' . ucfirst($suffix);
-                            $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $value;
                         }
                     } catch (Throwable $e) {
                         $this->SendDebug('RuntimeColorValue', $e->getMessage(), 0);
