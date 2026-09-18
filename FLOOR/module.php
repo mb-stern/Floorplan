@@ -303,8 +303,9 @@ class Floorplan extends IPSModuleStrict
            Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
             display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
+            flex-wrap: nowrap;
+            gap: clamp(2px, .35vw, 6px);
+            overflow: hidden;
             align-items: center;
             padding: 8px;
             background: var(--fp-panel);
@@ -313,10 +314,12 @@ class Floorplan extends IPSModuleStrict
 
         .toolbar .group {
             display: flex;
-            gap: 4px;
+            flex-wrap: nowrap;
+            gap: clamp(2px, .25vw, 4px);
             align-items: center;
-            padding-right: 8px;
-            margin-right: 2px;
+            min-width: 0;
+            padding-right: clamp(3px, .45vw, 8px);
+            margin-right: 0;
             border-right: 1px solid var(--fp-border);
         }
 
@@ -327,7 +330,9 @@ class Floorplan extends IPSModuleStrict
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
-            padding: 5px 10px;
+            padding: 5px clamp(4px, .55vw, 10px);
+            font-size: clamp(10px, .78vw, 14px);
+            white-space: nowrap;
             cursor: pointer;
         }
 
@@ -340,12 +345,15 @@ class Floorplan extends IPSModuleStrict
             color: #ffd4d8;
         }
 
-        .toolbar .spacer { flex: 1; }
+        .toolbar .spacer { flex: 1 1 0; min-width: 0; }
 
         .status {
             color: var(--fp-muted);
-            font-size: 12px;
+            font-size: clamp(9px, .68vw, 12px);
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
         }
 
         .main {
@@ -1298,7 +1306,8 @@ class Floorplan extends IPSModuleStrict
             align-items: center;
             gap: 4px;
             width: auto;
-            flex: 0 0 auto;
+            min-width: 0;
+            flex: 0 1 auto;
         }
 
         .grid-size-input {
