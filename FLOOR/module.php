@@ -3781,7 +3781,7 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || controlledColorActive;
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3815,8 +3815,16 @@ HTML;
                 : 7;
             const icon = effectiveItemIcon(item);
             const controlledColor = itemColorControlCss(item);
-            const effectiveStatusColor = controlledColor
-                || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
+            const controlledColorActive = (
+                controlledColor !== '' &&
+                (
+                    Number(item._variableType) !== 0 ||
+                    truthyVariableValue(item._rawValue)
+                )
+            );
+            const effectiveStatusColor = controlledColorActive
+                ? controlledColor
+                : (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
