@@ -363,24 +363,29 @@ class Floorplan extends IPSModuleStrict
         /* Kein künstlicher Leerraum am rechten Rand. */
         .toolbar .spacer { display: none; }
 
+        /* Auch ohne Meldung bleibt dieser Platz reserviert. */
         .toolbar .status:empty {
-            display: none;
+            display: flex;
         }
 
         .status {
-            position: absolute;
-            right: 8px;
-            bottom: 8px;
-            z-index: 20;
-            max-width: min(180px, 35vw);
-            padding: 3px 7px;
-            border-radius: 5px;
-            background: var(--fp-panel);
+            /* Fester reservierter Infobereich rechts. Dadurch ändern
+               Statusmeldungen niemals die Position der Menübuttons. */
+            flex: 0 0 92px;
+            width: 92px;
+            min-width: 92px;
+            max-width: 92px;
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 2px 4px;
             color: var(--fp-muted);
             font-size: clamp(9px, .68vw, 12px);
-            line-height: 1.2;
+            line-height: 1.05;
             white-space: normal;
-            overflow-wrap: anywhere;
+            overflow-wrap: normal;
+            word-break: normal;
             text-align: right;
             pointer-events: none;
         }
