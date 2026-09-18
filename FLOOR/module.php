@@ -2313,7 +2313,9 @@ HTML;
 
     function markDirty() {
         dirty = true;
-        statusEl.textContent = 'Nicht gespeichert';
+        statusEl.textContent = '';
+        statusEl.classList.add('dirty');
+        statusEl.setAttribute('title', 'Nicht gespeichert');
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveProject, 1200);
     }
@@ -2324,9 +2326,13 @@ HTML;
         try {
             requestAction('save', JSON.stringify(state));
             dirty = false;
-            statusEl.textContent = 'Gespeichert';
+            statusEl.textContent = '';
+            statusEl.classList.remove('dirty');
+            statusEl.setAttribute('title', 'Gespeichert');
         } catch (e) {
-            statusEl.textContent = 'Speichern fehlgeschlagen';
+            statusEl.textContent = '';
+            statusEl.classList.add('dirty');
+            statusEl.setAttribute('title', 'Speichern fehlgeschlagen');
             console.error(e);
         }
     }
@@ -2366,7 +2372,8 @@ HTML;
         // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
         // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
         statusEl.textContent = '';
-        statusEl.classList.toggle('dirty', !isView && dirty);
+        statusEl.classList.toggle('dirty', Boolean(dirty));
+        statusEl.setAttribute('title', dirty ? 'Nicht gespeichert' : 'Gespeichert');
 
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
