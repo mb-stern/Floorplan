@@ -3781,7 +3781,7 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || controlledColorForRender !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3815,7 +3815,14 @@ HTML;
                 : 7;
             const icon = effectiveItemIcon(item);
             const controlledColor = itemColorControlCss(item);
-            const effectiveStatusColor = controlledColor
+            const controlledColorForRender = (
+                controlledColor !== '' &&
+                (
+                    Number(item._variableType) !== 0 ||
+                    truthyVariableValue(item._rawValue)
+                )
+            ) ? controlledColor : '';
+            const effectiveStatusColor = controlledColorForRender
                 || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
 
             const showName = item.showName === true;
@@ -4056,16 +4063,10 @@ HTML;
             return '';
         }
 
-        // Bei Bool-Geräten darf die gespeicherte Leuchtfarbe nur sichtbar sein,
-        // wenn die Hauptvariable tatsächlich EIN ist. Der Farbwert selbst bleibt
-        // gespeichert und steht beim nächsten Einschalten wieder zur Verfügung.
-        if (
-            Number(item?._variableType) === 0 &&
-            !truthyVariableValue(item?._rawValue)
-        ) {
-            return '';
-        }
-
+        // Den tatsächlichen Farbwert immer liefern. Der Farbwähler und seine
+        // Vorschau sollen die gespeicherte Leuchtfarbe auch bei ausgeschalteter
+        // Lampe anzeigen. Ob die Farbe im Planer leuchtet, entscheidet separat
+        // der Geräte-Renderer anhand des Ein/Aus-Zustands.
         return integerColorToCss(item?._colorVariableRawValue);
     }
 
