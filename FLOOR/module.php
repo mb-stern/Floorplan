@@ -2074,6 +2074,8 @@ HTML;
                 if (typeof item.iconSvg !== 'string') item.iconSvg = '';
                 if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
                 if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
+                if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
+                item.colorVariableID = Number(item.colorVariableID) || 0;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -3689,7 +3691,7 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor;
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3722,9 +3724,9 @@ HTML;
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const effectiveStatusColor = hasIntegerPresentationColor
-                ? effectiveIntegerColor
-                : statusColor;
+            const controlledColor = itemColorControlCss(item);
+            const effectiveStatusColor = controlledColor
+                || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3893,6 +3895,29 @@ HTML;
         const color = Number(value);
         if (!Number.isFinite(color) || color < 0) return '';
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function integerColorToCss(value) {
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function cssColorToInteger(value) {
+        const color = String(value || '').trim();
+        if (!/^#[0-9a-f]{6}$/i.test(color)) return null;
+        return parseInt(color.slice(1), 16);
+    }
+
+    function itemColorControlCss(item) {
+        if (
+            item?.colorControlEnabled !== true ||
+            Number(item?.colorVariableID || 0) <= 0 ||
+            Number(item?._colorVariableType) !== 1
+        ) {
+            return '';
+        }
+        return integerColorToCss(item?._colorVariableRawValue);
     }
 
     function associationButtonStyle(value) {
@@ -4988,6 +5013,20 @@ HTML;
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
                         : ''}
                 </div>
+                <div class="field">
+                    <label class="check">
+                        <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
+                        Farbsteuerung
+                    </label>
+                    ${obj.colorControlEnabled === true ? `
+                        <label>Farbvariable (Integer / Hex Color)</label>
+                        <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                            value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
+                        ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
+                            ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
+                            : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                    ` : ''}
+                </div>
                 ${canConfigureStatusColor(obj) ? `
                     <div class="field">
                         <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
@@ -5897,7 +5936,14 @@ HTML;
 
         let html = '';
 
-        if (associations.length) {
+        if (Number(item._variableType) === 0) {
+            const isOn = truthyVariableValue(item._rawValue);
+            html += `<div class="control-associations">
+                <button type="button" data-control-bool="${isOn ? '0' : '1'}">${isOn ? 'Ausschalten' : 'Einschalten'}</button>
+            </div>`;
+        }
+
+        if (Number(item._variableType) !== 0 && associations.length) {
             html += '<div class="control-associations">';
             for (const association of associations) {
                 const value = Number(association.value);
@@ -5913,7 +5959,7 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        if (!associations.length && hasRange) {
+        if (Number(item._variableType) !== 0 && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const suffix = String(profile.suffix || '');
@@ -6162,11 +6208,21 @@ HTML;
                     // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
                     openItemControl(item, evt.clientX, evt.clientY);
                 } else if (variableType === 0) {
-                    // Boolean mit Aktion direkt umschalten.
-                    requestAction('operate', JSON.stringify({
-                        floorId: state.activeFloor,
-                        itemId: target.dataset.id
-                    }));
+                    if (
+                        item.colorControlEnabled === true &&
+                        Number(item.colorVariableID || 0) > 0 &&
+                        Number(item._colorVariableType) === 1
+                    ) {
+                        // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
+                        // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
+                        openItemControl(item, evt.clientX, evt.clientY);
+                    } else {
+                        // Boolean ohne Farbsteuerung wie bisher direkt umschalten.
+                        requestAction('operate', JSON.stringify({
+                            floorId: state.activeFloor,
+                            itemId: target.dataset.id
+                        }));
+                    }
                 }
             }
             return;
@@ -7010,8 +7066,21 @@ HTML;
         }
         if (!entity) return;
 
-        entity[field] = Number(variableID) || 0;
-        const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
+        const selectedVariableID = Number(variableID) || 0;
+        const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
+
+        if (
+            entityType === 'item' &&
+            field === 'colorVariableID' &&
+            selectedVariableID > 0 &&
+            Number(selectedNode?.variableType) !== 1
+        ) {
+            statusEl.textContent = 'Farbvariable muss eine Integer-Variable sein';
+            return;
+        }
+
+        entity[field] = selectedVariableID;
+        const node = selectedNode;
 
         // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
         // ein Symcon-Stream-Medienobjekt gewählt werden.
@@ -7061,7 +7130,8 @@ HTML;
             variableID: '',
             secondaryVariableID: 'secondaryVariable',
             shutterVariableID: 'shutterVariable',
-            shutterSecondaryVariableID: 'shutterSecondaryVariable'
+            shutterSecondaryVariableID: 'shutterSecondaryVariable',
+            colorVariableID: 'colorVariable'
         };
         const prefix = map[field] ?? field.replace(/ID$/, '');
 
@@ -7244,6 +7314,23 @@ HTML;
         }
 
         requestAction('operateValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            value
+        }));
+    }
+
+    function sendItemColorValue(item, value) {
+        if (
+            !item ||
+            item.colorControlEnabled !== true ||
+            Number(item.colorVariableID || 0) <= 0 ||
+            item._colorVariableCanAction !== true
+        ) {
+            return;
+        }
+
+        requestAction('operateColorValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
             value
@@ -7435,11 +7522,45 @@ HTML;
             `;
         }
 
-        if (!html) {
-            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+        if (!html && Number(item._variableType) !== 0) {
+            html = '<div class="profile-hint">Für diese Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+        }
+
+        if (
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        ) {
+            const currentColor = itemColorControlCss(item) || '#FFFFFF';
+            const disabled = item._colorVariableCanAction === true ? '' : ' disabled';
+            html += `
+                <div class="field" style="margin-top:10px">
+                    <label>Farbe</label>
+                    <input type="color" data-control-color value="${currentColor}"${disabled}>
+                    ${item._colorVariableCanAction === true
+                        ? '<div class="profile-hint">Farbe auswählen – der Integer-Hexwert wird direkt an IP-Symcon gesendet.</div>'
+                        : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
+                </div>
+            `;
         }
 
         controlBody.innerHTML = html;
+
+        controlBody.querySelector('[data-control-bool]')?.addEventListener('click', btnEvent => {
+            const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
+            sendItemValue(item, value);
+            controlModal.classList.remove('open');
+            controlModal.setAttribute('aria-hidden', 'true');
+        });
+
+        const colorPicker = controlBody.querySelector('[data-control-color]');
+        if (colorPicker) {
+            colorPicker.addEventListener('change', () => {
+                const value = cssColorToInteger(colorPicker.value);
+                if (value === null) return;
+                sendItemColorValue(item, value);
+            });
+        }
 
         controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -7751,6 +7872,16 @@ HTML;
                             } else if (!manualIcon) {
                                 item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
+                            }
+                        }
+                    }
+
+                    for (const item of floor.items || []) {
+                        if (Number(item.colorVariableID || 0) === variableID) {
+                            for (const [key, value] of Object.entries(meta)) {
+                                if (!key.startsWith('_')) continue;
+                                const suffix = key.slice(1);
+                                item[`_colorVariable${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`] = value;
                             }
                         }
                     }
@@ -8111,6 +8242,21 @@ JAVASCRIPT;
                 );
                 break;
 
+            case 'operateColorValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $this->OperateItemColorValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
             case 'operateOpeningValue':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
@@ -8376,6 +8522,11 @@ JAVASCRIPT;
                 if ($id > 0 && IPS_VariableExists($id)) {
                     $ids[$id] = true;
                 }
+
+                $colorID = (int) ($item['colorVariableID'] ?? 0);
+                if ($colorID > 0 && IPS_VariableExists($colorID)) {
+                    $ids[$colorID] = true;
+                }
             }
 
             foreach (($floor['openings'] ?? []) as $opening) {
@@ -8449,6 +8600,30 @@ JAVASCRIPT;
                         } catch (Throwable $e) {
                             $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
                         }
+                    }
+                }
+            }
+
+            // Optionale zweite Farbvariable der Geräte ebenfalls als Runtime-Metadaten laden.
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $colorID = (int) ($item['colorVariableID'] ?? 0);
+                    if ($colorID <= 0 || !IPS_VariableExists($colorID)) {
+                        continue;
+                    }
+
+                    try {
+                        $meta = $this->GetVariableRuntimeMeta($colorID);
+                        foreach ($meta as $key => $value) {
+                            if (!str_starts_with($key, '_')) {
+                                continue;
+                            }
+                            $suffix = substr($key, 1);
+                            $targetKey = '_colorVariable' . ucfirst($suffix);
+                            $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $value;
+                        }
+                    } catch (Throwable $e) {
+                        $this->SendDebug('RuntimeColorValue', $e->getMessage(), 0);
                     }
                 }
             }
@@ -9498,6 +9673,42 @@ JAVASCRIPT;
 
                 // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
                 // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+                return;
+            }
+        }
+    }
+
+    private function OperateItemColorValue(string $FloorID, string $ItemID, mixed $Value): void
+    {
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['items'] ?? []) as $item) {
+                if ((string) ($item['id'] ?? '') !== $ItemID || ($item['colorControlEnabled'] ?? false) !== true) {
+                    continue;
+                }
+
+                $variableID = (int) ($item['colorVariableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                if ((int) ($variable['VariableType'] ?? -1) !== 1) {
+                    return;
+                }
+
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    return;
+                }
+
+                $targetValue = max(0, min(0xFFFFFF, (int) round((float) $Value)));
+                $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
         }
