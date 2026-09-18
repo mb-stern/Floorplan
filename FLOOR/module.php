@@ -302,22 +302,40 @@ class Floorplan extends IPSModuleStrict
         /* HTML-SDK: Bedienelemente bewusst UNTEN.
            Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
+            position: relative;
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: clamp(2px, .35vw, 6px);
+            overflow: visible;
             align-items: center;
-            padding: 8px;
+            padding: 8px 22px 8px 8px;
             background: var(--fp-panel);
             border-top: 1px solid var(--fp-border);
         }
 
         .toolbar .group {
             display: flex;
-            gap: 4px;
+            flex-wrap: nowrap;
+            gap: clamp(2px, .25vw, 4px);
             align-items: center;
-            padding-right: 8px;
-            margin-right: 2px;
+            min-width: 0;
+            padding-right: clamp(3px, .45vw, 8px);
+            margin-right: 0;
             border-right: 1px solid var(--fp-border);
+            flex: 1 1 auto;
+        }
+
+        /* Eine Gruppe bleibt in sich einzeilig. Reicht die Gesamtbreite nicht,
+           wechselt die komplette Gruppe in die zweite Fußleisten-Zeile. */
+        .toolbar .group {
+            flex-wrap: nowrap;
+        }
+
+        /* Die Bedienelemente verteilen den verfügbaren Platz innerhalb ihrer
+           Gruppe. Bei schmaleren Kacheln bleiben die kompakten clamp-Werte aktiv. */
+        .toolbar .group > button,
+        .toolbar .group > select {
+            flex: 1 1 auto;
         }
 
         .toolbar button,
@@ -327,7 +345,9 @@ class Floorplan extends IPSModuleStrict
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
-            padding: 5px 10px;
+            padding: 5px clamp(4px, .55vw, 10px);
+            font-size: clamp(10px, .78vw, 14px);
+            white-space: nowrap;
             cursor: pointer;
         }
 
@@ -340,12 +360,45 @@ class Floorplan extends IPSModuleStrict
             color: #ffd4d8;
         }
 
-        .toolbar .spacer { flex: 1; }
+        /* Kein künstlicher Leerraum am rechten Rand. */
+        .toolbar .spacer { display: none; }
+
+        /* Der Statuspunkt bleibt auch ohne Statustext sichtbar. */
+        .toolbar .status:empty {
+            display: flex;
+        }
 
         .status {
-            color: var(--fp-muted);
-            font-size: 12px;
-            white-space: nowrap;
+            /* Speicherstatus fest oben rechts in der Fußleiste.
+               Er nimmt nicht am Flex-Umbruch teil und kann deshalb nie
+               alleine in eine zweite Zeile wandern. */
+            position: absolute;
+            top: 50%;
+            right: 5px;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 0;
+            line-height: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .status::after {
+            content: '';
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #39c66d;
+            box-shadow: 0 0 0 1px rgba(255,255,255,.28);
+        }
+
+        .status.dirty::after {
+            background: #e65353;
         }
 
         .main {
@@ -1090,7 +1143,97 @@ class Floorplan extends IPSModuleStrict
         }
 
         .control-slider { min-width: 260px; padding: 6px 2px; }
-        .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .device-color-wheel-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 6px;
+    }
+
+    .device-color-side {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 58px;
+    }
+
+    .device-color-bool-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .device-color-power {
+        min-width: 64px;
+        height: 30px;
+        padding: 0 9px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .device-color-power.is-active {
+        box-shadow: inset 0 0 0 2px currentColor;
+        font-weight: 700;
+    }
+
+    .device-color-hex {
+        white-space: nowrap;
+        font-size: 11px;
+    }
+
+    .device-color-wheel {
+        position: relative;
+        width: 126px;
+        height: 126px;
+        min-width: 126px;
+        border-radius: 50%;
+        cursor: crosshair;
+        touch-action: none;
+        box-shadow: 0 0 0 1px rgba(127,127,127,.35);
+        background:
+            radial-gradient(circle at center, #fff 0%, rgba(255,255,255,.94) 8%, rgba(255,255,255,0) 70%),
+            conic-gradient(
+                #f00 0deg,
+                #ff0 60deg,
+                #0f0 120deg,
+                #0ff 180deg,
+                #00f 240deg,
+                #f0f 300deg,
+                #f00 360deg
+            );
+    }
+
+    .device-color-wheel.disabled {
+        cursor: default;
+        opacity: .55;
+    }
+
+    .device-color-wheel-marker {
+        position: absolute;
+        width: 13px;
+        height: 13px;
+        margin: -6.5px 0 0 -6.5px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0,0,0,.55);
+        pointer-events: none;
+    }
+
+    .device-color-preview {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 1px solid rgba(127,127,127,.55);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    }
+
+    .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
         .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
         .control-slider-row button {
             width: 38px;
@@ -1208,7 +1351,8 @@ class Floorplan extends IPSModuleStrict
             align-items: center;
             gap: 4px;
             width: auto;
-            flex: 0 0 auto;
+            min-width: 0;
+            flex: 0 1 auto;
         }
 
         .grid-size-input {
@@ -1711,17 +1855,9 @@ class Floorplan extends IPSModuleStrict
         <aside class="sidebar">
             <h3 id="propTitle">Projekteigenschaften</h3>
             <div id="properties"></div>
-            <div class="help">
+            <div id="selectionHelp" class="help">
                 <b>Bedienung</b><br>
-                Wand: Start- und Endpunkt anklicken.<br>
-                Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Möbel/Text/Formen: Werkzeug wählen und Position anklicken.<br>Geräte: IP-Symcon-Icon wird automatisch von der zugeordneten Variable übernommen und kann manuell geändert werden.<br>Objekte: 28 Easy-Floorplan-Symbole + 10 eigene Symbole verfügbar.<br>
-                Elemente: direkt anklicken und mit der Maus verschieben.<br>Geräte/Möbel/Formen: auswählen und am kleinen Resize-Punkt größer/kleiner ziehen.<br>
-                Verschieben: Button wählen und den gesamten Grundriss mit gedrückter linker Maustaste verschieben.<br>
-                Formen: Position anklicken; Formtyp, Name, Größe und Darstellung danach rechts einstellen.<br>
-                Mittlere Maustaste: Grundriss jederzeit verschieben.<br>
-                − / +: manuell heraus- oder hineinzoomen.<br>
-                Entf: ausgewähltes Element löschen.<br>Einpassen: nur die aktuelle Etage proportional komplett in die Kachel einpassen.
+                Element auswählen, um die passende Bedienhilfe anzuzeigen.
             </div>
         </aside>
     </div>
@@ -1842,6 +1978,7 @@ HTML;
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
+    const selectionHelp = document.getElementById('selectionHelp');
     const floorSelect = document.getElementById('floorSelect');
 
     let resizeFitTimer = null;
@@ -2074,6 +2211,8 @@ HTML;
                 if (typeof item.iconSvg !== 'string') item.iconSvg = '';
                 if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
                 if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
+                if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
+                item.colorVariableID = Number(item.colorVariableID) || 0;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -2176,7 +2315,9 @@ HTML;
 
     function markDirty() {
         dirty = true;
-        statusEl.textContent = 'Nicht gespeichert';
+        statusEl.textContent = '';
+        statusEl.classList.add('dirty');
+        statusEl.setAttribute('title', 'Nicht gespeichert');
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveProject, 1200);
     }
@@ -2187,9 +2328,13 @@ HTML;
         try {
             requestAction('save', JSON.stringify(state));
             dirty = false;
-            statusEl.textContent = 'Gespeichert';
+            statusEl.textContent = '';
+            statusEl.classList.remove('dirty');
+            statusEl.setAttribute('title', 'Gespeichert');
         } catch (e) {
-            statusEl.textContent = 'Speichern fehlgeschlagen';
+            statusEl.textContent = '';
+            statusEl.classList.add('dirty');
+            statusEl.setAttribute('title', 'Speichern fehlgeschlagen');
             console.error(e);
         }
     }
@@ -2225,7 +2370,12 @@ HTML;
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         scene.classList.toggle('runtime-view', isView);
-        statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : 'Editor');
+        // Im Editor keinen dauerhaften Modus-Text anzeigen. Der freie Platz
+        // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
+        // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
+        statusEl.textContent = '';
+        statusEl.classList.toggle('dirty', Boolean(dirty));
+        statusEl.setAttribute('title', dirty ? 'Nicht gespeichert' : 'Gespeichert');
 
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
@@ -3689,7 +3839,7 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor;
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3722,9 +3872,9 @@ HTML;
                 ? Math.max(1, symconGlowIntensity * 0.14)
                 : 7;
             const icon = effectiveItemIcon(item);
-            const effectiveStatusColor = hasIntegerPresentationColor
-                ? effectiveIntegerColor
-                : statusColor;
+            const controlledColor = itemColorControlCss(item);
+            const effectiveStatusColor = controlledColor
+                || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
 
             const showName = item.showName === true;
             const showValue = item.showValue === true;
@@ -3893,6 +4043,88 @@ HTML;
         const color = Number(value);
         if (!Number.isFinite(color) || color < 0) return '';
         return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function integerColorToCss(value) {
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function cssColorToInteger(value) {
+        const color = String(value || '').trim();
+        if (!/^#[0-9a-f]{6}$/i.test(color)) return null;
+        return parseInt(color.slice(1), 16);
+    }
+
+    function rgbHexToHsv(hex) {
+        const color = String(hex || '').replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(color)) return {h: 0, s: 0, v: 1};
+
+        const r = parseInt(color.slice(0, 2), 16) / 255;
+        const g = parseInt(color.slice(2, 4), 16) / 255;
+        const b = parseInt(color.slice(4, 6), 16) / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const d = max - min;
+
+        let h = 0;
+        if (d !== 0) {
+            if (max === r) h = ((g - b) / d) % 6;
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+        }
+
+        return {
+            h,
+            s: max === 0 ? 0 : d / max,
+            v: max
+        };
+    }
+
+    function hsvToRgbHex(h, s, v = 1) {
+        h = ((Number(h) % 360) + 360) % 360;
+        s = Math.max(0, Math.min(1, Number(s)));
+        v = Math.max(0, Math.min(1, Number(v)));
+
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let rp = 0, gp = 0, bp = 0;
+
+        if (h < 60) [rp, gp, bp] = [c, x, 0];
+        else if (h < 120) [rp, gp, bp] = [x, c, 0];
+        else if (h < 180) [rp, gp, bp] = [0, c, x];
+        else if (h < 240) [rp, gp, bp] = [0, x, c];
+        else if (h < 300) [rp, gp, bp] = [x, 0, c];
+        else [rp, gp, bp] = [c, 0, x];
+
+        const toHex = n => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+        return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
+    }
+
+    function itemColorControlCss(item) {
+        if (
+            item?.colorControlEnabled !== true ||
+            Number(item?.colorVariableID || 0) <= 0 ||
+            Number(item?._colorVariableType) !== 1
+        ) {
+            return '';
+        }
+
+        // Bei Bool-Geräten darf die gespeicherte Leuchtfarbe nur sichtbar sein,
+        // wenn die Hauptvariable tatsächlich EIN ist. Der Farbwert selbst bleibt
+        // gespeichert und steht beim nächsten Einschalten wieder zur Verfügung.
+        if (
+            Number(item?._variableType) === 0 &&
+            !truthyVariableValue(item?._rawValue)
+        ) {
+            return '';
+        }
+
+        return integerColorToCss(item?._colorVariableRawValue);
     }
 
     function associationButtonStyle(value) {
@@ -4750,6 +4982,72 @@ HTML;
         return html;
     }
 
+    function renderSelectionHelp() {
+        if (!selectionHelp) return;
+
+        if (!selected) {
+            selectionHelp.innerHTML = `
+                <b>Bedienung – Etage</b><br>
+                Hier werden die Eigenschaften der aktuellen Etage eingestellt.<br>
+                Mittlere Maustaste: Grundriss verschieben.<br>
+                − / +: manuell zoomen.<br>
+                Einpassen: aktuelle Etage vollständig einpassen.
+            `;
+            return;
+        }
+
+        const helpByType = {
+            item: `
+                <b>Bedienung – Gerät</b><br>
+                Gerät anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern.<br>
+                Hauptvariable über den IP-Symcon-Objektbaum auswählen.<br>
+                Boolean: direkt Ein/Aus schalten; bei vorhandenen Assoziationen werden deren Bezeichnungen verwendet.<br>
+                Boolean mit Farbsteuerung: zusätzlich eine Integer-Farbvariable (RGB/Hex) auswählen. In der Live-Ansicht stehen dann Ein/Aus und der Farbkreis gemeinsam zur Verfügung.<br>
+                Integer/Float: je nach Variablenprofil bzw. Darstellung über Assoziationen oder Zahlenbereich/Slider bedienen.<br>
+                String: Wert bzw. vorhandene String-Assoziation anzeigen; ohne Aktion reine Statusanzeige.<br>
+                Variablen ohne Aktion sind nur Statusanzeigen und nicht bedienbar.<br>
+                Icon und Statusdarstellung werden soweit möglich aus IP-Symcon übernommen und können angepasst werden.<br>
+                Löschen: ausgewähltes Gerät löschen.
+            `,
+            wall: `
+                <b>Bedienung – Wand</b><br>
+                Wand anklicken und über die Eigenschaften konfigurieren.<br>
+                Start- und Endpunkt können direkt verschoben werden.<br>
+                Löschen: ausgewählte Wand löschen.
+            `,
+            opening: `
+                <b>Bedienung – Tür/Fenster</b><br>
+                Element anklicken und entlang der Wand verschieben.<br>
+                Breite und weitere Eigenschaften konfigurieren.<br>
+                Löschen: ausgewähltes Element löschen.
+            `,
+            furniture: `
+                <b>Bedienung – Objekt</b><br>
+                Objekt anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern und bei Bedarf drehen.<br>
+                Löschen: ausgewähltes Objekt löschen.
+            `,
+            shape: `
+                <b>Bedienung – Form</b><br>
+                Form anklicken und verschieben.<br>
+                Größe, Drehung, Füllung und Darstellung konfigurieren.<br>
+                Löschen: ausgewählte Form löschen.
+            `,
+            text: `
+                <b>Bedienung – Text</b><br>
+                Text anklicken und verschieben.<br>
+                Inhalt und Darstellung konfigurieren.<br>
+                Löschen: ausgewählten Text löschen.
+            `
+        };
+
+        selectionHelp.innerHTML = helpByType[selected.type] || `
+            <b>Bedienung</b><br>
+            Das ausgewählte Element kann über seine Eigenschaften konfiguriert werden.
+        `;
+    }
+
     function renderProperties() {
         // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
         // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
@@ -4771,6 +5069,8 @@ HTML;
         if (propertiesControlActive || propertiesSelectOpen || activePropertyControl) {
             return;
         }
+
+        renderSelectionHelp();
         const floor = currentFloor();
 
         if (!selected) {
@@ -4988,11 +5288,43 @@ HTML;
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
                         : ''}
                 </div>
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
+                            Farbsteuerung
+                        </label>
+                        ${obj.colorControlEnabled === true ? `
+                            <label>Farbvariable (Integer / Hex Color)</label>
+                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                                value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
+                            ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
+                                ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
+                                : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                        ` : ''}
+                    </div>
+                ` : ''}
                 ${canConfigureStatusColor(obj) ? `
                     <div class="field">
-                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
-                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
-                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                        ${(() => {
+                            const configuredLightColor = (
+                                obj.colorControlEnabled === true &&
+                                Number(obj.colorVariableID || 0) > 0 &&
+                                Number(obj._colorVariableType) === 1
+                            ) ? integerColorToCss(obj._colorVariableRawValue) : '';
+
+                            return `
+                                <label>${configuredLightColor
+                                    ? 'Aktuelle Leuchtfarbe'
+                                    : (Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe')}</label>
+                                <input data-field="statusColor" type="color"
+                                    value="${configuredLightColor || normalizeStatusColor(obj.statusColor)}"
+                                    ${configuredLightColor ? 'disabled' : ''}>
+                                ${configuredLightColor
+                                    ? `<div class="profile-hint">Die Statusfarbe folgt automatisch der ausgewählten Leuchtfarbe.</div>`
+                                    : (Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : '')}
+                            `;
+                        })()}
                     </div>
                 ` : (
                     hasAutomaticIntegerStatusColor(obj)
@@ -5405,6 +5737,12 @@ HTML;
                     refreshPropertiesAfterStructuralChange();
                 }
 
+                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
+                    // Die Zuordnung bleibt gespeichert, nur die Bedienung wird ein-/ausgeblendet.
+                    // Eigenschaften sofort neu aufbauen, damit kein weiterer Klick nötig ist.
+                    refreshPropertiesAfterStructuralChange();
+                }
+
                 if (selected.type === 'item' && fieldName === 'statusColor') {
                     obj.statusColorManual = true;
                 }
@@ -5457,6 +5795,7 @@ HTML;
 
                 pushHistory();
                 markDirty();
+
                 render();
             });
         });
@@ -5913,7 +6252,7 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        if (!associations.length && hasRange) {
+        if (Number(item._variableType) !== 0 && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const suffix = String(profile.suffix || '');
@@ -6162,11 +6501,21 @@ HTML;
                     // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
                     openItemControl(item, evt.clientX, evt.clientY);
                 } else if (variableType === 0) {
-                    // Boolean mit Aktion direkt umschalten.
-                    requestAction('operate', JSON.stringify({
-                        floorId: state.activeFloor,
-                        itemId: target.dataset.id
-                    }));
+                    if (
+                        item.colorControlEnabled === true &&
+                        Number(item.colorVariableID || 0) > 0 &&
+                        Number(item._colorVariableType) === 1
+                    ) {
+                        // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
+                        // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
+                        openItemControl(item, evt.clientX, evt.clientY);
+                    } else {
+                        // Boolean ohne Farbsteuerung wie bisher direkt umschalten.
+                        requestAction('operate', JSON.stringify({
+                            floorId: state.activeFloor,
+                            itemId: target.dataset.id
+                        }));
+                    }
                 }
             }
             return;
@@ -7010,8 +7359,21 @@ HTML;
         }
         if (!entity) return;
 
-        entity[field] = Number(variableID) || 0;
-        const node = entity[field] ? findTreeNode(objectTree, entity[field]) : null;
+        const selectedVariableID = Number(variableID) || 0;
+        const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
+
+        if (
+            entityType === 'item' &&
+            field === 'colorVariableID' &&
+            selectedVariableID > 0 &&
+            Number(selectedNode?.variableType) !== 1
+        ) {
+            statusEl.textContent = 'Farbvariable muss eine Integer-Variable sein';
+            return;
+        }
+
+        entity[field] = selectedVariableID;
+        const node = selectedNode;
 
         // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
         // ein Symcon-Stream-Medienobjekt gewählt werden.
@@ -7061,7 +7423,8 @@ HTML;
             variableID: '',
             secondaryVariableID: 'secondaryVariable',
             shutterVariableID: 'shutterVariable',
-            shutterSecondaryVariableID: 'shutterSecondaryVariable'
+            shutterSecondaryVariableID: 'shutterSecondaryVariable',
+            colorVariableID: 'colorVariable'
         };
         const prefix = map[field] ?? field.replace(/ID$/, '');
 
@@ -7217,6 +7580,7 @@ HTML;
         variableModal.setAttribute('aria-hidden', 'true');
         pushHistory();
         markDirty();
+
         render();
         refreshPropertiesAfterStructuralChange();
     }
@@ -7244,6 +7608,23 @@ HTML;
         }
 
         requestAction('operateValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            value
+        }));
+    }
+
+    function sendItemColorValue(item, value) {
+        if (
+            !item ||
+            item.colorControlEnabled !== true ||
+            Number(item.colorVariableID || 0) <= 0 ||
+            item._colorVariableCanAction !== true
+        ) {
+            return;
+        }
+
+        requestAction('operateColorValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
             value
@@ -7401,7 +7782,16 @@ HTML;
 
         let html = '';
 
-        if (associations.length) {
+        const colorControlledBool = (
+            Number(item._variableType) === 0 &&
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        );
+
+        // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
+        // ausschließlich rechts neben dem Farbkreis dargestellt.
+        if (associations.length && !colorControlledBool) {
             html += '<div class="control-associations">';
             for (const association of associations) {
                 const value = Number(association.value);
@@ -7417,7 +7807,7 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        if (!associations.length && hasRange) {
+        if (!colorControlledBool && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const prefix = String(profile.prefix || '');
@@ -7435,11 +7825,161 @@ HTML;
             `;
         }
 
-        if (!html) {
-            html = '<div class="profile-hint">Für diese Integer-Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+        if (!html && Number(item._variableType) !== 0) {
+            html = '<div class="profile-hint">Für diese Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+        }
+
+        if (
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        ) {
+            // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
+            // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
+            // Die Plan-Darstellung bleibt davon vollständig getrennt.
+            const currentColor = integerColorToCss(item?._colorVariableRawValue) || '#FFFFFF';
+            const disabled = item._colorVariableCanAction === true ? '' : ' disabled';
+            html += `
+                <div class="field" style="margin-top:10px">
+                    <label>Farbe</label>
+                    <div class="device-color-wheel-wrap">
+                        <div class="device-color-wheel${item._colorVariableCanAction === true ? '' : ' disabled'}"
+                            data-control-color-wheel data-color="${currentColor}">
+                            <span class="device-color-wheel-marker" data-control-color-marker></span>
+                        </div>
+                        <div class="device-color-side">
+                            ${Number(item._variableType) === 0 ? (() => {
+                                const boolAssociations = Array.isArray(item?._profile?.associations)
+                                    ? item._profile.associations
+                                    : [];
+
+                                if (boolAssociations.length) {
+                                    return `<div class="device-color-bool-actions">` +
+                                        boolAssociations.map(association => {
+                                            const associationValue = Boolean(Number(association?.value));
+                                            const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
+                                            const active = truthyVariableValue(item._rawValue) === associationValue;
+                                            return `<button type="button"
+                                                class="device-color-power${active ? ' is-active' : ''}"
+                                                data-control-bool="${associationValue ? '1' : '0'}">${escapeHtml(caption)}</button>`;
+                                        }).join('') +
+                                        `</div>`;
+                                }
+
+                                // Bool ohne Profil-Assoziationen: beide Zustände anbieten.
+                                return `<div class="device-color-bool-actions">
+                                    <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
+                                    <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
+                                </div>`;
+                            })() : ''}
+                            <div class="device-color-preview" data-control-color-preview style="background:${currentColor}"></div>
+                            <div class="profile-hint device-color-hex" data-control-color-text>${escapeHtml(currentColor)}</div>
+                        </div>
+                    </div>
+                    ${item._colorVariableCanAction === true
+                        ? '<div class="profile-hint">Im Farbkreis direkt die gewünschte Leuchtfarbe auswählen.</div>'
+                        : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
+                </div>
+            `;
         }
 
         controlBody.innerHTML = html;
+
+        controlBody.querySelectorAll('[data-control-bool]').forEach(button => {
+            button.addEventListener('click', btnEvent => {
+                const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
+                sendItemValue(item, value);
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const colorWheel = controlBody.querySelector('[data-control-color-wheel]');
+        if (colorWheel) {
+            const marker = colorWheel.querySelector('[data-control-color-marker]');
+            const preview = controlBody.querySelector('[data-control-color-preview]');
+            const colorText = controlBody.querySelector('[data-control-color-text]');
+            const initial = rgbHexToHsv(colorWheel.dataset.color || '#FFFFFF');
+
+            const placeMarker = (h, saturation) => {
+                if (!marker) return;
+                const rect = colorWheel.getBoundingClientRect();
+                const radius = Math.min(rect.width, rect.height) / 2;
+                if (radius <= 0) return;
+                const usableRadius = Math.max(0, radius - 7);
+                const angle = (Number(h) - 90) * Math.PI / 180;
+                const distance = Math.max(0, Math.min(1, Number(saturation))) * usableRadius;
+                marker.style.left = `${radius + Math.cos(angle) * distance}px`;
+                marker.style.top = `${radius + Math.sin(angle) * distance}px`;
+            };
+
+            const placeInitialMarker = () => {
+                const rect = colorWheel.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                placeMarker(initial.h, initial.s);
+            };
+
+            // Das Popup ist beim Aufbau noch nicht vollständig positioniert.
+            // Marker erst nach dem Browser-Layout in den Farbkreis setzen.
+            requestAnimationFrame(() => {
+                placeInitialMarker();
+                requestAnimationFrame(placeInitialMarker);
+            });
+
+            if (typeof ResizeObserver === 'function') {
+                const colorWheelResizeObserver = new ResizeObserver(placeInitialMarker);
+                colorWheelResizeObserver.observe(colorWheel);
+            }
+
+            if (item._colorVariableCanAction === true) {
+                let draggingColor = false;
+
+                const updateFromPointer = event => {
+                    const rect = colorWheel.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                    const dx = event.clientX - cx;
+                    const dy = event.clientY - cy;
+                    const radius = Math.max(1, rect.width / 2 - 7);
+                    const saturation = Math.max(0, Math.min(1, Math.hypot(dx, dy) / radius));
+                    let hue = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                    if (hue < 0) hue += 360;
+
+                    // Der Farbkreis entspricht dem bekannten Hue/Sättigungs-Kreis:
+                    // Zentrum = Weiß, Außenrand = volle Farbe.
+                    const color = hsvToRgbHex(hue, saturation, 1);
+                    placeMarker(hue, saturation);
+                    if (preview) preview.style.background = color;
+                    if (colorText) colorText.textContent = color;
+
+                    const value = cssColorToInteger(color);
+                    if (value !== null) sendItemColorValue(item, value);
+                };
+
+                colorWheel.addEventListener('pointerdown', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    draggingColor = true;
+                    try { colorWheel.setPointerCapture(event.pointerId); } catch (_) {}
+                    updateFromPointer(event);
+                });
+
+                colorWheel.addEventListener('pointermove', event => {
+                    if (!draggingColor) return;
+                    event.preventDefault();
+                    updateFromPointer(event);
+                });
+
+                const finishColor = event => {
+                    if (!draggingColor) return;
+                    draggingColor = false;
+                    try { colorWheel.releasePointerCapture(event.pointerId); } catch (_) {}
+                };
+
+                colorWheel.addEventListener('pointerup', finishColor);
+                colorWheel.addEventListener('pointercancel', finishColor);
+            }
+        }
 
         controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -7540,6 +8080,11 @@ HTML;
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
             if (data?.command === 'reloadHtml') {
+                // Genau wie bei allen anderen Projektfeldern zuerst einen eventuell
+                // noch offenen normalen Autosave abschließen, dann HTML neu laden.
+                if (dirty) {
+                    saveProject();
+                }
                 window.location.reload();
                 return;
             }
@@ -7751,6 +8296,37 @@ HTML;
                             } else if (!manualIcon) {
                                 item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
                                 item.iconSvg = '';
+                            }
+                        }
+                    }
+
+                    for (const item of floor.items || []) {
+                        if (Number(item.colorVariableID || 0) === variableID) {
+                            const colorRuntimeMap = {
+                                _variablePath: '_colorVariablePath',
+                                _valueText: '_colorVariableValueText',
+                                _rawValue: '_colorVariableRawValue',
+                                _variableType: '_colorVariableType',
+                                _profileName: '_colorVariableProfileName',
+                                _profileSummary: '_colorVariableProfileSummary',
+                                _profile: '_colorVariableProfile',
+                                _canAction: '_colorVariableCanAction',
+                                _objectIcon: '_colorVariableObjectIcon',
+                                _hasLegacyProfile: '_colorVariableHasLegacyProfile',
+                                _hasNewPresentation: '_colorVariableHasNewPresentation',
+                                _presentationIconOff: '_colorVariablePresentationIconOff',
+                                _presentationIconOn: '_colorVariablePresentationIconOn',
+                                _presentationIcon: '_colorVariablePresentationIcon',
+                                _glowColor: '_colorVariableGlowColor',
+                                _glowIntensity: '_colorVariableGlowIntensity',
+                                _legacyColorOn: '_colorVariableLegacyColorOn',
+                                _legacyCurrentColor: '_colorVariableLegacyCurrentColor',
+                                _newIntegerStatusColor: '_colorVariableNewIntegerStatusColor'
+                            };
+                            for (const [sourceKey, targetKey] of Object.entries(colorRuntimeMap)) {
+                                if (Object.prototype.hasOwnProperty.call(meta, sourceKey)) {
+                                    item[targetKey] = meta[sourceKey];
+                                }
                             }
                         }
                     }
@@ -8111,6 +8687,21 @@ JAVASCRIPT;
                 );
                 break;
 
+            case 'operateColorValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $this->OperateItemColorValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
             case 'operateOpeningValue':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
@@ -8376,6 +8967,11 @@ JAVASCRIPT;
                 if ($id > 0 && IPS_VariableExists($id)) {
                     $ids[$id] = true;
                 }
+
+                $colorID = (int) ($item['colorVariableID'] ?? 0);
+                if ($colorID > 0 && IPS_VariableExists($colorID)) {
+                    $ids[$colorID] = true;
+                }
             }
 
             foreach (($floor['openings'] ?? []) as $opening) {
@@ -8449,6 +9045,53 @@ JAVASCRIPT;
                         } catch (Throwable $e) {
                             $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
                         }
+                    }
+                }
+            }
+
+            // Optionale zweite Farbvariable der Geräte ebenfalls als Runtime-Metadaten laden.
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $colorID = (int) ($item['colorVariableID'] ?? 0);
+                    if ($colorID <= 0 || !IPS_VariableExists($colorID)) {
+                        continue;
+                    }
+
+                    try {
+                        $meta = $this->GetVariableRuntimeMeta($colorID);
+
+                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
+                        // Variablen verwenden. Insbesondere wird aus _variableType
+                        // _colorVariableType (nicht _colorVariableVariableType).
+                        $runtimeMap = [
+                            '_variablePath'          => '_colorVariablePath',
+                            '_valueText'             => '_colorVariableValueText',
+                            '_rawValue'              => '_colorVariableRawValue',
+                            '_variableType'          => '_colorVariableType',
+                            '_profileName'           => '_colorVariableProfileName',
+                            '_profileSummary'        => '_colorVariableProfileSummary',
+                            '_profile'               => '_colorVariableProfile',
+                            '_canAction'             => '_colorVariableCanAction',
+                            '_objectIcon'            => '_colorVariableObjectIcon',
+                            '_hasLegacyProfile'      => '_colorVariableHasLegacyProfile',
+                            '_hasNewPresentation'    => '_colorVariableHasNewPresentation',
+                            '_presentationIconOff'   => '_colorVariablePresentationIconOff',
+                            '_presentationIconOn'    => '_colorVariablePresentationIconOn',
+                            '_presentationIcon'      => '_colorVariablePresentationIcon',
+                            '_glowColor'             => '_colorVariableGlowColor',
+                            '_glowIntensity'         => '_colorVariableGlowIntensity',
+                            '_legacyColorOn'         => '_colorVariableLegacyColorOn',
+                            '_legacyCurrentColor'    => '_colorVariableLegacyCurrentColor',
+                            '_newIntegerStatusColor' => '_colorVariableNewIntegerStatusColor'
+                        ];
+
+                        foreach ($runtimeMap as $sourceKey => $targetKey) {
+                            if (array_key_exists($sourceKey, $meta)) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $meta[$sourceKey];
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        $this->SendDebug('RuntimeColorValue', $e->getMessage(), 0);
                     }
                 }
             }
@@ -9498,6 +10141,42 @@ JAVASCRIPT;
 
                 // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
                 // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+                return;
+            }
+        }
+    }
+
+    private function OperateItemColorValue(string $FloorID, string $ItemID, mixed $Value): void
+    {
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['items'] ?? []) as $item) {
+                if ((string) ($item['id'] ?? '') !== $ItemID || ($item['colorControlEnabled'] ?? false) !== true) {
+                    continue;
+                }
+
+                $variableID = (int) ($item['colorVariableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                if ((int) ($variable['VariableType'] ?? -1) !== 1) {
+                    return;
+                }
+
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    return;
+                }
+
+                $targetValue = max(0, min(0xFFFFFF, (int) round((float) $Value)));
+                $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
         }
