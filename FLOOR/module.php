@@ -5649,13 +5649,6 @@ HTML;
                 pushHistory();
                 markDirty();
 
-                // Die neue Farbsteuerung darf bei einem Modul-/HTML-Reload nicht
-                // im verzögerten Autosave hängen bleiben. Checkbox daher sofort
-                // persistent in FloorplanData schreiben.
-                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
-                    saveProject();
-                }
-
                 render();
             });
         });
@@ -6103,7 +6096,14 @@ HTML;
             Number(item._colorVariableType) === 1
         );
 
-        if (Number(item._variableType) === 0 && !boolColorControl) {
+        if (
+            Number(item._variableType) === 0 &&
+            !(
+                item.colorControlEnabled === true &&
+                Number(item.colorVariableID || 0) > 0 &&
+                Number(item._colorVariableType) === 1
+            )
+        ) {
             const isOn = truthyVariableValue(item._rawValue);
             html += `<div class="control-associations">
                 <button type="button" data-control-bool="${isOn ? '0' : '1'}">${isOn ? 'Ausschalten' : 'Einschalten'}</button>
@@ -7455,13 +7455,6 @@ HTML;
         pushHistory();
         markDirty();
 
-        // Die zweite Farbvariable ist eine persistente Gerätezuordnung.
-        // Sofort speichern, damit ein anschließendes Modul-Update/Reload die
-        // Auswahl nicht auf den zuletzt gespeicherten Projektstand zurücksetzt.
-        if (entityType === 'item' && field === 'colorVariableID') {
-            saveProject();
-        }
-
         render();
         refreshPropertiesAfterStructuralChange();
     }
@@ -7931,6 +7924,11 @@ HTML;
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
             if (data?.command === 'reloadHtml') {
+                // Genau wie bei allen anderen Projektfeldern zuerst einen eventuell
+                // noch offenen normalen Autosave abschließen, dann HTML neu laden.
+                if (dirty) {
+                    saveProject();
+                }
                 window.location.reload();
                 return;
             }
