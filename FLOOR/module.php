@@ -302,6 +302,7 @@ class Floorplan extends IPSModuleStrict
         /* HTML-SDK: Bedienelemente bewusst UNTEN.
            Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
+            position: relative;
             display: flex;
             flex-wrap: wrap;
             gap: clamp(2px, .35vw, 6px);
@@ -367,12 +368,21 @@ class Floorplan extends IPSModuleStrict
         }
 
         .status {
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            z-index: 20;
+            max-width: min(180px, 35vw);
+            padding: 3px 7px;
+            border-radius: 5px;
+            background: var(--fp-panel);
             color: var(--fp-muted);
             font-size: clamp(9px, .68vw, 12px);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-width: 0;
+            line-height: 1.2;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            text-align: right;
+            pointer-events: none;
         }
 
         .main {
