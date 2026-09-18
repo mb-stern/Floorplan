@@ -3781,7 +3781,7 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || controlledColorForRender !== '';
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3815,14 +3815,7 @@ HTML;
                 : 7;
             const icon = effectiveItemIcon(item);
             const controlledColor = itemColorControlCss(item);
-            const controlledColorForRender = (
-                controlledColor !== '' &&
-                (
-                    Number(item._variableType) !== 0 ||
-                    truthyVariableValue(item._rawValue)
-                )
-            ) ? controlledColor : '';
-            const effectiveStatusColor = controlledColorForRender
+            const effectiveStatusColor = controlledColor
                 || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
 
             const showName = item.showName === true;
@@ -4063,10 +4056,16 @@ HTML;
             return '';
         }
 
-        // Den tatsächlichen Farbwert immer liefern. Der Farbwähler und seine
-        // Vorschau sollen die gespeicherte Leuchtfarbe auch bei ausgeschalteter
-        // Lampe anzeigen. Ob die Farbe im Planer leuchtet, entscheidet separat
-        // der Geräte-Renderer anhand des Ein/Aus-Zustands.
+        // Bei Bool-Geräten darf die gespeicherte Leuchtfarbe nur sichtbar sein,
+        // wenn die Hauptvariable tatsächlich EIN ist. Der Farbwert selbst bleibt
+        // gespeichert und steht beim nächsten Einschalten wieder zur Verfügung.
+        if (
+            Number(item?._variableType) === 0 &&
+            !truthyVariableValue(item?._rawValue)
+        ) {
+            return '';
+        }
+
         return integerColorToCss(item?._colorVariableRawValue);
     }
 
@@ -7699,7 +7698,10 @@ HTML;
             Number(item.colorVariableID || 0) > 0 &&
             Number(item._colorVariableType) === 1
         ) {
-            const currentColor = itemColorControlCss(item) || '#FFFFFF';
+            // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
+            // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
+            // Die Plan-Darstellung bleibt davon vollständig getrennt.
+            const currentColor = integerColorToCss(item?._colorVariableRawValue) || '#FFFFFF';
             const disabled = item._colorVariableCanAction === true ? '' : ' disabled';
             html += `
                 <div class="field" style="margin-top:10px">
@@ -10168,4 +10170,3 @@ JAVASCRIPT;
         return $counts;
     }
 }
- 
