@@ -321,6 +321,14 @@ class Floorplan extends IPSModuleStrict
             padding-right: clamp(3px, .45vw, 8px);
             margin-right: 0;
             border-right: 1px solid var(--fp-border);
+            flex: 1 1 auto;
+        }
+
+        /* Die Bedienelemente verteilen den verfügbaren Platz innerhalb ihrer
+           Gruppe. Bei schmaleren Kacheln bleiben die kompakten clamp-Werte aktiv. */
+        .toolbar .group > button,
+        .toolbar .group > select {
+            flex: 1 1 auto;
         }
 
         .toolbar button,
@@ -345,7 +353,8 @@ class Floorplan extends IPSModuleStrict
             color: #ffd4d8;
         }
 
-        .toolbar .spacer { flex: 1 1 0; min-width: 0; }
+        /* Kein künstlicher Leerraum am rechten Rand. */
+        .toolbar .spacer { display: none; }
 
         .toolbar .status:empty {
             display: none;
