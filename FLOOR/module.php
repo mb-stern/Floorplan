@@ -1090,42 +1090,57 @@ class Floorplan extends IPSModuleStrict
         }
 
         .control-slider { min-width: 260px; padding: 6px 2px; }
-        .device-color-picker-row {
+        .device-color-wheel-wrap {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-top: 4px;
+        gap: 12px;
+        margin-top: 6px;
     }
 
-    .device-color-picker-circle {
-        width: 38px;
-        height: 38px;
-        min-width: 38px;
-        padding: 0;
-        border: 2px solid var(--content-color, currentColor);
+    .device-color-wheel {
+        position: relative;
+        width: 126px;
+        height: 126px;
+        min-width: 126px;
         border-radius: 50%;
-        background: transparent;
-        cursor: pointer;
-        overflow: hidden;
+        cursor: crosshair;
+        touch-action: none;
+        box-shadow: 0 0 0 1px rgba(127,127,127,.35);
+        background:
+            radial-gradient(circle at center, #fff 0%, rgba(255,255,255,.94) 8%, rgba(255,255,255,0) 70%),
+            conic-gradient(
+                #f00 0deg,
+                #ff0 60deg,
+                #0f0 120deg,
+                #0ff 180deg,
+                #00f 240deg,
+                #f0f 300deg,
+                #f00 360deg
+            );
     }
 
-    .device-color-picker-circle::-webkit-color-swatch-wrapper {
-        padding: 0;
-    }
-
-    .device-color-picker-circle::-webkit-color-swatch {
-        border: 0;
-        border-radius: 50%;
-    }
-
-    .device-color-picker-circle::-moz-color-swatch {
-        border: 0;
-        border-radius: 50%;
-    }
-
-    .device-color-picker-circle:disabled {
+    .device-color-wheel.disabled {
         cursor: default;
         opacity: .55;
+    }
+
+    .device-color-wheel-marker {
+        position: absolute;
+        width: 13px;
+        height: 13px;
+        margin: -6.5px 0 0 -6.5px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0,0,0,.55);
+        pointer-events: none;
+    }
+
+    .device-color-preview {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 1px solid rgba(127,127,127,.55);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
     }
 
     .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
@@ -3947,6 +3962,54 @@ HTML;
         return parseInt(color.slice(1), 16);
     }
 
+    function rgbHexToHsv(hex) {
+        const color = String(hex || '').replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(color)) return {h: 0, s: 0, v: 1};
+
+        const r = parseInt(color.slice(0, 2), 16) / 255;
+        const g = parseInt(color.slice(2, 4), 16) / 255;
+        const b = parseInt(color.slice(4, 6), 16) / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const d = max - min;
+
+        let h = 0;
+        if (d !== 0) {
+            if (max === r) h = ((g - b) / d) % 6;
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+        }
+
+        return {
+            h,
+            s: max === 0 ? 0 : d / max,
+            v: max
+        };
+    }
+
+    function hsvToRgbHex(h, s, v = 1) {
+        h = ((Number(h) % 360) + 360) % 360;
+        s = Math.max(0, Math.min(1, Number(s)));
+        v = Math.max(0, Math.min(1, Number(v)));
+
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let rp = 0, gp = 0, bp = 0;
+
+        if (h < 60) [rp, gp, bp] = [c, x, 0];
+        else if (h < 120) [rp, gp, bp] = [x, c, 0];
+        else if (h < 180) [rp, gp, bp] = [0, c, x];
+        else if (h < 240) [rp, gp, bp] = [0, x, c];
+        else if (h < 300) [rp, gp, bp] = [x, 0, c];
+        else [rp, gp, bp] = [c, 0, x];
+
+        const toHex = n => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+        return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
+    }
+
     function itemColorControlCss(item) {
         if (
             item?.colorControlEnabled !== true ||
@@ -5067,9 +5130,17 @@ HTML;
                 </div>
                 ${canConfigureStatusColor(obj) ? `
                     <div class="field">
-                        <label>${Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe'}</label>
-                        <input data-field="statusColor" type="color" value="${normalizeStatusColor(obj.statusColor)}">
-                        ${Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : ''}
+                        <label>${obj.colorControlEnabled === true && itemColorControlCss(obj)
+                            ? 'Aktuelle Leuchtfarbe'
+                            : (Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe')}</label>
+                        <input data-field="statusColor" type="color"
+                            value="${obj.colorControlEnabled === true && itemColorControlCss(obj)
+                                ? itemColorControlCss(obj)
+                                : normalizeStatusColor(obj.statusColor)}"
+                            ${obj.colorControlEnabled === true && itemColorControlCss(obj) ? 'disabled' : ''}>
+                        ${obj.colorControlEnabled === true && itemColorControlCss(obj)
+                            ? `<div class="profile-hint">Die Statusfarbe folgt automatisch der ausgewählten Leuchtfarbe.</div>`
+                            : (Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : '')}
                     </div>
                 ` : (
                     hasAutomaticIntegerStatusColor(obj)
@@ -7580,13 +7651,18 @@ HTML;
             html += `
                 <div class="field" style="margin-top:10px">
                     <label>Farbe</label>
-                    <div class="device-color-picker-row">
-                        <input class="device-color-picker-circle" type="color" data-control-color
-                            value="${currentColor}"${disabled} title="Farbe auswählen">
-                        <span class="profile-hint">${escapeHtml(currentColor)}</span>
+                    <div class="device-color-wheel-wrap">
+                        <div class="device-color-wheel${item._colorVariableCanAction === true ? '' : ' disabled'}"
+                            data-control-color-wheel data-color="${currentColor}">
+                            <span class="device-color-wheel-marker" data-control-color-marker></span>
+                        </div>
+                        <div>
+                            <div class="device-color-preview" data-control-color-preview style="background:${currentColor}"></div>
+                            <div class="profile-hint" data-control-color-text>${escapeHtml(currentColor)}</div>
+                        </div>
                     </div>
                     ${item._colorVariableCanAction === true
-                        ? '<div class="profile-hint">Farbe auswählen – der Integer-Hexwert wird direkt an IP-Symcon gesendet.</div>'
+                        ? '<div class="profile-hint">Im Farbkreis direkt die gewünschte Leuchtfarbe auswählen.</div>'
                         : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
                 </div>
             `;
@@ -7601,13 +7677,73 @@ HTML;
             controlModal.setAttribute('aria-hidden', 'true');
         });
 
-        const colorPicker = controlBody.querySelector('[data-control-color]');
-        if (colorPicker) {
-            colorPicker.addEventListener('change', () => {
-                const value = cssColorToInteger(colorPicker.value);
-                if (value === null) return;
-                sendItemColorValue(item, value);
-            });
+        const colorWheel = controlBody.querySelector('[data-control-color-wheel]');
+        if (colorWheel) {
+            const marker = colorWheel.querySelector('[data-control-color-marker]');
+            const preview = controlBody.querySelector('[data-control-color-preview]');
+            const colorText = controlBody.querySelector('[data-control-color-text]');
+            const initial = rgbHexToHsv(colorWheel.dataset.color || '#FFFFFF');
+
+            const placeMarker = (h, saturation) => {
+                if (!marker) return;
+                const radius = colorWheel.clientWidth / 2;
+                const usableRadius = Math.max(0, radius - 7);
+                const angle = (Number(h) - 90) * Math.PI / 180;
+                const distance = Math.max(0, Math.min(1, Number(saturation))) * usableRadius;
+                marker.style.left = `${radius + Math.cos(angle) * distance}px`;
+                marker.style.top = `${radius + Math.sin(angle) * distance}px`;
+            };
+
+            placeMarker(initial.h, initial.s);
+
+            if (item._colorVariableCanAction === true) {
+                let draggingColor = false;
+
+                const updateFromPointer = event => {
+                    const rect = colorWheel.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                    const dx = event.clientX - cx;
+                    const dy = event.clientY - cy;
+                    const radius = Math.max(1, rect.width / 2 - 7);
+                    const saturation = Math.max(0, Math.min(1, Math.hypot(dx, dy) / radius));
+                    let hue = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                    if (hue < 0) hue += 360;
+
+                    // Der Farbkreis entspricht dem bekannten Hue/Sättigungs-Kreis:
+                    // Zentrum = Weiß, Außenrand = volle Farbe.
+                    const color = hsvToRgbHex(hue, saturation, 1);
+                    placeMarker(hue, saturation);
+                    if (preview) preview.style.background = color;
+                    if (colorText) colorText.textContent = color;
+
+                    const value = cssColorToInteger(color);
+                    if (value !== null) sendItemColorValue(item, value);
+                };
+
+                colorWheel.addEventListener('pointerdown', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    draggingColor = true;
+                    try { colorWheel.setPointerCapture(event.pointerId); } catch (_) {}
+                    updateFromPointer(event);
+                });
+
+                colorWheel.addEventListener('pointermove', event => {
+                    if (!draggingColor) return;
+                    event.preventDefault();
+                    updateFromPointer(event);
+                });
+
+                const finishColor = event => {
+                    if (!draggingColor) return;
+                    draggingColor = false;
+                    try { colorWheel.releasePointerCapture(event.pointerId); } catch (_) {}
+                };
+
+                colorWheel.addEventListener('pointerup', finishColor);
+                colorWheel.addEventListener('pointercancel', finishColor);
+            }
         }
 
         controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
