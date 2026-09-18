@@ -6089,28 +6089,7 @@ HTML;
 
         let html = '';
 
-        const boolColorControl = (
-            Number(item._variableType) === 0 &&
-            item.colorControlEnabled === true &&
-            Number(item.colorVariableID || 0) > 0 &&
-            Number(item._colorVariableType) === 1
-        );
-
-        if (
-            Number(item._variableType) === 0 &&
-            !(
-                item.colorControlEnabled === true &&
-                Number(item.colorVariableID || 0) > 0 &&
-                Number(item._colorVariableType) === 1
-            )
-        ) {
-            const isOn = truthyVariableValue(item._rawValue);
-            html += `<div class="control-associations">
-                <button type="button" data-control-bool="${isOn ? '0' : '1'}">${isOn ? 'Ausschalten' : 'Einschalten'}</button>
-            </div>`;
-        }
-
-        if (Number(item._variableType) !== 0 && associations.length) {
+        if (associations.length) {
             html += '<div class="control-associations">';
             for (const association of associations) {
                 const value = Number(association.value);
@@ -7656,7 +7635,16 @@ HTML;
 
         let html = '';
 
-        if (associations.length) {
+        const colorControlledBool = (
+            Number(item._variableType) === 0 &&
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        );
+
+        // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
+        // ausschließlich rechts neben dem Farbkreis dargestellt.
+        if (associations.length && !colorControlledBool) {
             html += '<div class="control-associations">';
             for (const association of associations) {
                 const value = Number(association.value);
@@ -7672,7 +7660,7 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        if (!associations.length && hasRange) {
+        if (!colorControlledBool && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const prefix = String(profile.prefix || '');
