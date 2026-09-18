@@ -1097,6 +1097,34 @@ class Floorplan extends IPSModuleStrict
         margin-top: 6px;
     }
 
+    .device-color-side {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 58px;
+    }
+
+    .device-color-power {
+        min-width: 54px;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .device-color-power.is-on {
+        box-shadow: inset 0 0 0 1px currentColor;
+    }
+
+    .device-color-hex {
+        white-space: nowrap;
+        font-size: 11px;
+    }
+
     .device-color-wheel {
         position: relative;
         width: 126px;
@@ -6051,7 +6079,14 @@ HTML;
 
         let html = '';
 
-        if (Number(item._variableType) === 0) {
+        const boolColorControl = (
+            Number(item._variableType) === 0 &&
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        );
+
+        if (Number(item._variableType) === 0 && !boolColorControl) {
             const isOn = truthyVariableValue(item._rawValue);
             html += `<div class="control-associations">
                 <button type="button" data-control-bool="${isOn ? '0' : '1'}">${isOn ? 'Ausschalten' : 'Einschalten'}</button>
@@ -7656,9 +7691,15 @@ HTML;
                             data-control-color-wheel data-color="${currentColor}">
                             <span class="device-color-wheel-marker" data-control-color-marker></span>
                         </div>
-                        <div>
+                        <div class="device-color-side">
+                            ${Number(item._variableType) === 0 ? `
+                                <button type="button" class="device-color-power ${truthyVariableValue(item._rawValue) ? 'is-on' : 'is-off'}"
+                                    data-control-bool="${truthyVariableValue(item._rawValue) ? '0' : '1'}">
+                                    ${truthyVariableValue(item._rawValue) ? 'Aus' : 'Ein'}
+                                </button>
+                            ` : ''}
                             <div class="device-color-preview" data-control-color-preview style="background:${currentColor}"></div>
-                            <div class="profile-hint" data-control-color-text>${escapeHtml(currentColor)}</div>
+                            <div class="profile-hint device-color-hex" data-control-color-text>${escapeHtml(currentColor)}</div>
                         </div>
                     </div>
                     ${item._colorVariableCanAction === true
