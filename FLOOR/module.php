@@ -303,9 +303,9 @@ class Floorplan extends IPSModuleStrict
            Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             gap: clamp(2px, .35vw, 6px);
-            overflow: hidden;
+            overflow: visible;
             align-items: center;
             padding: 8px;
             background: var(--fp-panel);
@@ -322,6 +322,12 @@ class Floorplan extends IPSModuleStrict
             margin-right: 0;
             border-right: 1px solid var(--fp-border);
             flex: 1 1 auto;
+        }
+
+        /* Eine Gruppe bleibt in sich einzeilig. Reicht die Gesamtbreite nicht,
+           wechselt die komplette Gruppe in die zweite Fußleisten-Zeile. */
+        .toolbar .group {
+            flex-wrap: nowrap;
         }
 
         /* Die Bedienelemente verteilen den verfügbaren Platz innerhalb ihrer
