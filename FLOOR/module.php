@@ -363,31 +363,40 @@ class Floorplan extends IPSModuleStrict
         /* Kein künstlicher Leerraum am rechten Rand. */
         .toolbar .spacer { display: none; }
 
-        /* Auch ohne Meldung bleibt dieser Platz reserviert. */
+        /* Der Statuspunkt bleibt immer sichtbar und belegt nur seine feste,
+           sehr schmale Fläche am rechten Rand. */
         .toolbar .status:empty {
             display: flex;
         }
 
         .status {
-            /* Fester reservierter Infobereich rechts. Dadurch ändern
-               Statusmeldungen niemals die Position der Menübuttons. */
-            flex: 0 0 92px;
-            width: 92px;
-            min-width: 92px;
-            max-width: 92px;
+            /* Kompakter Speicherstatus ganz rechts:
+               grün = gespeichert, rot = Änderungen noch nicht gespeichert. */
+            flex: 0 0 18px;
+            width: 18px;
+            min-width: 18px;
+            max-width: 18px;
             align-self: stretch;
             display: flex;
             align-items: center;
-            justify-content: flex-end;
-            padding: 2px 4px;
-            color: var(--fp-muted);
-            font-size: clamp(9px, .68vw, 12px);
-            line-height: 1.05;
-            white-space: normal;
-            overflow-wrap: normal;
-            word-break: normal;
-            text-align: right;
+            justify-content: center;
+            padding: 0;
+            font-size: 0;
+            line-height: 0;
             pointer-events: none;
+        }
+
+        .status::after {
+            content: '';
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #39c66d;
+            box-shadow: 0 0 0 1px rgba(255,255,255,.28);
+        }
+
+        .status.dirty::after {
+            background: #e65353;
         }
 
         .main {
@@ -2356,7 +2365,8 @@ HTML;
         // Im Editor keinen dauerhaften Modus-Text anzeigen. Der freie Platz
         // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
         // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
-        statusEl.textContent = isView ? 'Bedienmodus' : (dirty ? 'Nicht gespeichert' : '');
+        statusEl.textContent = '';
+        statusEl.classList.toggle('dirty', !isView && dirty);
 
         const gridControls = document.querySelector('.grid-editor-controls');
         if (gridControls) {
