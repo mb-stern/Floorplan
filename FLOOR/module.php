@@ -308,7 +308,7 @@ class Floorplan extends IPSModuleStrict
             gap: clamp(2px, .35vw, 6px);
             overflow: visible;
             align-items: center;
-            padding: 8px;
+            padding: 8px 22px 8px 8px;
             background: var(--fp-panel);
             border-top: 1px solid var(--fp-border);
         }
@@ -363,20 +363,21 @@ class Floorplan extends IPSModuleStrict
         /* Kein künstlicher Leerraum am rechten Rand. */
         .toolbar .spacer { display: none; }
 
-        /* Der Statuspunkt bleibt immer sichtbar und belegt nur seine feste,
-           sehr schmale Fläche am rechten Rand. */
+        /* Der Statuspunkt bleibt auch ohne Statustext sichtbar. */
         .toolbar .status:empty {
             display: flex;
         }
 
         .status {
-            /* Kompakter Speicherstatus ganz rechts:
-               grün = gespeichert, rot = Änderungen noch nicht gespeichert. */
-            flex: 0 0 18px;
-            width: 18px;
-            min-width: 18px;
-            max-width: 18px;
-            align-self: stretch;
+            /* Speicherstatus fest oben rechts in der Fußleiste.
+               Er nimmt nicht am Flex-Umbruch teil und kann deshalb nie
+               alleine in eine zweite Zeile wandern. */
+            position: absolute;
+            top: 50%;
+            right: 5px;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -384,6 +385,7 @@ class Floorplan extends IPSModuleStrict
             font-size: 0;
             line-height: 0;
             pointer-events: none;
+            z-index: 5;
         }
 
         .status::after {
