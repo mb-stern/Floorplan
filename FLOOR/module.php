@@ -7764,7 +7764,9 @@ HTML;
 
             const placeMarker = (h, saturation) => {
                 if (!marker) return;
-                const radius = colorWheel.clientWidth / 2;
+                const rect = colorWheel.getBoundingClientRect();
+                const radius = Math.min(rect.width, rect.height) / 2;
+                if (radius <= 0) return;
                 const usableRadius = Math.max(0, radius - 7);
                 const angle = (Number(h) - 90) * Math.PI / 180;
                 const distance = Math.max(0, Math.min(1, Number(saturation))) * usableRadius;
@@ -7772,7 +7774,23 @@ HTML;
                 marker.style.top = `${radius + Math.sin(angle) * distance}px`;
             };
 
-            placeMarker(initial.h, initial.s);
+            const placeInitialMarker = () => {
+                const rect = colorWheel.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                placeMarker(initial.h, initial.s);
+            };
+
+            // Das Popup ist beim Aufbau noch nicht vollständig positioniert.
+            // Marker erst nach dem Browser-Layout in den Farbkreis setzen.
+            requestAnimationFrame(() => {
+                placeInitialMarker();
+                requestAnimationFrame(placeInitialMarker);
+            });
+
+            if (typeof ResizeObserver === 'function') {
+                const colorWheelResizeObserver = new ResizeObserver(placeInitialMarker);
+                colorWheelResizeObserver.observe(colorWheel);
+            }
 
             if (item._colorVariableCanAction === true) {
                 let draggingColor = false;
