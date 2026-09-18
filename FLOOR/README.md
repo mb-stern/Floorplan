@@ -1,6 +1,6 @@
 # 🏠 Floorplan für IP-Symcon
 
-Ein interaktiver Grundriss-Editor für **IP-Symcon**. Räume, Wände, Türen, Fenster, Möbel, Formen und Geräte lassen sich direkt im Browser platzieren und anschließend in der Visualisierung anzeigen und bedienen.
+Floorplan ist ein interaktiver Grundriss-Editor für **IP-Symcon**. Räume, Wände, Türen, Fenster, Objekte, Formen und Geräte können direkt im Browser erstellt, positioniert und anschließend in der Visualisierung angezeigt und bedient werden.
 
 Floorplan arbeitet vollständig innerhalb von IP-Symcon und benötigt keine externe Cloud.
 
@@ -9,55 +9,59 @@ Floorplan arbeitet vollständig innerhalb von IP-Symcon und benötigt keine exte
 - Grundrisse direkt im Browser zeichnen und bearbeiten
 - Mehrere Etagen mit eigener Ansicht
 - Wände, Türen und Fenster frei platzieren
-- Möbel, Formen, Texte und Geräte frei positionieren und skalieren
-- Möbel und Formen alphabetisch sortiert auswählbar
-- Formen zur Kennzeichnung von Grundflächen
-- Rasterfunktion und Zoom im Editor
+- Objekte, Formen, Texte und Geräte frei positionieren, drehen und skalieren
+- Raster und Zoom im Editor
 - Grundriss automatisch an die verfügbare Fläche anpassen
-- Live-Ansicht ohne Editor-Raster
+- Konfigurierbare Wandstärke und Wandlänge
+- Optionale Innen- und Außenvermassung
+- Live-Ansicht ohne Editor-Raster und Bearbeitungshilfen
 - Etagenwechsel direkt in der Live-Ansicht
-- Unterstützung des hellen und dunklen IP-Symcon-Themes
+- Geräte und Variablen über den IP-Symcon-Objektbaum auswählen
 - Geräte direkt aus dem Grundriss bedienen
-- Unterstützung von Kamerastreams
-- Variablen und Geräte über den IP-Symcon-Objektbaum auswählen
+- Kamerastreams im Floorplan darstellen
+- Unterstützung des hellen und dunklen IP-Symcon-Themes
 
 ## 🎛️ IP-Symcon Variablen
 
-Geräte werden mit einer IP-Symcon-Variable verknüpft. Je nach Variablentyp und Variablendarstellung werden passende Anzeige- und Bedienmöglichkeiten angeboten.
+Geräte werden mit einer IP-Symcon-Variable verknüpft. Je nach Variablentyp und Variablendarstellung stellt Floorplan passende Anzeige- und Bedienmöglichkeiten bereit.
 
-Unterstützt werden **Boolean-, Integer- und Float-Variablen**.
+Unterstützt werden **Boolean-, Integer-, Float- und String-Variablen**.
 
-Variablen ohne Aktion dienen ausschließlich zur Anzeige und erhalten keine unnötigen Bedienelemente.
+Sowohl klassische **Legacy-Profile** als auch die aktuellen **IP-Symcon-Variablendarstellungen** werden berücksichtigt.
 
-Sowohl klassische Legacy-Profile als auch die aktuellen IP-Symcon-Variablendarstellungen werden berücksichtigt.
+Variablen ohne hinterlegte Aktion dienen ausschließlich zur Anzeige. Boolean-Werte können direkt geschaltet werden. Integer- und Float-Werte lassen sich abhängig von der IP-Symcon-Konfiguration über Assoziationen oder Slider bedienen.
 
-## 🖼️ Icons
+Auch **String-Assoziationen** werden unterstützt. Dadurch kann beispielsweise anstelle eines Rohwertes wie `CHARGING` der in IP-Symcon hinterlegte Text `Laden` angezeigt werden.
+
+## 🖼️ Icons und Statusfarben
 
 Das Gerätesymbol wird soweit möglich automatisch aus der ausgewählten IP-Symcon-Variable übernommen.
 
-Unterstützt werden sowohl **Legacy-Profile** als auch die aktuellen **IP-Symcon-Variablendarstellungen**.
+Bei Boolean-Variablen können unterschiedliche Icons für **AUS** und **EIN** verwendet werden. Zusätzlich steht die umfangreiche IP-Symcon-Iconauswahl zur Verfügung.
 
-Bei Boolean-Variablen können getrennte Icons für **AUS** und **EIN** verwendet werden.
+Statusfarben aus IP-Symcon-Profilen und Variablendarstellungen werden ebenfalls berücksichtigt. Bei Boolean-Variablen kann damit der aktive Zustand farbig dargestellt werden.
 
-Zusätzlich steht die umfangreiche IP-Symcon-Iconauswahl mit mehreren Tausend Icons zur Verfügung. Automatisch übernommene Icons können dadurch jederzeit manuell geändert werden.
+Auch Integer-Variablen können Statusfarben aus ihrer Darstellung bzw. ihrem Profil übernehmen.
 
 Mit **Variableneinstellungen aktualisieren** können die aktuell in IP-Symcon hinterlegten Icons und Darstellungsinformationen erneut eingelesen werden.
 
-## 🎨 Statusfarben
+## 💡 Farbsteuerung für Lampen
 
-Boolean-Variablen können ihren aktiven Zustand farbig darstellen.
+Bei Geräten mit einer **Boolean-Hauptvariable** kann optional eine zusätzliche **Integer-Farbvariable (Hex/RGB)** zugeordnet werden.
 
-Bei aktuellen IP-Symcon-Variablendarstellungen werden unter anderem `GLOW_COLOR` und `GLOW_INTENSITY` berücksichtigt.
+Die Boolean-Variable übernimmt weiterhin **Ein/Aus**, während die zusätzliche Integer-Variable die aktuelle Leuchtfarbe enthält.
 
-Die Symcon-Farbe wird als Statusfarbe für den aktiven Zustand verwendet. Im ausgeschalteten Zustand wird kein entsprechender Farb-Glow angezeigt.
+Damit kann:
 
-Die Statusfarbe kann bei Bedarf im Floorplan manuell festgelegt werden.
+- die aktuelle Leuchtfarbe im Floorplan dargestellt werden
+- die Farbe direkt über einen Farbkreis gewählt werden
+- Ein/Aus und Farbe gemeinsam im Geräte-Popup bedient werden
+- die gespeicherte Farbe auch bei ausgeschalteter Lampe im Farbwähler angezeigt werden
+- das Gerätesymbol nur bei eingeschalteter Lampe in der gewählten Farbe leuchten
 
-Auch **Integer-Variablen** können Statusfarben aus ihrer IP-Symcon-Darstellung bzw. ihrem Profil übernehmen. Dadurch kann beispielsweise bereits die Farbe des Statusrings den aktuellen Zustand wiedergeben, ohne dass der eigentliche Zahlenwert eingeblendet werden muss.
+Die zusätzliche Farbvariablenauswahl wird nur bei Boolean-Geräten angeboten.
 
-Bei numerischen Variablen ohne automatisch vorgegebene Statusfarbe kann weiterhin eine eigene Statusfarbe im Floorplan konfiguriert werden.
-
-## 🚪 Türen und Fenster
+## 🚪 Türen, Fenster und Rollläden
 
 Türen und Fenster werden direkt einer Wand zugeordnet und bewegen sich zusammen mit dieser.
 
@@ -67,21 +71,17 @@ Fensterkontakte können mit einer Boolean-Variable verknüpft werden. Ein geöff
 
 Rollläden und Jalousien können direkt am Fenster mit eigenen Variablen verknüpft und bedient werden.
 
-Die Darstellung und Zuordnung der Fenster- und Rollladenfunktionen kann im Editor konfiguriert werden.
+## 🛋️ Objekte
 
-## 🛋️ Möbel
+Objekte dienen zur Gestaltung des Grundrisses und können frei platziert, verschoben, gedreht und skaliert werden.
 
-Möbel dienen zur Gestaltung des Grundrisses und können frei platziert, verschoben, gedreht und skaliert werden.
+Neben den Easy-Floorplan-Objekten stehen weitere Symbole wie Dusche, Eckdusche, Badewanne, Waschbecken, WC, Wärmepumpe, Backofen, Regal, Auto, Motorrad und Fahrrad zur Verfügung.
 
-Es stehen zahlreiche Easy-Floorplan-Möbelsymbole zur Verfügung.
-
-Die Möbelliste wird im Konfigurator **alphabetisch** angezeigt.
-
-Die Beschriftung eines Möbels kann optional ein- oder ausgeblendet werden.
+Die Objektliste wird alphabetisch angezeigt. Die Beschriftung eines Objektes kann optional ein- oder ausgeblendet werden.
 
 ## 🔷 Formen
 
-Zusätzlich zu Möbeln können Formen zur Gestaltung und Kennzeichnung von Flächen verwendet werden.
+Zusätzlich können Formen zur Gestaltung und Kennzeichnung von Flächen verwendet werden.
 
 Verfügbar sind:
 
@@ -91,85 +91,49 @@ Verfügbar sind:
 - Pfeil
 - Rechteck
 
-Die Formen werden im Konfigurator **alphabetisch** aufgelistet.
+Nach dem Platzieren können Position, Größe, Drehung, Name und Darstellung angepasst werden.
 
-Nach dem Platzieren können Formtyp, Position, Größe, Drehung, Name und Darstellung über die Eigenschaften angepasst werden.
+Geschlossene Formen können optional gefüllt werden. Auch das Füllmuster kann unabhängig gedreht werden.
 
-Für geschlossene Formen kann optional eine Füllung verwendet werden.
+Formen liegen grafisch unterhalb der Objekte und eignen sich dadurch beispielsweise zur Kennzeichnung von Grundflächen oder Bereichen.
 
-Formen liegen grafisch **unterhalb der Möbel**, da sie beispielsweise zur Kennzeichnung von Grundflächen oder Bereichen verwendet werden können.
+## 📐 Vermassung
 
-Die Beschriftung einer Form kann optional eingeblendet werden.
+Für jede Etage kann optional eine Vermassung der Wände eingeblendet werden.
 
-## 🕹️ Bedienung
+Unterstützt werden **Innenmaße und Außenmaße**. Dabei werden Wandstärken und Wandanschlüsse berücksichtigt.
 
-Ein Klick auf ein Gerät öffnet – sofern erforderlich – die passende Bedienung direkt am Grundriss.
+Die Schriftgröße der Vermassung ist konfigurierbar. Zusätzlich können im Editor Tooltips für Wände eingeblendet werden.
 
-Boolean-Werte können direkt geschaltet werden.
+In der Live-Ansicht bleiben Vermassung und Bearbeitungshilfen ausgeblendet.
 
-Integer- und Float-Werte können abhängig von der IP-Symcon-Konfiguration über Profilwerte, Auswahlmöglichkeiten oder Slider bedient werden.
+## ✏️ Editor und Live-Ansicht
 
-Variablen ohne hinterlegte Aktion werden ausschließlich als Status angezeigt.
+Im Editor können sämtliche Elemente des Grundrisses erstellt und bearbeitet werden.
 
-Das Geräte-Popup wird durch einen Klick oder Tipp außerhalb wieder geschlossen.
-
-## ✏️ Editor
-
-Die Werkzeugleiste ermöglicht unter anderem das Erstellen von:
-
-- Formen
-- Wänden
-- Türen
-- Fenstern
-- Geräten
-- Texten
-- Möbeln
-
-Werkzeuge sind nur aktiv, solange sie tatsächlich benötigt werden.
-
-Ein erneuter Klick auf ein bereits aktives Werkzeug deaktiviert dieses wieder.
-
-Beim Wechsel zu einem anderen Werkzeug oder einer anderen Funktion wird das bisher aktive Werkzeug automatisch deaktiviert.
-
-Auch beim Wechsel zwischen **Editor** und **Live-Ansicht** bleiben keine alten Werkzeuge aktiv.
+Werkzeuge sind nur aktiv, solange sie tatsächlich benötigt werden. Nach dem Platzieren werden entsprechende Werkzeuge wieder deaktiviert.
 
 Bestehende Elemente können direkt angeklickt und anschließend über ihre Eigenschaften bearbeitet werden.
 
-Der komplette Grundriss kann über **Verschieben** oder jederzeit mit der mittleren Maustaste verschoben werden.
+Der komplette Grundriss kann über **Verschieben** oder mit der mittleren Maustaste bewegt werden.
 
-## 🏢 Etagen
-
-Es können mehrere Etagen angelegt werden. Jede Etage besitzt einen eigenen Grundriss und eigene Geräte.
-
-Bestehende Etagen können kopiert oder vollständig gelöscht werden.
-
-In der Live-Ansicht kann über die Etagenwahl schnell zwischen den Grundrissen gewechselt werden.
-
-Zoom und Position werden für die Darstellung entsprechend berücksichtigt.
+In der **Live-Ansicht** werden Raster, Auswahlrahmen und Bearbeitungshilfen ausgeblendet. Bei mehreren Etagen kann direkt zwischen den Stockwerken gewechselt werden.
 
 ## 🎥 Kamerastreams
 
 Kamerastreams können als Geräte in den Floorplan eingebunden und direkt innerhalb der Visualisierung dargestellt werden.
 
-Die Streamdarstellung berücksichtigt dabei die verfügbare Kachelgröße, damit das Videofenster nicht unnötig durch den Rand der Visualisierung abgeschnitten wird.
+Die Streamdarstellung berücksichtigt die verfügbare Kachelgröße, damit das Videofenster möglichst vollständig innerhalb des Floorplans dargestellt wird.
 
-## 🌗 Theme-Unterstützung
+## ⚙️ Technisches
 
-Floorplan unterstützt das helle und dunkle IP-Symcon-Theme.
-
-Farben, Bedienelemente, Statusanzeigen und Editor-Elemente passen sich entsprechend an die verwendete Darstellung an.
-
-## ⚙️ Technische Bereitstellung
-
-Floorplan verwendet für größere JavaScript-Ressourcen einen eigenen WebHook.
-
-Dadurch müssen große Ressourcen nicht vollständig über den HTML-Output der Visualisierung übertragen werden und die Output-Buffer-Grenzen von IP-Symcon werden vermieden.
+Floorplan verwendet Easy Floorplan als Basis für Teile der Grundrissdarstellung.
 
 Die benötigten Ressourcen werden lokal aus dem Modul bereitgestellt. Eine externe Cloud ist nicht erforderlich.
 
 ## 📦 Installation
 
-Das Modul kann über den IP-Symcon Module Store installiert werden.
+Das Modul kann über den **IP-Symcon Module Store** installiert werden.
 
 Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Grundriss erstellen.
 
@@ -188,30 +152,39 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.16
 
 - Unscharfe Schrift der neuen Vermassung unter IPS-View behoben.
+
 - Die Schrift der Vermassung lässt sich nun in der Grösse konfigurieren.
 
 ### 1.15
 
 - Ein Fehler in in der Bedienung im IPS-View im Live Modus wurde behoben.
+
 - In den Stockwerk- Eigenschaften lassen sich nun Tooltips und Vermassung der Mauern einblenden, für alle die es genauer haben möchten.
 
 ### 1.14
 
 - Bearbeiten der Wände verbessert. Es kann nun eine Längenangabe gemacht werden und die Endpunkte liegen nach einem Klick darauf nicht mehr unterhalb einer anderen Wand.
+
 - Möbel in objekte umbenannt.
+
 - Drei neue Objekte: Regal, Auto, Motorrad, Fahrrad.
+
 - Eine rote Fehlermeldung konnte auftauchen und den Editor blockieren, wenn ein bestimmtes Variablenprofil nicht mehr existierte. Stattdessen wird nun der Rohwert verarbeit.
 
 ### 1.13
 
 - Variablenwert mit Rahmen deckt nun Möbel zwecks besserer Lesbarkeit ab.
+
 - Drei neue Möbel hinzugefügt, Waschbecken halbrund, WC halbrund und Badewanne beidseitig rund.
 
 ### 1.12
 
 - Letzte Output-Buffer Optimierung wieder rückgängig gemacht da offenbar IPSView nicht damit umgehen konnte. Das bedeutet für grössere Projekte, dass allenfalls der Output-Buffer erhöht werden muss.
+
 - Flackern der Stockwerk-Auswahl auf einigen Android Tablets behoben.
+
 - Die Einstellung der Nachkommastellen etc. wird nun ebenfalls aus dem Variablenprofil übernommen.
+
 - Vier neue Möbel hinzugefügt: Dusche, Eckdusche, Eck-Whirlpool, Wärmepumpe und Backofen.
 
 ### 1.11
@@ -221,33 +194,49 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.10
 
 - Konfigurationsformular aktualisiert.
+
 - Auswahl der Formen derjenigen der Möbel angepasst.
+
 - Formen um Pfeil und Dreieck erweitert.
+
 - Verhalten der Buttons und Werkzeuge im Editor überarbeitet.
+
 - Aktive Werkzeuge werden beim Wechsel zu anderen Funktionen automatisch deaktiviert.
+
 - Formen liegen nun unterhalb der Möbel, da sie unter anderem Grundflächen markieren sollen.
+
 - Möbel und Formen werden nun alphabetisch gelistet.
+
 - Floorplaner in Floorplan umbenannt.
+
 - Weitere Speicheroptimierungen über den Webhook, um die Output-Buffer Fehlermeldung auch bei grossen Projekten zu umgehen.
 
 ### 1.9
 
 - Einige Sichtbarkeits-Verbesserungen im Bearbeitungsmodus des Light-Themes.
+
 - Die Formen sind nun analog zu den Möbeln konfigurierbar und es kann nach Wunsch eine Füllung ausgewählt werden.
+
 - Integerfarben werden nun unterstützt. So kann ein Icon bzw. Statusring den Zustand auch ohne angezeigten Wert wiedergeben.
+
 - Farben und Darstellungsinformationen können aus IP-Symcon-Profilen und aktuellen Variablendarstellungen übernommen werden.
 
 ### 1.8
 
 - Fenster und Türen sind nun umfassend konfigurierbar.
+
 - Videofenster werden nicht mehr durch den Rand der Kachel abgeschnitten.
+
 - Es können nun Formen wie Rechtecke, Kreise oder Linien erstellt werden.
+
 - Größere Ressourcen werden nun über einen WebHook bereitgestellt, um Output-Buffer-Meldungen von IP-Symcon zu verhindern.
+
 - Diverse kleinere Anpassungen.
 
 ### 1.7
 
 - Der farbige Statusring funktioniert nun auch im hellen Theme.
+
 - Kamerastreams können nun dargestellt werden.
 
 ### 1.6
@@ -257,34 +246,45 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.5
 
 - Icons mit einer reinen Statusvariable reagieren nun nicht mehr auf Betätigung.
+
 - Die Mauerdicke lässt sich nun konfigurieren.
 
 ### 1.4
 
 - Icons werden nun sowohl aus den neuen IP-Symcon-Variablendarstellungen als auch aus Legacy-Profilen automatisch übernommen.
+
 - Bei Boolean-Variablen können zwei unterschiedliche Icons für AUS und EIN aus der Variablendarstellung übernommen und verwendet werden.
+
 - Die übernommenen Icons können weiterhin manuell geändert oder über **Variableneinstellungen aktualisieren** neu aus IP-Symcon eingelesen werden.
 
 ### 1.3
 
 - IP-Symcon-Icons werden automatisch aus der Variable übernommen und können manuell geändert werden.
+
 - Umfangreiche Iconauswahl mit rund 4000 IP-Symcon-Icons.
+
 - Verbesserungen an Geräte-, Fenster- und Statusdarstellung.
 
 ### 1.2
 
 - Geräte können mit einem Rahmen um den Istwert dargestellt werden.
+
 - Variablen ohne Aktion werden nur angezeigt und bieten keine Steuerung.
+
 - Fensterdarstellung und helles IP-Symcon-Theme wurden verbessert.
 
 ### 1.1
 
 - Verbesserte Gerätebedienung sowie Unterstützung von Rollläden und Jalousien.
+
 - Optimierungen für Editor, Möbel, Skalierung und verschiedene Displaygrößen.
+
 - Verbesserte Darstellung im hellen und dunklen IP-Symcon-Theme.
 
 ### 1.0
 
 - Erste Beta-Version mit Grundriss-Editor, Etagen, Möbeln und IP-Symcon-Geräten.
+
 - Direkte Bedienung von Variablen aus der Live-Ansicht.
+
 - Unterstützung für Wände, Türen und Fenster.
