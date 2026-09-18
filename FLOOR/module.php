@@ -1106,18 +1106,27 @@ class Floorplan extends IPSModuleStrict
         min-width: 58px;
     }
 
-    .device-color-power {
-        min-width: 54px;
-        height: 32px;
-        padding: 0 10px;
-        border-radius: 16px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
+    .device-color-bool-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
     }
 
-    .device-color-power.is-on {
-        box-shadow: inset 0 0 0 1px currentColor;
+    .device-color-power {
+        min-width: 64px;
+        height: 30px;
+        padding: 0 9px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .device-color-power.is-active {
+        box-shadow: inset 0 0 0 2px currentColor;
+        font-weight: 700;
     }
 
     .device-color-hex {
@@ -7708,12 +7717,30 @@ HTML;
                             <span class="device-color-wheel-marker" data-control-color-marker></span>
                         </div>
                         <div class="device-color-side">
-                            ${Number(item._variableType) === 0 ? `
-                                <button type="button" class="device-color-power ${truthyVariableValue(item._rawValue) ? 'is-on' : 'is-off'}"
-                                    data-control-bool="${truthyVariableValue(item._rawValue) ? '0' : '1'}">
-                                    ${truthyVariableValue(item._rawValue) ? 'Aus' : 'Ein'}
-                                </button>
-                            ` : ''}
+                            ${Number(item._variableType) === 0 ? (() => {
+                                const boolAssociations = Array.isArray(item?._profile?.associations)
+                                    ? item._profile.associations
+                                    : [];
+
+                                if (boolAssociations.length) {
+                                    return `<div class="device-color-bool-actions">` +
+                                        boolAssociations.map(association => {
+                                            const associationValue = Boolean(Number(association?.value));
+                                            const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
+                                            const active = truthyVariableValue(item._rawValue) === associationValue;
+                                            return `<button type="button"
+                                                class="device-color-power${active ? ' is-active' : ''}"
+                                                data-control-bool="${associationValue ? '1' : '0'}">${escapeHtml(caption)}</button>`;
+                                        }).join('') +
+                                        `</div>`;
+                                }
+
+                                // Bool ohne Profil-Assoziationen: beide Zustände anbieten.
+                                return `<div class="device-color-bool-actions">
+                                    <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
+                                    <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
+                                </div>`;
+                            })() : ''}
                             <div class="device-color-preview" data-control-color-preview style="background:${currentColor}"></div>
                             <div class="profile-hint device-color-hex" data-control-color-text>${escapeHtml(currentColor)}</div>
                         </div>
@@ -7727,11 +7754,13 @@ HTML;
 
         controlBody.innerHTML = html;
 
-        controlBody.querySelector('[data-control-bool]')?.addEventListener('click', btnEvent => {
-            const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
-            sendItemValue(item, value);
-            controlModal.classList.remove('open');
-            controlModal.setAttribute('aria-hidden', 'true');
+        controlBody.querySelectorAll('[data-control-bool]').forEach(button => {
+            button.addEventListener('click', btnEvent => {
+                const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
+                sendItemValue(item, value);
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
         });
 
         const colorWheel = controlBody.querySelector('[data-control-color-wheel]');
