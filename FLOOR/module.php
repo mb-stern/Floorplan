@@ -5162,20 +5162,22 @@ HTML;
                         ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
                         : ''}
                 </div>
-                <div class="field">
-                    <label class="check">
-                        <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
-                        Farbsteuerung
-                    </label>
-                    ${obj.colorControlEnabled === true ? `
-                        <label>Farbvariable (Integer / Hex Color)</label>
-                        <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
-                            value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
-                        ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
-                            ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
-                            : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
-                    ` : ''}
-                </div>
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
+                            Farbsteuerung
+                        </label>
+                        ${obj.colorControlEnabled === true ? `
+                            <label>Farbvariable (Integer / Hex Color)</label>
+                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                                value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
+                            ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
+                                ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
+                                : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                        ` : ''}
+                    </div>
+                ` : ''}
                 ${canConfigureStatusColor(obj) ? `
                     <div class="field">
                         ${(() => {
