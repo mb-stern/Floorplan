@@ -5639,6 +5639,14 @@ HTML;
 
                 pushHistory();
                 markDirty();
+
+                // Die neue Farbsteuerung darf bei einem Modul-/HTML-Reload nicht
+                // im verzögerten Autosave hängen bleiben. Checkbox daher sofort
+                // persistent in FloorplanData schreiben.
+                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
+                    saveProject();
+                }
+
                 render();
             });
         });
@@ -7437,6 +7445,14 @@ HTML;
         variableModal.setAttribute('aria-hidden', 'true');
         pushHistory();
         markDirty();
+
+        // Die zweite Farbvariable ist eine persistente Gerätezuordnung.
+        // Sofort speichern, damit ein anschließendes Modul-Update/Reload die
+        // Auswahl nicht auf den zuletzt gespeicherten Projektstand zurücksetzt.
+        if (entityType === 'item' && field === 'colorVariableID') {
+            saveProject();
+        }
+
         render();
         refreshPropertiesAfterStructuralChange();
     }
