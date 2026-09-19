@@ -141,6 +141,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.19
+
+- Überflüssige ResizeObserver entfernt, welche zum EInfieren der Visu führen könnten.
+
 ### 1.18
 
 - Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer/HexColor zu steuern (zb Hue-Lampen).
