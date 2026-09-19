@@ -7926,11 +7926,6 @@ HTML;
                 requestAnimationFrame(placeInitialMarker);
             });
 
-            if (typeof ResizeObserver === 'function') {
-                const colorWheelResizeObserver = new ResizeObserver(placeInitialMarker);
-                colorWheelResizeObserver.observe(colorWheel);
-            }
-
             if (item._colorVariableCanAction === true) {
                 let draggingColor = false;
 
@@ -8411,15 +8406,6 @@ HTML;
             console.error('handleMessage', e);
         }
     };
-
-    let resizeFitFrame = 0;
-    const resizeObserver = new ResizeObserver(() => {
-        // Die Projektgröße bleibt unverändert. Nur die Ansicht wird an die
-        // tatsächlich verfügbare Tile-/Fenstergröße neu angepasst.
-        cancelAnimationFrame(resizeFitFrame);
-        resizeFitFrame = requestAnimationFrame(fit);
-    });
-    resizeObserver.observe(svg);
 
     restoreLastViewFloor();
     pushHistory();
