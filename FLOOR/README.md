@@ -145,6 +145,8 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 - Überflüssige ResizeObserver entfernt, welche zum Einfrieren der Visu führen könnten.
 - Bedienung der Rollos funktioniert wieder.
+- Einige Icons konnten nicht aus der Variable gelesen werden und es wurde ein Fragezeichen angezeigt.
+- Des Verstellen der Icon-Grösse Funktioniert wieder.
 
 ### 1.18
 
