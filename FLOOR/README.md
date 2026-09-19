@@ -143,7 +143,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.19
 
-- Überflüssige ResizeObserver entfernt, welche zum EInfieren der Visu führen könnten.
+- Überflüssige ResizeObserver entfernt, welche zum Einfrieren der Visu führen könnten.
 - Bedienung der Rollos funktioniert wieder.
 
 ### 1.18
