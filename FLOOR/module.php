@@ -1818,8 +1818,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         .device-icon-html svg {
-            width: var(--device-icon-size, 1em) !important;
-            height: var(--device-icon-size, 1em) !important;
+            width: 1em !important;
+            height: 1em !important;
             max-width: 100%;
             max-height: 100%;
             display: block;
@@ -1829,7 +1829,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         .device-icon-html i {
-            font-size: var(--device-icon-size, 1em) !important;
+            font-size: 1em !important;
         }
 
         .symcon-icon-grid button svg {
@@ -3120,10 +3120,11 @@ HTML;
         return `<i class="${escapeHtml(icon)}"></i>`;
     }
 
-    function renderSymconGlyph(icon, radius, storedSvg = '') {
+    function renderSymconGlyph(icon, radius, storedSvg = '', iconScale = 100) {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
-        const fontSize = Math.max(12, r * 1.18);
+        const scale = Math.max(30, Math.min(180, Number(iconScale) || 100)) / 100;
+        const fontSize = Math.max(6, r * 1.18 * scale);
         // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
         // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
         const persisted = String(storedSvg || '').trim();
@@ -3132,7 +3133,7 @@ HTML;
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px;--device-icon-size:${fontSize}px">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
     }
 
 
@@ -3955,7 +3956,7 @@ HTML;
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item), item.iconScale)}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
@@ -5431,7 +5432,7 @@ HTML;
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
                 <div class="row2">
-                    <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                    <div class="field"><label>Symbolgröße (%)</label><input data-field="iconScale" type="number" min="30" max="180" step="5" value="${Number(obj.iconScale) || 100}"></div>
                     <div class="field"><label>Drehung</label><input data-field="angle" type="number" min="-360" max="360" step="5" value="${Number(obj.angle) || 0}"></div>
                 </div>
             `;
@@ -6655,6 +6656,7 @@ HTML;
                 name: 'Gerät',
                 variableID: 0,
                 size: 18,
+                iconScale: 100,
                 angle: 0,
                 kind: 'generic', // nur noch für Migration älterer Projekte
                 icon: 'fa-light fa-circle',
