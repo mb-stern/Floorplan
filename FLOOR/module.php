@@ -2217,6 +2217,7 @@ HTML;
                 if (typeof item.iconSvg !== 'string') item.iconSvg = '';
                 if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
                 if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
+                item.iconScale = Math.max(30, Math.min(180, Number(item.iconScale) || 100));
                 if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
                 item.colorVariableID = Number(item.colorVariableID) || 0;
             }
@@ -3120,11 +3121,10 @@ HTML;
         return `<i class="${escapeHtml(icon)}"></i>`;
     }
 
-    function renderSymconGlyph(icon, radius, storedSvg = '', iconScale = 100) {
+    function renderSymconGlyph(icon, radius, storedSvg = '') {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
-        const scale = Math.max(30, Math.min(180, Number(iconScale) || 100)) / 100;
-        const fontSize = Math.max(6, r * 1.18 * scale);
+        const fontSize = Math.max(12, r * 1.18);
         // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
         // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
         const persisted = String(storedSvg || '').trim();
@@ -3956,7 +3956,7 @@ HTML;
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item), item.iconScale)}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0}) scale(${Math.max(30, Math.min(180, Number(item.iconScale) || 100)) / 100})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
