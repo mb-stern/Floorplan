@@ -141,6 +141,13 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.19
+
+- Überflüssige ResizeObserver entfernt, welche zum Einfrieren der Visu führen könnten.
+- Bedienung der Rollos funktioniert wieder.
+- Einige Icons konnten nicht aus der Variable gelesen werden und es wurde ein Fragezeichen angezeigt.
+- Des Verstellen der Icon-Grösse Funktioniert wieder.
+
 ### 1.18
 
 - Es ist nun möglich, die Leuchtfarbe über einen zusätzlichen Integer/HexColor zu steuern (zb Hue-Lampen).

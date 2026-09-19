@@ -3033,6 +3033,13 @@ HTML;
                 if (!prefixes.includes('fak')) prefixes.push('fak');
                 if (!prefixes.includes('fal')) prefixes.push('fal');
 
+                // Einige von Symcon gelieferte Iconnamen sind Font-Awesome-
+                // Markenicons, z.B. "500px". Symcon liefert dabei teilweise
+                // nur den Iconnamen ohne "fa-brands". Brands deshalb erst als
+                // letzten Fallback versuchen. Dadurch bleiben bereits korrekt
+                // aufgelöste Light-/Kit-Icons unverändert.
+                if (!prefixes.includes('fab')) prefixes.push('fab');
+
                 for (const prefix of prefixes) {
                     const rendered = window.FontAwesome.icon({
                         prefix,
@@ -6252,7 +6259,11 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        if (Number(item._variableType) !== 0 && !associations.length && hasRange) {
+        const shutterVariableType = Number(secondary
+            ? opening._shutterSecondaryVariableType
+            : opening._shutterVariableType);
+
+        if (shutterVariableType !== 0 && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const suffix = String(profile.suffix || '');
@@ -7926,11 +7937,6 @@ HTML;
                 requestAnimationFrame(placeInitialMarker);
             });
 
-            if (typeof ResizeObserver === 'function') {
-                const colorWheelResizeObserver = new ResizeObserver(placeInitialMarker);
-                colorWheelResizeObserver.observe(colorWheel);
-            }
-
             if (item._colorVariableCanAction === true) {
                 let draggingColor = false;
 
@@ -8411,15 +8417,6 @@ HTML;
             console.error('handleMessage', e);
         }
     };
-
-    let resizeFitFrame = 0;
-    const resizeObserver = new ResizeObserver(() => {
-        // Die Projektgröße bleibt unverändert. Nur die Ansicht wird an die
-        // tatsächlich verfügbare Tile-/Fenstergröße neu angepasst.
-        cancelAnimationFrame(resizeFitFrame);
-        resizeFitFrame = requestAnimationFrame(fit);
-    });
-    resizeObserver.observe(svg);
 
     restoreLastViewFloor();
     pushHistory();
