@@ -1818,12 +1818,18 @@ class Floorplan extends IPSModuleStrict
         }
 
         .device-icon-html svg {
-            width: 1em;
-            height: 1em;
+            width: var(--device-icon-size, 1em) !important;
+            height: var(--device-icon-size, 1em) !important;
+            max-width: 100%;
+            max-height: 100%;
             display: block;
             margin: auto;
             fill: currentColor;
             color: inherit;
+        }
+
+        .device-icon-html i {
+            font-size: var(--device-icon-size, 1em) !important;
         }
 
         .symcon-icon-grid button svg {
@@ -3126,7 +3132,7 @@ HTML;
             ? svgHtml
             : `<i class="${escapeHtml(parsed.cls)}"></i>`;
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px;--device-icon-size:${fontSize}px">${content}</div></foreignObject>`;
     }
 
 
