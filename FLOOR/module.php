@@ -3121,19 +3121,36 @@ HTML;
         return `<i class="${escapeHtml(icon)}"></i>`;
     }
 
-    function renderSymconGlyph(icon, radius, storedSvg = '') {
+    function renderSymconGlyph(icon, radius, storedSvg = '', iconScale = 100) {
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
-        const fontSize = Math.max(12, r * 1.18);
-        // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
-        // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
+        const scale = Math.max(30, Math.min(180, Number(iconScale) || 100)) / 100;
         const persisted = String(storedSvg || '').trim();
         const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
-        const content = svgHtml !== ''
-            ? svgHtml
-            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
+
+        if (svgHtml.startsWith('<svg')) {
+            // Font-Awesome/Symcon-SVG direkt als verschachteltes SVG zeichnen.
+            // Anders als beim bisherigen foreignObject reagiert width/height
+            // damit genauso direkt auf die eingestellte Größe wie SVG-Text
+            // und Möbelgeometrie.
+            const glyphSize = Math.max(6, r * 1.18 * scale);
+            const half = glyphSize / 2;
+            return svgHtml.replace(
+                /^<svg\b([^>]*)>/i,
+                (match, attrs) => {
+                    const cleaned = String(attrs)
+                        .replace(/\s(?:x|y|width|height)=("[^"]*"|'[^']*')/gi, '')
+                        .replace(/\sstyle=("[^"]*"|'[^']*')/gi, '');
+                    return `<svg${cleaned} x="${-half}" y="${-half}" width="${glyphSize}" height="${glyphSize}" style="display:block;overflow:visible;color:inherit;fill:currentColor">`;
+                }
+            );
+        }
+
+        // Nur wenn Font Awesome tatsächlich kein SVG liefern kann, bleibt
+        // der alte HTML-Fallback erhalten.
+        const fontSize = Math.max(6, r * 1.18 * scale);
         return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
-            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px"><i class="${escapeHtml(parsed.cls)}"></i></div></foreignObject>`;
     }
 
 
@@ -3956,7 +3973,7 @@ HTML;
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
-                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0}) scale(${Math.max(30, Math.min(180, Number(item.iconScale) || 100)) / 100})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item), item.iconScale)}</g>`
                     : '') +
                 (showName && item.name
                     ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
