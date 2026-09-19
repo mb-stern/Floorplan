@@ -1818,8 +1818,8 @@ class Floorplan extends IPSModuleStrict
         }
 
         .device-icon-html svg {
-            width: var(--device-icon-size, 1em) !important;
-            height: var(--device-icon-size, 1em) !important;
+            width: 100% !important;
+            height: 100% !important;
             max-width: 100%;
             max-height: 100%;
             display: block;
@@ -5595,6 +5595,24 @@ HTML;
 
     function bindPropertyInputs() {
         properties.querySelectorAll('[data-field]').forEach(input => {
+            // Die Symbolgröße eines Geräts direkt während der Eingabe anwenden.
+            // So hängt die sichtbare Änderung nicht erst vom change-/Blur-Ereignis
+            // des jeweiligen IPSView-/Browser-Controls ab.
+            if (
+                selected?.type === 'item'
+                && input.dataset.field === 'size'
+                && input.type === 'number'
+            ) {
+                input.addEventListener('input', () => {
+                    const obj = findEntity(selected.type, selected.id);
+                    if (!obj) return;
+
+                    const nextSize = Math.max(8, Math.min(80, Number(input.value) || 18));
+                    obj.size = nextSize;
+                    render();
+                });
+            }
+
             input.addEventListener('change', () => {
                 if (!selected) return;
                 const obj = findEntity(selected.type, selected.id);
