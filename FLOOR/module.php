@@ -6252,11 +6252,7 @@ HTML;
         const configuredStep = Number(profile.step);
         const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
 
-        const shutterVariableType = Number(secondary
-            ? opening._shutterSecondaryVariableType
-            : opening._shutterVariableType);
-
-        if (shutterVariableType !== 0 && !associations.length && hasRange) {
+        if (Number(item._variableType) !== 0 && !associations.length && hasRange) {
             const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
             const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
             const suffix = String(profile.suffix || '');
@@ -7930,6 +7926,11 @@ HTML;
                 requestAnimationFrame(placeInitialMarker);
             });
 
+            if (typeof ResizeObserver === 'function') {
+                const colorWheelResizeObserver = new ResizeObserver(placeInitialMarker);
+                colorWheelResizeObserver.observe(colorWheel);
+            }
+
             if (item._colorVariableCanAction === true) {
                 let draggingColor = false;
 
@@ -8410,6 +8411,15 @@ HTML;
             console.error('handleMessage', e);
         }
     };
+
+    let resizeFitFrame = 0;
+    const resizeObserver = new ResizeObserver(() => {
+        // Die Projektgröße bleibt unverändert. Nur die Ansicht wird an die
+        // tatsächlich verfügbare Tile-/Fenstergröße neu angepasst.
+        cancelAnimationFrame(resizeFitFrame);
+        resizeFitFrame = requestAnimationFrame(fit);
+    });
+    resizeObserver.observe(svg);
 
     restoreLastViewFloor();
     pushHistory();
