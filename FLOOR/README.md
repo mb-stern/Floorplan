@@ -141,6 +141,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.20
+
+- Der Variablen-Picker wurde überarbeit, so dass das Speicherlimit auch bei grossen Objektbäumen nicht mehr erreicht werden sollte.
+
 ### 1.19
 
 - Überflüssige ResizeObserver entfernt, welche zum Einfrieren der Visu führen könnten.

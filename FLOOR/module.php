@@ -7373,6 +7373,20 @@ HTML;
         const selectedVariableID = Number(variableID) || 0;
         const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
 
+        // Der Objektbaum enthält absichtlich nur leichte Daten. Erst für die
+        // tatsächlich gewählte Variable die vollständigen Symcon-Metadaten laden.
+        if (
+            selectedVariableID > 0 &&
+            Number(selectedNode?.objectType) === 2 &&
+            selectedNode?.runtimeMetaLoaded !== true
+        ) {
+            statusEl.textContent = 'Variablendaten werden geladen …';
+            requestAction('getVariableMetaForAssignment', JSON.stringify({
+                variableID: selectedVariableID
+            }));
+            return;
+        }
+
         if (
             entityType === 'item' &&
             field === 'colorVariableID' &&
@@ -8396,6 +8410,38 @@ HTML;
                 updateModeUI();
                 renderAll();
                 fit();
+            } else if (
+                data?.type === 'variableMetaForAssignment' &&
+                Number(data.variableID) > 0 &&
+                data.meta
+            ) {
+                const node = findTreeNode(objectTree, Number(data.variableID));
+                if (!node) return;
+
+                const meta = data.meta || {};
+                node.variableType = Number(meta._variableType ?? node.variableType ?? -1);
+                node.variableTypeName = ['Boolean', 'Integer', 'Float', 'String'][node.variableType] || ('Typ ' + node.variableType);
+                node.valueText = meta._valueText ?? node.valueText ?? '';
+                node.rawValue = meta._rawValue ?? '';
+                node.profileName = meta._profileName ?? node.profileName ?? '';
+                node.profileSummary = meta._profileSummary ?? '';
+                node.profile = meta._profile ?? null;
+                node.canAction = meta._canAction === true;
+                node.hasLegacyProfile = meta._hasLegacyProfile === true;
+                node.hasNewPresentation = meta._hasNewPresentation === true;
+                node.presentationIcon = meta._presentationIcon ?? '';
+                node.presentationIconOff = meta._presentationIconOff ?? '';
+                node.presentationIconOn = meta._presentationIconOn ?? '';
+                node.glowColor = meta._glowColor ?? '';
+                node.glowIntensity = Number(meta._glowIntensity || 0);
+                node.legacyColorOn = meta._legacyColorOn ?? '';
+                node.legacyCurrentColor = meta._legacyCurrentColor ?? '';
+                node.newIntegerStatusColor = meta._newIntegerStatusColor ?? '';
+                node.objectIcon = meta._objectIcon ?? node.objectIcon ?? '';
+                node.runtimeMetaLoaded = true;
+
+                // Jetzt läuft exakt die bisherige Zuordnungslogik weiter.
+                assignVariable(Number(data.variableID));
             } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
                 objectTree = data.objects;
                 variableSearch.value = '';
@@ -8587,6 +8633,35 @@ JAVASCRIPT;
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'getVariableMetaForAssignment':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Variablenauswahl.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Variablenauswahl.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'       => 'variableMetaForAssignment',
+                        'variableID' => $variableID,
+                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
@@ -9181,8 +9256,18 @@ JAVASCRIPT;
 
             if ($objectType === 2 && IPS_VariableExists($objectID)) {
                 try {
-                    $meta = $this->GetVariableRuntimeMeta($objectID);
-                    $variableType = (int) ($meta['_variableType'] ?? -1);
+                    /*
+                     * Objektbaum bewusst schlank halten:
+                     * GetVariableRuntimeMeta() lädt Profil-/Presentation-/Icon-Daten
+                     * und ist bei sehr großen Symcon-Installationen für tausende
+                     * Variablen unnötig teuer. Für die Baumdarstellung reichen Typ,
+                     * Profilname und der formatierte aktuelle Wert.
+                     *
+                     * Die vollständigen Runtime-Metadaten werden erst angefordert,
+                     * wenn der Benutzer diese konkrete Variable auswählt.
+                     */
+                    $variable = IPS_GetVariable($objectID);
+                    $variableType = (int) ($variable['VariableType'] ?? -1);
                     $variableTypeNames = [
                         0 => 'Boolean',
                         1 => 'Integer',
@@ -9190,26 +9275,24 @@ JAVASCRIPT;
                         3 => 'String'
                     ];
 
+                    $profileName = (string) ($variable['VariableCustomProfile'] ?? '');
+                    if ($profileName === '') {
+                        $profileName = (string) ($variable['VariableProfile'] ?? '');
+                    }
+
                     $node['variableType'] = $variableType;
                     $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
-                    $node['valueText'] = $meta['_valueText'] ?? '';
-                    $node['rawValue'] = $meta['_rawValue'] ?? '';
-                    $node['profileName'] = $meta['_profileName'] ?? '';
-                    $node['profileSummary'] = $meta['_profileSummary'] ?? '';
-                    $node['profile'] = $meta['_profile'] ?? null;
-                    $node['canAction'] = (bool) ($meta['_canAction'] ?? false);
-                    $node['hasLegacyProfile'] = (bool) ($meta['_hasLegacyProfile'] ?? false);
-                    $node['hasNewPresentation'] = (bool) ($meta['_hasNewPresentation'] ?? false);
-                    $node['presentationIcon'] = (string) ($meta['_presentationIcon'] ?? '');
-                    $node['presentationIconOff'] = (string) ($meta['_presentationIconOff'] ?? '');
-                    $node['presentationIconOn'] = (string) ($meta['_presentationIconOn'] ?? '');
-                    $node['glowColor'] = (string) ($meta['_glowColor'] ?? '');
-                    $node['glowIntensity'] = (int) ($meta['_glowIntensity'] ?? 0);
-                    $node['legacyColorOn'] = (string) ($meta['_legacyColorOn'] ?? '');
-                    $node['legacyCurrentColor'] = (string) ($meta['_legacyCurrentColor'] ?? '');
-                    $node['newIntegerStatusColor'] = (string) ($meta['_newIntegerStatusColor'] ?? '');
+                    $node['profileName'] = $profileName;
+                    $node['valueText'] = $this->GetFormattedVariableValue(
+                        $objectID,
+                        $variableType,
+                        GetValue($objectID),
+                        $profileName
+                    );
+                    $node['runtimeMetaLoaded'] = false;
                 } catch (Throwable $e) {
                     $node['valueText'] = '';
+                    $node['runtimeMetaLoaded'] = false;
                     $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
                 }
             }
