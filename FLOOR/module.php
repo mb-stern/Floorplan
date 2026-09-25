@@ -3,25 +3,16 @@
 declare(strict_types=1);
 
 /*
- * Foorplaner
+ * Floorplan
  * Prefix in module.json: FLOOR
  *
  * Basis / Zielprojekt:
  * Easy Floorplan by Nicolas Sandller
  * https://github.com/nicosandller/easy-floorplan
  * License: MIT
- *
- * Hinweis:
- * Diese erste Version übernimmt bewusst noch nicht den kompletten
- * Home-Assistant-Build von Easy Floorplan. Sie verwendet aber bereits
- * ein kompatibel angelehntes JSON-Datenmodell (walls, openings, items,
- * texts, floors) und stellt einen eigenen HTML-SDK-Editor bereit.
- *
- * Dadurch können wir Easy Floorplan schrittweise portieren, ohne
- * Home-Assistant-Abhängigkeiten in IP-Symcon einzuschleppen.
  */
 
-class Foorplaner extends IPSModuleStrict
+class Floorplan extends IPSModuleStrict
 {
     private const ATTRIBUTE_DATA = 'FloorplanData';
     private const VISUALIZATION_TYPE_HTML = 1;
@@ -30,8 +21,11 @@ class Foorplaner extends IPSModuleStrict
     {
         parent::Create();
 
-        $this->RegisterPropertyInteger('CanvasWidth', 1000);
-        $this->RegisterPropertyInteger('CanvasHeight', 650);
+        // Easy-Floorplan bleibt als eigene Originaldatei im Modulbaum und wird
+        // wie beim Energiefluss-Modul über einen instanzspezifischen WebHook
+        // ausgeliefert. Dadurch muss die große JS-Datei nicht in die HTML-Ausgabe.
+        $this->RegisterHook($this->GetVisualizationWebHookBaseAddress());
+
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
         $this->RegisterPropertyString('BackgroundColor', '#303030');
@@ -59,6 +53,62 @@ class Foorplaner extends IPSModuleStrict
         }
 
         $this->SetSummary('Floorplan Editor');
+        $this->RegisterRuntimeVariableMessages();
+
+        if (IPS_GetKernelRunlevel() === KR_READY) {
+            $this->ReloadHtml();
+        }
+    }
+
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
+    {
+        if ($Message !== VM_UPDATE || !IPS_VariableExists($SenderID)) {
+            return;
+        }
+
+        try {
+            $meta = $this->GetVariableRuntimeMeta($SenderID);
+            $payload = json_encode(
+                [
+                    'type'       => 'variableUpdate',
+                    'variableID' => $SenderID,
+                    'meta'       => $meta
+                ],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            );
+
+            if ($payload !== false) {
+                // Während Modul-/Instanz-Updates können weiterhin VM_UPDATE-Meldungen
+                // eintreffen, obwohl die HTML-SDK-InstanceInterface intern noch nicht
+                // wieder verfügbar ist. In diesem kurzen Zustand keine Visualisierungs-
+                // Nachricht senden; der nächste reguläre Variablenwert wird wieder
+                // normal übertragen.
+                if (IPS_GetKernelRunlevel() !== KR_READY || !IPS_InstanceExists($this->InstanceID)) {
+                    return;
+                }
+
+                $instance = IPS_GetInstance($this->InstanceID);
+                if ((int) ($instance['InstanceStatus'] ?? 0) !== 102) {
+                    return;
+                }
+
+                // Nur den Zustand der betroffenen Variable übertragen.
+                // KEIN komplettes Projekt neu laden -> Etage und Ansicht bleiben unverändert.
+                @$this->UpdateVisualizationValue($payload);
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('VariableUpdate', $e->getMessage(), 0);
+        }
+    }
+
+    public function ReloadHtml(): void
+    {
+        $this->UpdateVisualizationValue(
+            json_encode(
+                ['command' => 'reloadHtml'],
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            )
+        );
     }
 
     public function GetConfigurationForm(): string
@@ -69,56 +119,11 @@ class Foorplaner extends IPSModuleStrict
         $elements = [
             [
                 'type'    => 'Label',
-                'caption' => 'Foorplaner – Floorplan Editor für IP-Symcon'
+                'caption' => 'Floorplan'
             ],
             [
                 'type'    => 'Label',
-                'caption' => 'Basis: Easy Floorplan (MIT). Der eigentliche grafische Editor läuft über das HTML-SDK der Instanz.'
-            ],
-            [
-                'type'     => 'ExpansionPanel',
-                'caption'  => 'Projekt',
-                'expanded' => true,
-                'items'    => [
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'CanvasWidth',
-                        'caption' => 'Breite',
-                        'minimum' => 300,
-                        'maximum' => 5000
-                    ],
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'CanvasHeight',
-                        'caption' => 'Höhe',
-                        'minimum' => 200,
-                        'maximum' => 5000
-                    ],
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'GridSize',
-                        'caption' => 'Raster',
-                        'minimum' => 5,
-                        'maximum' => 200
-                    ],
-                    [
-                        'type'    => 'NumberSpinner',
-                        'name'    => 'SnapSize',
-                        'caption' => 'Snap-Schritt',
-                        'minimum' => 0,
-                        'maximum' => 200
-                    ],
-                    [
-                        'type'    => 'Color',
-                        'name'    => 'BackgroundColor',
-                        'caption' => 'Hintergrund'
-                    ],
-                    [
-                        'type'    => 'CheckBox',
-                        'name'    => 'ShowGrid',
-                        'caption' => 'Raster im Editor anzeigen'
-                    ]
-                ]
+                'caption' => 'Basis: Easy Floorplan (MIT).'
             ],
             [
                 'type'     => 'ExpansionPanel',
@@ -128,17 +133,16 @@ class Foorplaner extends IPSModuleStrict
                     [
                         'type'    => 'Label',
                         'caption' => sprintf(
-                            'Etagen: %d | Wände: %d | Türen/Fenster: %d | Geräte: %d | Texte: %d',
+                            'Etagen: %d | Wände: %d | Türen: %d | Fenster: %d | Geräte: %d | Objekte: %d | Formen: %d | Texte: %d',
                             $counts['floors'],
                             $counts['walls'],
-                            $counts['openings'],
+                            $counts['doors'],
+                            $counts['windows'],
                             $counts['items'],
+                            $counts['furniture'],
+                            $counts['shapes'],
                             $counts['texts']
                         )
-                    ],
-                    [
-                        'type'    => 'Label',
-                        'caption' => 'Hinweis: IP-Symcon-Konfigurationsformulare können kein beliebiges HTML/JavaScript einbetten. Deshalb ist der Zeicheneditor als HTML-SDK-Darstellung derselben Instanz umgesetzt. Die Projekteinstellungen bleiben hier im Konfigurationsformular.'
                     ]
                 ]
             ]
@@ -146,31 +150,51 @@ class Foorplaner extends IPSModuleStrict
 
         $actions = [
             [
-                'type'    => 'Label',
-                'caption' => 'Projektwerkzeuge'
-            ],
-            [
-                'type'    => 'Button',
-                'caption' => 'Floorplan JSON anzeigen',
-                'onClick' => 'echo FLOOR_GetFloorplanJSON($id);'
-            ],
-            [
                 'type'     => 'Button',
-                'caption'  => 'Floorplan JSON herunterladen',
-                'download' => 'floorplan.json',
+                'caption'  => 'Sichern',
+                'download' => 'floorplan-backup.json',
                 'onClick'  => 'echo "data:application/json;charset=utf-8," . rawurlencode(FLOOR_GetFloorplanJSON($id));'
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Editor-Daten auf Projekteinstellungen synchronisieren',
-                'onClick' => 'FLOOR_SyncProjectSettings($id); echo "Synchronisiert";'
+                'type'    => 'PopupButton',
+                'caption' => 'Wiederherstellen',
+                'popup'   => [
+                    'caption'      => 'Floorplan wiederherstellen',
+                    'closeCaption' => 'Abbrechen',
+                    'items'        => [
+                        [
+                            'type'       => 'SelectFile',
+                            'name'       => 'FloorplanBackup',
+                            'caption'    => 'Sicherungsdatei auswählen',
+                            'extensions' => '.json'
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => 'Beim Wiederherstellen wird der aktuell gespeicherte Floorplan durch die ausgewählte Sicherung ersetzt.'
+                        ]
+                    ],
+                    'buttons'      => [
+                        [
+                            'caption' => 'Wiederherstellen',
+                            'onClick' => 'if (empty($FloorplanBackup)) { echo "Bitte zuerst eine Sicherungsdatei auswählen."; } else { FLOOR_RestoreFloorplanBackup($id, $FloorplanBackup); echo "MESSAGE:Floorplan wurde wiederhergestellt."; }'
+                        ]
+                    ]
+                ]
             ],
             [
-                'type'    => 'Button',
-                'caption' => 'Floorplan zurücksetzen',
-                'confirm' => 'Soll der komplette Floorplan wirklich gelöscht werden?',
-                'onClick' => 'FLOOR_ResetFloorplan($id); echo "Floorplan wurde zurückgesetzt";'
-            ]
+                    'type'  => 'RowLayout',
+                    'items' => [
+                        [
+                                'type'   => 'Image',
+                                'onClick'=> "echo 'https://paypal.me/mbstern';",
+                                'image'=> "data:image/jpeg;base64,/9j/4QAYRXhpZgAASUkqAAgAAAAAAAAAAAAAAP/sABFEdWNreQABAAQAAAA8AAD/7gAOQWRvYmUAZMAAAAAB/9sAhAAGBAQEBQQGBQUGCQYFBgkLCAYGCAsMCgoLCgoMEAwMDAwMDBAMDg8QDw4MExMUFBMTHBsbGxwfHx8fHx8fHx8fAQcHBw0MDRgQEBgaFREVGh8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx8fHx//wAARCABLAGQDAREAAhEBAxEB/8QAqwABAAICAwEBAAAAAAAAAAAAAAUGAgcDBAgJAQEBAAIDAQAAAAAAAAAAAAAAAAMEAgUGARAAAQMCAwMEDwMICwAAAAAAAgEDBAAFERIGIRMHMdEUFkFRcSKyk6PDJFSEFTZGZmEyCIGxQlKSIzODkaFigmOz00QlVRgRAAICAQIDBQYFBQAAAAAAAAABAgMREgQhMQVBUWEiE/BxgaGxBpHRQhQVwfEyUiP/2gAMAwEAAhEDEQA/AN+WWywr/CS63VDfkPmeUc5CICJKKCKCqbNlAd/qNpr1YvGHz0A6jaa9WLxh89AOo2mvVi8YfPQDqNpr1YvGHz0A6jaa9WLxh89AOo2mvVi8YfPQDqNpr1YvGHz0A6jaa9WLxh89AOo2mvVi8YfPQDqNpr1YvGHz0A6jaa9WLxh89ARnuVr3/wC4t+97o3PSui51+9jly5vvZezhQEnob4ajd1zw1oCeoBQCgFAeZtWfik1ZbtT3W3W22284MKU7GYceR4nCFk1DMSi4KbVHHYldDT0eEoJtvLRrrN7JSaSIr/1nr3/q7Z+y/wD6tS/wtXfL5GH76Xci4aC/FPFul1j2zVFtC3dKMWmrhGMiZEyXAd6B98Iqv6WZcOzVTc9HcYuUHnHYTVb1N4Zv6tIXhQCgFAV/569g85QGWhvhqN3XPDWgJ6gFAKA4LhLbhwJMxxcG4zRvGq9psVJfzVlGOWkeN4WT53SZJyZD0lxcTfMnTVe2aqS/nru0sLBz74s6XSj7SVD6rJfTR+g+6ZIAjiRKgiiY44rsSitZ44JcT6E6Nv8ADvunok2Kpd6KNPgf3wdbREISw/prkd3t5U2OMjZbHeQ3FanHkTdVi2KAUBX/AJ69g85QGWhvhqN3XPDWgJ6gFAKAp/F+6LbOGOpZaLlLoLrIL/afTcp/W5VrYw1XRXiRXvEGeElElHKAqRLsERTFVVewiJXZS5GjTXNmAWi7GSCEJ9SXYibo+aq2h9xk9zUuco/ii26T0VKalt3C6AjaMrmYjLgpKachHhyYdqrNVLzlmj6l1aMouuvjnm/yPWPBCG8zpJ19xFQZUozax7IiIhin94VrnOuTTuS7om5+2q3Hbtv9UvyRsKtMdEKAUBX/AJ69g85QGWhvhqN3XPDWgJ6gFAKA1F+KK59E4XnGQsCuE2Oxh2xFVeX/ACq2nSIZuz3JlTeSxA8waGY3l9RzDYy0Z4/auAp4VdZHmct1aeKH4tI2xpzTl11Fcfd9uESfQCdJXCyigjgiqq7eyqVjudzCmOqXI5/Z7Ke4nohz5l8snAu6HIA7zMaZjIuJtRlI3CTtZiQRHu7a1F/XYJeRNvxOg232xNyzbJKPhzNwwYMWBDZhxG0ajRwRtpseRBHYlc3ZNzk5Pi2djVXGuKjFYijnrAzFAKAr/wA9ewecoDLQ3w1G7rnhrQE9QCgFAUzidwvtnEC3QoNwmyITcJ5XwWPkXMRAod8hiXIi7Kt7TduhtpJ5IbqVNYZp7UfBCFodyO7ZnZ10dnIYPKbYkLYtqKphuhTaSr2e1XRdO6h6revTHByv3BtmowjBOXF9hduB1knx7hc50qM6wKNAw0roEGZSJSLDMicmVKq9cvjKMYpp8cnv2ztpxnOUk1wxx9vA29XOHXigFAKAUBX/AJ69g85QGWhvhqN3XPDWgNAyeKvFSdB1ZqS36lhQbTY5xsQ7e+wwrj4K4qADSqKqSoOXl5a6JbOhOEHFuUlz4mud02m0+CNl2HjvpKPpawytX3Fm3Xy5xQffiNg4eVCVUF0hBD3YuCmdM3YWtfZ06bnJVrMUyxHcR0rVzJ5njHw3eisTG7yBRJMz3czI3TyNlJyiWTMoYJ3pouK7KgexuTxp44z8CRXw7yQvOvdM2y7rYXZo+/SiuS24IiZkjbYEeYyEVEEwBfvKlY1bWc0pY8ucGN16hFvtSbNadfNfsabjaiO7xXAefVkbcTTe8JBVcSwFEXL3tdB+w27tdWh8Fzyzj/5TdxpVznHjLGnCybGd4kaSiOtxbhPCPOyCUhlEM0aNRRVAiEVRFTkwrSrpt0lmMcx+p0b6xt4NRnLEscefDwIy6a2emah0tGsEpCgXQ3XJJ7vabTRYKnfpmH7h7anq2SjXY7F5o4x737IrX9Sc7qY0vyTznh2L3+5lh1pqVrTGlLpf3W98NuYJ4WVLLnNNgBmwXDMSonJWv29XqTUe83Vk9MWzWjf4jrYPDTrZJgC3dHJbkGNZhexzutoJqSuKCKgI2aES5fs7NbB9Kl62hPy4zkr/ALtaNXaWuBxb04xpOy3vVD7Vll3ljpLFuQjkO5FxUVEQDeEmXBVXLhVaWym5yjDzKPaSq9KKcuGS02DUNk1Da2rrZZjc63vYo2+3jhiK4EioqIqKi8qKlVrKpQlpksMkjJSWUdD569g85UZkcGmSlDolSiBvZQtSFjtoqIpOIpZBxXBExKsoYys8jx8jWHCf8PVhTTrczXdl3uoCkOuE068RCLeKICELR7tccFL8tbje9TlrxVLy4KdO1WPMuJxM6R4h6Y1/q2XbNJRb/Evyf8ZOdeZaajMoK5WVA9uVBwBQRExypguFeu+qyqCc3Fx5rvGicZPCzkgLzojqx+G9+FqdBtt8W5dOhMKQkayVcRsGx3akmJMivIuxO5U1e49Td5hxjpx8P7kcq9NWHweS5aI4d6kj6KvmpLuBzteapj/vd4oi40w5gIspjlQVyd8SdwexUM93X68IrhVBkW5oslt54WbJL6lt0hwv0/CtsCVcbeJXoAE3ycMjQXeX7mZW1y9yot51SyUpKMvJ/T6kHT+iUwhGU4/9O33/AEKzE01re3WO+WIbA1MdnOOGt2J1vExPBO9QlzKX6Q4qmC1fnuaJ2Qs1uOn9OGauGz3VdVlXpqTlnzZXt7iW01o++QdR2WTIiKMS0Wnd5s4LjKczEYIiLjji6u3kqtut5XKqaT805/L2Rc2XT7YX1uS8sK/D/J5z9SF11B4q604XJa5tjbg3i43NtqVEYdBRagNkh70yJxUVVIU2Cv5Kh28qKrtSlmKj8zdWKc4YxxyQnEfgA63EusvS7DlxuF7ksNNxl3bbUCNsKQYKRJmU1aBFXlw2VNtepZaU+CivxfYYW7b/AF7Tk1fw51fbeIQXq2QblcbMlsj26CdlnNQpUbo4CCtkryLi2WVS2duvKN1XKrS3FS1NvUspns6ZKWVnGOw2bwp0m3pjR0eAkJ23OvOuypEJ+QMtxs3S5CeAQElyiOOCcta7eXepZnOfhgsUw0xwd/569g85VUlMtDfDUb7Ccx/bWgJ6gFAdO42a0XJWVuMJiYsY95H6Q0Du7P8AWDOi5V+1KzjZKPJ4PHFPmdysD0UAoBQCgFAKAUBX8U69YY7egcn8ygIeLj0iZuen/wAc83unDo2P879L9bLsoDs+k/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAek/UHkKAiv3fvf/db/P8A4nvT+H4nd0B//9k="
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => "Sag danke und unterstütze den Modulentwickler: paypal.me/mbstern"
+                        ],
+                    ],
+                ],
         ];
 
         return json_encode(
@@ -187,22 +211,35 @@ class Foorplaner extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $project = $this->GetProject();
-
         /*
-         * Properties aus dem Konfigurationsformular sind führend für
-         * Canvas-Größe, Raster und Hintergrund.
+         * IPSView-kompatible Lade-Architektur:
+         * - easy-floorplan.js bleibt als einziges grosses externes Asset am WebHook.
+         * - Editor-JavaScript und Projekt-/Runtime-Daten werden wieder direkt in die
+         *   HTML-SDK-Kachel eingebettet.
+         * - Kein project.json-Fetch, kein nachgeladener Editor und kein Delay.
+         *
+         * Damit entspricht der Startablauf wieder der zuvor funktionierenden
+         * TileHTML/IPSView-Variante.
          */
-        $project['width'] = max(300, $this->ReadPropertyInteger('CanvasWidth'));
-        $project['height'] = max(200, $this->ReadPropertyInteger('CanvasHeight'));
-        $project['grid'] = max(5, $this->ReadPropertyInteger('GridSize'));
-        $project['snap'] = max(0, $this->ReadPropertyInteger('SnapSize'));
-        $project['background'] = $this->ReadPropertyString('BackgroundColor');
-        $project['showGrid'] = $this->ReadPropertyBoolean('ShowGrid');
+        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
 
+        $project = $this->AddRuntimeValues($this->GetProject());
         $initial = json_encode(
             $project,
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP
+            JSON_UNESCAPED_SLASHES
+            | JSON_UNESCAPED_UNICODE
+            | JSON_HEX_TAG
+            | JSON_HEX_AMP
+        );
+
+        if ($initial === false) {
+            throw new RuntimeException('Floorplan-Startdaten konnten nicht serialisiert werden.');
+        }
+
+        $editorJavaScript = str_replace(
+            ['__INITIAL_PROJECT__', '__INSTANCE_ID__'],
+            [$initial, (string) $this->InstanceID],
+            $this->GetVisualizationEditorJavaScript()
         );
 
         $html = <<<'HTML'
@@ -211,17 +248,30 @@ class Foorplaner extends IPSModuleStrict
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="/icons.js"></script>
+    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
     <style>
         :root {
-            color-scheme: dark;
-            --fp-bg: #242424;
-            --fp-panel: #303030;
-            --fp-panel-2: #383838;
+            --fp-bg: transparent;
+            --fp-panel: rgba(38,38,38,.96);
+            --fp-panel-2: rgba(54,54,54,.96);
             --fp-border: rgba(255,255,255,.16);
             --fp-text: #f2f2f2;
             --fp-muted: #b8b8b8;
+            --fp-grid: rgba(255,255,255,.14);
             --fp-accent: #4da3ff;
             --fp-danger: #e35d6a;
+        }
+
+        html[data-theme="light"] {
+            --fp-bg: transparent;
+            --fp-panel: rgba(232,232,232,.98);
+            --fp-panel-2: rgba(218,218,218,.98);
+            --fp-border: rgba(0,0,0,.34);
+            --fp-text: #111111;
+            --fp-muted: #444444;
+            --fp-grid: rgba(0,0,0,.24);
+            --fp-accent: #1769aa;
         }
 
         * { box-sizing: border-box; }
@@ -231,7 +281,7 @@ class Foorplaner extends IPSModuleStrict
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: var(--fp-bg);
+            background: transparent !important;
             color: var(--fp-text);
             font-family: Arial, Helvetica, sans-serif;
         }
@@ -242,29 +292,50 @@ class Foorplaner extends IPSModuleStrict
 
         #app {
             display: grid;
-            grid-template-rows: auto 1fr;
+            grid-template-rows: 1fr auto;
             width: 100%;
             height: 100%;
             min-height: 420px;
+            position: relative;
         }
 
+        /* HTML-SDK: Bedienelemente bewusst UNTEN.
+           Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
         .toolbar {
+            position: relative;
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: clamp(2px, .35vw, 6px);
+            overflow: visible;
             align-items: center;
-            padding: 8px;
+            padding: 8px 22px 8px 8px;
             background: var(--fp-panel);
-            border-bottom: 1px solid var(--fp-border);
+            border-top: 1px solid var(--fp-border);
         }
 
         .toolbar .group {
             display: flex;
-            gap: 4px;
+            flex-wrap: nowrap;
+            gap: clamp(2px, .25vw, 4px);
             align-items: center;
-            padding-right: 8px;
-            margin-right: 2px;
+            min-width: 0;
+            padding-right: clamp(3px, .45vw, 8px);
+            margin-right: 0;
             border-right: 1px solid var(--fp-border);
+            flex: 1 1 auto;
+        }
+
+        /* Eine Gruppe bleibt in sich einzeilig. Reicht die Gesamtbreite nicht,
+           wechselt die komplette Gruppe in die zweite Fußleisten-Zeile. */
+        .toolbar .group {
+            flex-wrap: nowrap;
+        }
+
+        /* Die Bedienelemente verteilen den verfügbaren Platz innerhalb ihrer
+           Gruppe. Bei schmaleren Kacheln bleiben die kompakten clamp-Werte aktiv. */
+        .toolbar .group > button,
+        .toolbar .group > select {
+            flex: 1 1 auto;
         }
 
         .toolbar button,
@@ -274,25 +345,60 @@ class Foorplaner extends IPSModuleStrict
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
-            padding: 5px 10px;
+            padding: 5px clamp(4px, .55vw, 10px);
+            font-size: clamp(10px, .78vw, 14px);
+            white-space: nowrap;
             cursor: pointer;
         }
 
         .toolbar button.active {
             outline: 2px solid var(--fp-accent);
-            background: #244c72;
+            background: color-mix(in srgb, var(--fp-accent) 30%, var(--fp-panel-2));
         }
 
         .toolbar button.danger {
             color: #ffd4d8;
         }
 
-        .toolbar .spacer { flex: 1; }
+        /* Kein künstlicher Leerraum am rechten Rand. */
+        .toolbar .spacer { display: none; }
+
+        /* Der Statuspunkt bleibt auch ohne Statustext sichtbar. */
+        .toolbar .status:empty {
+            display: flex;
+        }
 
         .status {
-            color: var(--fp-muted);
-            font-size: 12px;
-            white-space: nowrap;
+            /* Speicherstatus fest oben rechts in der Fußleiste.
+               Er nimmt nicht am Flex-Umbruch teil und kann deshalb nie
+               alleine in eine zweite Zeile wandern. */
+            position: absolute;
+            top: 50%;
+            right: 5px;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-size: 0;
+            line-height: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .status::after {
+            content: '';
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #39c66d;
+            box-shadow: 0 0 0 1px rgba(255,255,255,.28);
+        }
+
+        .status.dirty::after {
+            background: #e65353;
         }
 
         .main {
@@ -306,7 +412,7 @@ class Foorplaner extends IPSModuleStrict
             min-width: 0;
             min-height: 0;
             overflow: hidden;
-            background: #191919;
+            background: transparent;
         }
 
         #viewport {
@@ -348,7 +454,7 @@ class Foorplaner extends IPSModuleStrict
             padding: 5px 7px;
             border: 1px solid var(--fp-border);
             border-radius: 5px;
-            background: #222;
+            background: var(--fp-panel-2);
             color: var(--fp-text);
         }
 
@@ -374,20 +480,125 @@ class Foorplaner extends IPSModuleStrict
             pointer-events: none;
         }
 
+        .drawing-shape {
+            fill: none;
+            stroke: var(--fp-text);
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+            cursor: move;
+        }
+
+        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
+           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
+        .drawing-shape-hit {
+            fill: transparent;
+            stroke: transparent;
+            stroke-width: 7;
+            vector-effect: non-scaling-stroke;
+            pointer-events: all;
+            cursor: move;
+        }
+        .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
         .wall {
             stroke: #ececec;
             stroke-width: 12;
             stroke-linecap: square;
             vector-effect: non-scaling-stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .wall {
             cursor: pointer;
         }
 
+        .dimension-line {
+            stroke: currentColor;
+            stroke-width: 1.2;
+            fill: none;
+            opacity: 1;
+        }
+        .dimension-line text {
+            fill: currentColor;
+            stroke: rgba(0,0,0,.35);
+            stroke-width: 2px;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
+            text-rendering: geometricPrecision;
+            text-anchor: middle;
+            dominant-baseline: central;
+            paint-order: stroke;
+        }
         .wall.selected {
             stroke: #74b9ff;
         }
 
         .opening {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening {
             cursor: pointer;
+        }
+
+        /* Größere Trefferfläche nur für die Öffnung selbst.
+           Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+        .shutter-control {
+            pointer-events: all;
+            isolation: isolate;
+        }
+
+        .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .shutter-control .shutter-hit {
+            fill: transparent;
+            stroke: transparent;
+            pointer-events: all;
+        }
+
+        .shutter-control text {
+            fill: #202020;
+            stroke: none;
+            font-size: 12px;
+            font-weight: 700;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .shutter-control circle:not(.shutter-hit) {
+            fill: #ffffff;
+            stroke: #303030;
+            stroke-width: 2.4;
+        }
+
+        html[data-theme="light"] .shutter-control text {
+            fill: #202020;
+            stroke: none;
+        }
+
+        .opening-hit {
+            stroke: transparent;
+            stroke-width: 22;
+            fill: none;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .opening-hit {
+            cursor: move;
         }
 
         .opening-gap {
@@ -407,6 +618,50 @@ class Foorplaner extends IPSModuleStrict
             stroke: #74b9ff;
         }
 
+        .opening-state-open {
+            stroke: #4da3ff;
+        }
+
+        .opening-shutter {
+            stroke: #b8c4d8;
+            stroke-width: 5;
+            vector-effect: non-scaling-stroke;
+            stroke-linecap: butt;
+        }
+
+        .opening-shutter-slat {
+            stroke: #8695aa;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .furniture {
+            cursor: default;
+        }
+
+        #app:not(.view-mode) .furniture {
+            cursor: move;
+        }
+
+        .furniture-shape {
+            fill: rgba(150, 160, 175, .18);
+            stroke: #9ca9ba;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .furniture.selected .furniture-shape {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        .furniture-label {
+            fill: var(--fp-text);
+            font-size: 11px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
         .device {
             cursor: pointer;
         }
@@ -423,13 +678,192 @@ class Foorplaner extends IPSModuleStrict
             stroke-width: 3;
         }
 
-        .device text,
+        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
+           als rundes Thermostat-/Messwertsymbol darstellen. */
+        .device .climate-panel {
+            fill: #404040;
+            stroke: #dedede;
+            stroke-width: 2;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .device .climate-panel-display {
+            fill: rgba(255,255,255,.08);
+            stroke: #9aa6b2;
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device .climate-panel-dot {
+            fill: #bfc8d2;
+            stroke: none;
+            pointer-events: none;
+        }
+
+        .device.selected .climate-panel {
+            stroke: #74b9ff;
+            stroke-width: 3;
+        }
+
+        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
+           Die Farbe kommt je Gerät aus --device-status-color. */
+        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
+           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
+        .device.numeric-status .device-status-ring {
+            fill: none;
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-width: 2;
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(0 0 var(--device-status-glow, 0px) var(--device-status-color, #ffe66d));
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
+        }
+
+        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
+        .device.active-light.boolean-active circle {
+            fill: #5b5422;
+        }
+
+        .device.inactive-light {
+            opacity: .72;
+        }
+
+        .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.4;
+            vector-effect: non-scaling-stroke;
+            cursor: nwse-resize;
+            pointer-events: all;
+        }
+
+        .device .resize-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.4;
+        }
+
+        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
+           Im Dark-Theme bleiben sie weiß. */
+        html[data-theme="light"] .resize-handle {
+            fill: #111111;
+        }
+
+        html[data-theme="light"] .rotate-handle {
+            fill: #111111;
+        }
+
+        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
+           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
+        .device-direct-slider {
+            cursor: pointer;
+        }
+
+        .device-direct-slider-hit {
+            stroke: transparent;
+            stroke-width: 30;
+            vector-effect: non-scaling-stroke;
+            pointer-events: stroke;
+        }
+
+        .device-direct-slider-track {
+            stroke: rgba(160,170,185,.65);
+            stroke-width: 4;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-fill {
+            stroke: #d7e9ff;
+            stroke-width: 5;
+            stroke-linecap: round;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .device-direct-slider-thumb {
+            fill: #ffffff;
+            stroke: #66788a;
+            stroke-width: 1.4;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        #app:not(.view-mode) .device-direct-slider {
+            pointer-events: none;
+            opacity: .65;
+        }
+
+        .rotate-handle-line {
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        .rotate-handle {
+            fill: #ffffff;
+            stroke: #74b9ff;
+            stroke-width: 0.6;
+            vector-effect: non-scaling-stroke;
+            cursor: grab;
+            pointer-events: all;
+        }
+
+        .rotate-handle:active {
+            cursor: grabbing;
+        }
+
+        .check {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            width: auto;
+            font-size: 12px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .check input[type="checkbox"] {
+            width: 13px !important;
+            height: 13px !important;
+            min-width: 13px !important;
+            max-width: 13px !important;
+            margin: 0;
+            padding: 0;
+            flex: 0 0 13px;
+        }
+
+        .device-label {
+            pointer-events: none;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+        }
+
+        .device-label,
+        .runtime-value,
         .plan-text {
             fill: white;
             font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+            line-height: 1;
             paint-order: stroke;
             stroke: rgba(0,0,0,.35);
             stroke-width: 2px;
+            text-rendering: geometricPrecision;
         }
 
         .grid-line {
@@ -447,6 +881,455 @@ class Foorplaner extends IPSModuleStrict
             pointer-events: none;
         }
 
+        #viewbar {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 10px;
+            transform: none;
+            z-index: 50;
+            pointer-events: none;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #viewbar select {
+            height: 36px;
+            max-width: none;
+            padding: 0 26px 0 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
+            pointer-events: auto;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+        }
+
+        #viewbar button {
+            width: 36px;
+            pointer-events: auto;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            height: 36px;
+            min-width: 36px;
+            min-height: 30px;
+            padding: 0;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            font-size: 20px;
+            line-height: 34px;
+            text-align: center;
+            cursor: pointer;
+            pointer-events: auto;
+            touch-action: manipulation;
+            box-shadow: 0 2px 8px rgba(0,0,0,.35);
+        }
+
+        #app.view-mode .toolbar { display: none; }
+        #app.view-mode #viewbar { display: flex; }
+        #app.view-mode .main { grid-template-columns: 1fr; }
+        #app.view-mode .sidebar { display: none; }
+
+        /* Bedienansicht:
+           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
+           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
+        #app.view-mode .wall,
+        #app.view-mode .opening,
+        #app.view-mode .opening-hit,
+        #app.view-mode .furniture,
+        #app.view-mode .plan-text {
+            cursor: default !important;
+        }
+
+        #app.view-mode .device {
+            cursor: pointer !important;
+        }
+
+        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
+           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
+           sicher überschrieben. */
+        #scene.runtime-view,
+        #scene.runtime-view * {
+            cursor: default !important;
+        }
+
+        #scene.runtime-view .device,
+        #scene.runtime-view .device * {
+            cursor: pointer !important;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(0,0,0,.62);
+            z-index: 1000;
+        }
+
+        .modal-backdrop.open { display: flex; }
+
+        .modal {
+            width: min(760px, 96vw);
+            max-height: min(720px, 90vh);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            overflow: hidden;
+            border: 1px solid var(--fp-border);
+            border-radius: 10px;
+            background: var(--fp-panel);
+            box-shadow: 0 16px 60px rgba(0,0,0,.45);
+        }
+
+        .modal h3 {
+            margin: 0;
+            padding: 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .modal-search {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .modal-search input {
+            width: 100%;
+            min-height: 34px;
+            padding: 6px 9px;
+            color: var(--fp-text);
+            background: var(--fp-panel-2);
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+        }
+
+        .variable-list {
+            overflow: auto;
+            padding: 6px;
+        }
+
+        .variable-row {
+            display: grid;
+            grid-template-columns: 90px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .variable-row:hover { background: color-mix(in srgb, var(--fp-text) 8%, transparent); }
+        .variable-id { color: #9fc7ff; font-family: monospace; }
+        .variable-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .variable-type { color: var(--fp-muted); font-size: 11px; }
+
+        .object-tree { padding: 4px 2px 10px; }
+        .tree-node { user-select: none; }
+        .tree-row {
+            min-height: 31px;
+            display: grid;
+            grid-template-columns: 22px 24px minmax(120px, 1fr) auto auto;
+            gap: 5px;
+            align-items: center;
+            padding: 3px 8px 3px calc(8px + (var(--depth, 0) * 18px));
+            border-radius: 5px;
+        }
+        .tree-row:hover { background: color-mix(in srgb, var(--fp-text) 7%, transparent); }
+        .tree-toggle { width: 22px; text-align: center; color: var(--fp-muted); cursor: pointer; }
+        .tree-icon { text-align: center; }
+        .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-id { color: #9fc7ff; font-family: monospace; font-size: 11px; }
+        .tree-value { color: var(--fp-muted); font-size: 11px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-row.variable { cursor: pointer; }
+        .tree-row.variable.selected-variable { outline: 1px solid #74b9ff; background: rgba(116,185,255,.12); }
+        .tree-children.collapsed { display: none; }
+        .tree-empty { padding: 16px; color: var(--fp-muted); text-align: center; }
+        .variable-select-field { cursor: pointer !important; caret-color: transparent; }
+        .variable-select-field:hover { outline: 1px solid #74b9ff; }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .modal-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        .device-value-box {
+            fill: rgba(255,255,255,.08);
+            stroke: currentColor;
+            stroke-width: 0.8;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .runtime-value {
+            fill: #d7e9ff !important;
+            font-family: Arial, Helvetica, sans-serif;
+            font-style: normal;
+            font-weight: 400;
+            font-stretch: normal;
+            letter-spacing: normal;
+        }
+
+        .runtime-value-frame {
+            /* Hintergrund kommt durch die echte SVG-Aussparung darunter. */
+            fill: transparent;
+            fill-opacity: 0;
+            stroke: currentColor;
+            stroke-width: 1.2;
+            vector-effect: non-scaling-stroke;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .runtime-value-frame {
+            fill: transparent;
+            fill-opacity: 0;
+            stroke: #5f5f5f;
+        }
+
+        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
+           bewusst nicht als klickbares Bedienelement dargestellt. */
+        #app.view-mode .device.status-only,
+        #app.view-mode .device.status-only *,
+        #scene.runtime-view .device.status-only,
+        #scene.runtime-view .device.status-only * {
+            cursor: default !important;
+            pointer-events: none !important;
+        }
+
+        .control-modal {
+            width: max-content;
+            min-width: 0;
+            max-width: 92vw;
+            max-height: min(620px, 86vh);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            overflow: hidden;
+            border: 1px solid var(--fp-border);
+            border-radius: 10px;
+            background: var(--fp-panel);
+            box-shadow: 0 16px 60px rgba(0,0,0,.45);
+        }
+
+        .control-modal h3 {
+            margin: 0;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--fp-border);
+        }
+
+        .control-body {
+            padding: 10px 12px;
+            overflow: visible;
+            width: max-content;
+            max-width: calc(92vw - 24px);
+        }
+
+        .control-slider { min-width: 260px; padding: 6px 2px; }
+        .device-color-wheel-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 6px;
+    }
+
+    .device-color-side {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 58px;
+    }
+
+    .device-color-bool-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .device-color-power {
+        min-width: 64px;
+        height: 30px;
+        padding: 0 9px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .device-color-power.is-active {
+        box-shadow: inset 0 0 0 2px currentColor;
+        font-weight: 700;
+    }
+
+    .device-color-hex {
+        white-space: nowrap;
+        font-size: 11px;
+    }
+
+    .device-color-wheel {
+        position: relative;
+        width: 126px;
+        height: 126px;
+        min-width: 126px;
+        border-radius: 50%;
+        cursor: crosshair;
+        touch-action: none;
+        box-shadow: 0 0 0 1px rgba(127,127,127,.35);
+        background:
+            radial-gradient(circle at center, #fff 0%, rgba(255,255,255,.94) 8%, rgba(255,255,255,0) 70%),
+            conic-gradient(
+                #f00 0deg,
+                #ff0 60deg,
+                #0f0 120deg,
+                #0ff 180deg,
+                #00f 240deg,
+                #f0f 300deg,
+                #f00 360deg
+            );
+    }
+
+    .device-color-wheel.disabled {
+        cursor: default;
+        opacity: .55;
+    }
+
+    .device-color-wheel-marker {
+        position: absolute;
+        width: 13px;
+        height: 13px;
+        margin: -6.5px 0 0 -6.5px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px #111, 0 1px 3px rgba(0,0,0,.55);
+        pointer-events: none;
+    }
+
+    .device-color-preview {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 1px solid rgba(127,127,127,.55);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    }
+
+    .control-slider-value { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+        .control-slider-row { display: grid; grid-template-columns: 38px minmax(180px, 1fr) 38px; gap: 8px; align-items: center; }
+        .control-slider-row button {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0;
+            font-size: 22px;
+            line-height: 36px;
+            touch-action: manipulation;
+        }
+        .control-slider input[type="range"] {
+            width: 100%;
+            min-height: 38px;
+            margin: 0;
+            cursor: pointer;
+            touch-action: none;
+        }
+        .control-slider input[type="range"]::-webkit-slider-thumb {
+            width: 22px;
+            height: 22px;
+        }
+        .control-slider input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+        }
+
+        .control-associations {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            margin: 0;
+            width: max-content;
+            max-width: 100%;
+        }
+
+        .control-associations button,
+        .control-actions button,
+        #controlRangeApply {
+            min-height: 36px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .control-associations button {
+            width: auto;
+            min-width: 0;
+            max-width: 100%;
+            min-height: 28px;
+            padding: 4px 12px;
+            white-space: nowrap;
+            align-self: flex-start;
+        }
+
+        .control-associations button.current {
+            outline: 2px solid var(--fp-text);
+            outline-offset: 2px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
+            font-weight: 700;
+        }
+
+        .control-range {
+            display: grid;
+            gap: 8px;
+        }
+
+        .control-range input[type="range"] {
+            width: 100%;
+        }
+
+        .control-range-value {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .control-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px 14px;
+            border-top: 1px solid var(--fp-border);
+        }
+
+        .profile-hint {
+            color: var(--fp-muted);
+            font-size: 11px;
+            line-height: 1.35;
+            margin-top: 8px;
+        }
+
         @media (max-width: 800px) {
             .main {
                 grid-template-columns: 1fr;
@@ -458,40 +1341,510 @@ class Foorplaner extends IPSModuleStrict
                 border-top: 1px solid var(--fp-border);
             }
         }
-    </style>
+            .device-glyph { color: currentColor; pointer-events: none; }
+        .device-glyph * { vector-effect: non-scaling-stroke; }
+
+
+
+        .grid-editor-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            width: auto;
+            min-width: 0;
+            flex: 0 1 auto;
+        }
+
+        .grid-size-input {
+            width: 4.5ch;
+            min-width: 4.5ch;
+            max-width: 4.5ch;
+            box-sizing: content-box;
+            padding-left: 4px;
+            padding-right: 2px;
+            flex: 0 0 auto;
+        }
+
+        .view-mode .grid-editor-controls {
+            display: none !important;
+        }
+
+
+        html,
+        body,
+        #app,
+        .main,
+        .canvas-wrap,
+        #viewport,
+        #scene {
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+
+        /* Wie bei Energiefluss/Wärmepumpe:
+           Die eigentliche Visualisierung malt KEINEN eigenen Hintergrund.
+           Dadurch kommt die reale Kachelfarbe direkt von Symcon. */
+        #viewport,
+        #viewport * {
+            --card-background-color: transparent;
+        }
+
+
+        html[data-theme="light"] .wall,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .device,
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan {
+            color: #111111;
+        }
+
+        html[data-theme="light"] .wall {
+            stroke: #181818;
+        }
+
+        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
+           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
+           über var(--fp-text) unverändert. */
+        html[data-theme="light"] .drawing-shape {
+            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
+               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
+               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
+            stroke: #5f5f5f;
+        }
+
+        html[data-theme="light"] .drawing-shape.selection-shape {
+            stroke: var(--fp-accent);
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #222222;
+        }
+
+        html[data-theme="light"] .device circle {
+            fill: #f2f2f2;
+            stroke: rgba(0,0,0,.62);
+        }
+
+        html[data-theme="light"] .device.active-light circle {
+            fill: #fff2a8;
+            stroke: #8a7200;
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #111111;
+        }
+
+        /* Möbel im hellen Theme:
+           helle Flächen + dunkle Konturen, damit Details nicht in dunklen
+           Eigenfüllungen verschwinden. */
+        html[data-theme="light"] .furniture {
+            color: #252525;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: #eeeeee !important;
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #252525 !important;
+        }
+
+        html[data-theme="light"] .furniture.selected [fill="currentColor"],
+        html[data-theme="light"] .furniture.selected [fill="none"] {
+            stroke: #1769aa !important;
+        }
+
+        html[data-theme="light"] .opening {
+            stroke: #202020;
+        }
+
+        html[data-theme="light"] .grid-line {
+            stroke: rgba(0,0,0,.24);
+        }
+
+        html[data-theme="light"] button,
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            color: #111111;
+            border-color: rgba(0,0,0,.34);
+        }
+
+        html[data-theme="light"] button {
+            background: rgba(224,224,224,.98);
+        }
+
+        html[data-theme="light"] button.danger {
+            color: #111111;
+        }
+
+        html[data-theme="light"] button:hover {
+            background: rgba(205,205,205,.98);
+        }
+
+        html[data-theme="light"] input,
+        html[data-theme="light"] select {
+            background: rgba(245,245,245,.98);
+        }
+
+        html[data-theme="light"] .properties,
+        html[data-theme="light"] .toolbar,
+        html[data-theme="light"] .bottom-bar,
+        html[data-theme="light"] .modal,
+        html[data-theme="light"] .picker {
+            background: var(--fp-panel);
+            color: var(--fp-text);
+            border-color: var(--fp-border);
+        }
+
+        /* Helles Symcon-Theme:
+           Dark bleibt unverändert. Im hellen Theme die Grundrisszeichnung
+           bewusst weicher als reines Schwarz darstellen. */
+        html[data-theme="light"] .wall {
+            stroke: #4a4a4a;
+        }
+
+        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
+           selektierten Elemente blau hervorgehoben werden. */
+        html[data-theme="light"] .wall.selected {
+            stroke: #74b9ff;
+        }
+
+        html[data-theme="light"] .opening-gap {
+            stroke: #f5f5f5;
+        }
+
+        html[data-theme="light"] .opening-line {
+            stroke: #5f5f5f;
+        }
+
+        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
+           Diese spezifischere Regel verhindert, dass die allgemeine
+           helle Fensterfarbe den Offen-Status überschreibt. */
+        html[data-theme="light"] .opening-line.opening-state-open {
+            stroke: #1769aa;
+        }
+
+        html[data-theme="light"] .opening-shutter {
+            stroke: #707070;
+        }
+
+        html[data-theme="light"] .opening-shutter-slat {
+            stroke: #8a8a8a;
+        }
+
+        html[data-theme="light"] .furniture {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .furniture [fill="currentColor"] {
+            fill: rgba(90,90,90,.08) !important;
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .furniture [fill="none"] {
+            stroke: #555555 !important;
+        }
+
+        html[data-theme="light"] .device circle {
+            fill: rgba(255,255,255,.72);
+            stroke: #777777;
+        }
+
+        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
+           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
+           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
+        html[data-theme="light"] .device.boolean-active circle {
+            stroke: var(--device-status-color, #ffe66d);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
+        html[data-theme="light"] .device .climate-panel {
+            fill: rgba(255,255,255,.82);
+            stroke: #777777;
+        }
+
+        html[data-theme="light"] .device .climate-panel-display {
+            fill: rgba(80,80,80,.07);
+            stroke: #888888;
+        }
+
+        html[data-theme="light"] .device .climate-panel-dot {
+            fill: #666666;
+        }
+
+        html[data-theme="light"] .device-glyph {
+            color: #555555;
+        }
+
+        html[data-theme="light"] .runtime-value {
+            fill: #4a4a4a !important;
+        }
+
+        html[data-theme="light"] .label,
+        html[data-theme="light"] text,
+        html[data-theme="light"] tspan,
+        html[data-theme="light"] .furniture-label {
+            fill: #303030;
+            color: #303030;
+            stroke: none !important;
+            paint-order: normal !important;
+            text-rendering: geometricPrecision;
+        }
+
+        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
+           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
+        html[data-theme="light"] #scene text,
+        html[data-theme="light"] #scene tspan {
+            stroke: none !important;
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .device-glyph,
+        html[data-theme="light"] .furniture,
+        html[data-theme="light"] .opening,
+        html[data-theme="light"] .wall {
+            filter: none !important;
+        }
+
+        html[data-theme="light"] .status,
+        html[data-theme="light"] .hint,
+        html[data-theme="light"] small {
+            color: var(--fp-muted);
+        }
+
+
+        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
+        .stream-popup-body {
+            display: grid;
+            gap: 8px;
+            width: min(320px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
+        .stream-view {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            height: auto;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+            overflow: hidden;
+            border-radius: 7px;
+            background: #000;
+        }
+
+        .stream-view img {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+            object-fit: contain;
+            background: #000;
+        }
+
+        #controlModal.stream-expanded .stream-popup-body {
+            width: min(960px, calc(100vw - 32px));
+            max-width: 100%;
+        }
+
+        #controlModal.stream-expanded .stream-view {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+        }
+
+        .stream-popup-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .stream-popup-actions button {
+            min-height: 32px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
+        #controlModal {
+            background: transparent;
+            padding: 0;
+            align-items: initial;
+            justify-content: initial;
+            pointer-events: none;
+        }
+
+        #controlModal.open {
+            display: block;
+        }
+
+        #controlModal .control-modal {
+            position: fixed;
+            margin: 0;
+            pointer-events: auto;
+            max-width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        /* Einheitlicher Cursor für den Grundriss:
+           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
+           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
+           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
+        #scene,
+        #scene * {
+            cursor: pointer !important;
+        }
+
+        /* IP-Symcon / Font-Awesome Icons aus /icons.js */
+        .device-icon-html {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--fp-text);
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] .device-icon-html {
+            color: #4f4f4f;
+        }
+
+        .icon-select-button {
+            width: 100%;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 6px 9px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .icon-select-button i {
+            width: 22px;
+            text-align: center;
+            font-size: 18px;
+        }
+
+        .bool-icon-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .bool-icon-field {
+            display: grid;
+            gap: 4px;
+        }
+
+        .bool-icon-field > label {
+            color: var(--fp-muted);
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .bool-icon-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 4px;
+            justify-content: center;
+        }
+
+        .bool-icon-button .icon-select-preview {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+        }
+
+        .icon-select-preview {
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: currentColor;
+        }
+
+        .icon-select-preview svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .symcon-icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+            gap: 6px;
+            padding: 8px;
+        }
+
+        .symcon-icon-grid button {
+            min-width: 0;
+            height: 46px;
+            padding: 4px;
+            border: 1px solid var(--fp-border);
+            border-radius: 6px;
+            background: var(--fp-panel-2);
+            color: var(--fp-text);
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .symcon-icon-grid button:hover,
+        .symcon-icon-grid button.current {
+            outline: 2px solid var(--fp-accent);
+        }
+
+        .device-icon-html svg {
+            width: 1em;
+            height: 1em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .symcon-icon-grid button svg {
+            width: 1.15em;
+            height: 1.15em;
+            display: block;
+            margin: auto;
+            fill: currentColor;
+            color: inherit;
+        }
+
+        .icon-picker-hint {
+            padding: 6px 14px 0;
+            color: var(--fp-muted);
+            font-size: 11px;
+        }
+
+</style>
 </head>
 <body>
 <div id="app">
-    <div class="toolbar">
-        <div class="group">
-            <button data-tool="select" class="active">Auswahl</button>
-            <button data-tool="wall">Wand</button>
-            <button data-tool="door">Tür</button>
-            <button data-tool="window">Fenster</button>
-            <button data-tool="device">Gerät</button>
-            <button data-tool="text">Text</button>
-        </div>
-
-        <div class="group">
-            <button id="undoBtn" title="Rückgängig">↶</button>
-            <button id="redoBtn" title="Wiederholen">↷</button>
-            <button id="deleteBtn" class="danger">Löschen</button>
-        </div>
-
-        <div class="group">
-            <button id="addFloorBtn">+ Etage</button>
-            <select id="floorSelect"></select>
-        </div>
-
-        <div class="group">
-            <button id="fitBtn">Einpassen</button>
-            <button id="saveBtn">Speichern</button>
-        </div>
-
-        <div class="spacer"></div>
-        <div id="status" class="status">Bereit</div>
-    </div>
-
     <div class="main">
         <div class="canvas-wrap">
             <svg id="viewport" xmlns="http://www.w3.org/2000/svg">
@@ -502,77 +1855,403 @@ class Foorplaner extends IPSModuleStrict
         <aside class="sidebar">
             <h3 id="propTitle">Projekteigenschaften</h3>
             <div id="properties"></div>
-            <div class="help">
+            <div id="selectionHelp" class="help">
                 <b>Bedienung</b><br>
-                Wand: Start- und Endpunkt anklicken.<br>
-                Tür/Fenster: auf eine Wand klicken.<br>
-                Gerät/Text: Position anklicken.<br>
-                Auswahl: Element anklicken und ziehen.<br>
-                Mausrad: zoomen. Mittlere Maustaste: verschieben.<br>
-                Entf: ausgewähltes Element löschen.
+                Element auswählen, um die passende Bedienhilfe anzuzeigen.
             </div>
         </aside>
+    </div>
+    <div class="toolbar">
+        <div class="group">
+            <button data-tool="pan" title="Grundriss mit der Maus verschieben">Verschieben</button>
+            <button data-tool="shape" title="Form platzieren">Formen</button>
+            <button data-tool="wall">Wand</button>
+            <button data-tool="door">Tür</button>
+            <button data-tool="window">Fenster</button>
+            <button data-tool="device">Gerät</button>
+            <button data-tool="text">Text</button>
+                <button data-tool="furniture">Objekte</button>
+            <div class="grid-editor-controls" title="Raster">
+                <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
+                <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
+            </div>
+            
+        </div>
+
+        <div class="group">
+            <button id="undoBtn" title="Rückgängig">↶</button>
+            <button id="redoBtn" title="Wiederholen">↷</button>
+            <button id="deleteBtn" class="danger">Löschen</button>
+        </div>
+
+        <div class="group">
+            <button id="addFloorBtn">+ Etage</button>
+            <button id="copyFloorBtn" type="button" title="Aktuelle Etage komplett kopieren">Etage kopieren</button>
+            <select id="floorSelect"></select>
+            <button id="deleteFloorBtn" class="danger" title="Aktuelles Geschoss komplett löschen">Etage löschen</button>
+        </div>
+
+        <div class="group">
+            <button id="zoomOutBtn" type="button" title="Herauszoomen">−</button>
+            <button id="zoomInBtn" type="button" title="Hineinzoomen">+</button>
+            <button id="fitBtn">Einpassen</button>
+            <button id="finishBtn">Live-Ansicht</button>
+        </div>
+
+        <div class="spacer"></div>
+        <div id="status" class="status">Bereit</div>
+    </div>
+
+    <div id="viewbar">
+        <select id="liveFloorSelect" title="Etage auswählen" aria-label="Etage auswählen"></select>
+        <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
+    </div>
+</div>
+
+<div id="variableModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Objektbaum</h3>
+        <div class="modal-search">
+            <input id="variableSearch" placeholder="Objekt, Variable, Profil oder ID suchen …">
+        </div>
+        <div id="variableList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="variableClearBtn" type="button">Zuordnung entfernen</button>
+            <button id="variableCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<div id="iconModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal">
+        <h3>IP-Symcon Icon auswählen</h3>
+        <div class="modal-search">
+            <input id="iconSearch" placeholder="Icon suchen … z. B. light, temperature, door">
+        </div>
+        <div class="icon-picker-hint">Es werden die von IP-Symcon über /icons.js bereitgestellten Icons verwendet.</div>
+        <div id="iconList" class="variable-list"></div>
+        <div class="modal-actions">
+            <button id="iconAutoBtn" type="button">Icon der Variable übernehmen</button>
+            <button id="iconCloseBtn" type="button">Abbrechen</button>
+        </div>
+    </div>
+</div>
+
+<div id="controlModal" class="modal-backdrop" aria-hidden="true">
+    <div class="control-modal">
+        <h3 id="controlTitle">Gerät bedienen</h3>
+        <div id="controlBody" class="control-body"></div>
+
     </div>
 </div>
 
 <script>
-(() => {
+__FLOORPLAN_EDITOR_JAVASCRIPT__
+</script>
+
+
+</body>
+</html>
+HTML;
+
+        return str_replace(
+            [
+                '__EASY_FLOORPLAN_MODULE_URL__',
+                '__FLOORPLAN_EDITOR_JAVASCRIPT__'
+            ],
+            [
+                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+                $editorJavaScript
+            ],
+            $html
+        );
+    }
+
+    private function GetVisualizationEditorJavaScript(): string
+    {
+        return <<<'JAVASCRIPT'
+(async () => {
     const initial = __INITIAL_PROJECT__;
+    const instanceID = __INSTANCE_ID__;
+    const lastViewFloorStorageKey = `floorplaner:lastViewFloor:${instanceID}`;
     const svg = document.getElementById('viewport');
     const scene = document.getElementById('scene');
     const properties = document.getElementById('properties');
     const propTitle = document.getElementById('propTitle');
+    const selectionHelp = document.getElementById('selectionHelp');
     const floorSelect = document.getElementById('floorSelect');
+
+    let resizeFitTimer = null;
+    let lastTileWidth = 0;
+    let lastTileHeight = 0;
+    const liveFloorSelect = document.getElementById('liveFloorSelect');
     const statusEl = document.getElementById('status');
+    const app = document.getElementById('app');
+    const variableModal = document.getElementById('variableModal');
+    const variableList = document.getElementById('variableList');
+    const variableSearch = document.getElementById('variableSearch');
+    const iconModal = document.getElementById('iconModal');
+    const iconList = document.getElementById('iconList');
+    const iconSearch = document.getElementById('iconSearch');
+    const controlModal = document.getElementById('controlModal');
+    const controlTitle = document.getElementById('controlTitle');
+    const controlBody = document.getElementById('controlBody');
+    const controlCloseBtn = document.getElementById('controlCloseBtn');
 
     let state = normalizeProject(initial);
-    let tool = 'select';
+    let variablePickerTarget = null;
+    let iconPickerTarget = null;
+    let objectTree = [];
+    const expandedObjectIDs = new Set([0]);
+    let objectTreeSearchTimer = null;
+    let objectTreeSearchRequest = 0;
+    let tool = '';
     let selected = null;
     let wallStart = null;
     let preview = null;
     let drag = null;
+    let editorShowGrid = state.showGrid !== false;
+    let editorGridSize = Math.max(2, Number(state.grid) || 20);
 
     let zoom = 1;
     let panX = 0;
     let panY = 0;
 
+    // Jede Etage besitzt ihre eigene Ansicht. Dadurch verändert Einpassen,
+    // Zoomen oder Verschieben im OG nicht mehr die Darstellung des UG.
+    const floorViews = new Map();
+
+    // Feste Startansicht je Etage. Sie wird beim ersten Anzeigen der Etage
+    // einmal erzeugt und danach nicht mehr durch Einpassen/Zoomen/Verschieben verändert.
+    const floorHomeViews = new Map();
+
     let history = [];
     let historyIndex = -1;
     let saveTimer = null;
     let dirty = false;
+    let propertiesSelectOpen = false;
+    let propertiesControlActive = false;
+
+    function releasePropertiesControl() {
+        const active = document.activeElement;
+        if (active && properties.contains(active) && typeof active.blur === 'function') {
+            active.blur();
+        }
+        propertiesControlActive = false;
+        propertiesSelectOpen = false;
+    }
+
+    function refreshPropertiesAfterStructuralChange() {
+        // Änderungen wie Icon oder Variablenzuordnung können ganze
+        // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
+        // Nach Abschluss des aktuellen Events die Leiste deshalb gezielt
+        // neu aufbauen, statt auf einen Seiten-Reload zu warten.
+        setTimeout(() => {
+            const active = document.activeElement;
+            if (active && properties.contains(active) && typeof active.blur === 'function') {
+                active.blur();
+            }
+            propertiesControlActive = false;
+            propertiesSelectOpen = false;
+            renderProperties();
+        }, 0);
+    }
 
     function uid(prefix) {
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
 
+    // Bedienelemente in der Eigenschaftenleiste dürfen während der Eingabe
+    // nicht durch ein Hintergrund-render() ersetzt werden. Sonst verschwinden
+    // bei Zahlen-/Textfeldern Cursor und Markierung und native Select-Listen
+    // klappen zu.
+    properties.addEventListener('pointerdown', evt => {
+        const control = evt.target.closest('input, select, textarea');
+        if (control && properties.contains(control)) {
+            propertiesControlActive = true;
+            if (control instanceof HTMLSelectElement) {
+                propertiesSelectOpen = true;
+            }
+        }
+    }, true);
+
+    properties.addEventListener('focusin', evt => {
+        if (
+            evt.target instanceof HTMLInputElement ||
+            evt.target instanceof HTMLSelectElement ||
+            evt.target instanceof HTMLTextAreaElement
+        ) {
+            propertiesControlActive = true;
+            if (evt.target instanceof HTMLSelectElement) {
+                propertiesSelectOpen = true;
+            }
+        }
+    });
+
+    properties.addEventListener('change', evt => {
+        if (evt.target instanceof HTMLSelectElement) {
+            propertiesSelectOpen = false;
+        }
+    }, true);
+
+    properties.addEventListener('focusout', evt => {
+        if (
+            evt.target instanceof HTMLInputElement ||
+            evt.target instanceof HTMLSelectElement ||
+            evt.target instanceof HTMLTextAreaElement
+        ) {
+            // Erst nach dem jeweiligen change-Handler freigeben. Anschließend
+            // die Eigenschaften einmal sauber aus dem aktuellen Objektzustand
+            // aufbauen.
+            setTimeout(() => {
+                const active = document.activeElement;
+                const stillInside =
+                    active &&
+                    properties.contains(active) &&
+                    (
+                        active instanceof HTMLInputElement ||
+                        active instanceof HTMLSelectElement ||
+                        active instanceof HTMLTextAreaElement
+                    );
+
+                if (!stillInside) {
+                    propertiesControlActive = false;
+                    propertiesSelectOpen = false;
+                    renderProperties();
+                }
+            }, 0);
+        }
+    });
+
     function normalizeProject(p) {
         const q = (p && typeof p === 'object') ? structuredClone(p) : {};
-        q.width = Number(q.width) || 1000;
-        q.height = Number(q.height) || 650;
+        // Kein festes Projektformat: der Zeichenbereich entspricht immer
+        // dynamisch der verfügbaren HTML-SDK-Fläche.
+        delete q.width;
+        delete q.height;
         q.grid = Number(q.grid) || 20;
-        q.snap = Number.isFinite(Number(q.snap)) ? Number(q.snap) : q.grid;
+        // Einrasten verwendet immer direkt die Rastergröße.
+        // Eine separate Snap-Einstellung gibt es nicht mehr.
+        delete q.snap;
         q.background = q.background || '#303030';
         q.showGrid = q.showGrid !== false;
+        q.mode = q.mode === 'view' ? 'view' : 'edit';
         q.floors = Array.isArray(q.floors) && q.floors.length ? q.floors : [{
             id: 'floor_1',
             name: 'Erdgeschoss',
+            order: 1,
+            wallThickness: 12,
+            showWallDimensions: false,
+            showInsideDimensions: false,
+            showOutsideDimensions: false,
             walls: [],
             openings: [],
             items: [],
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         }];
+
+        q.floors.forEach((floor, index) => {
+            const order = Number(floor.order);
+            floor.order = Number.isFinite(order) && order > 0 ? Math.round(order) : (index + 1);
+        });
+        q.floors.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        q.floors.forEach((floor, index) => {
+            floor.order = index + 1;
+        });
         for (const floor of q.floors) {
             floor.id ||= uid('floor');
             floor.name ||= 'Etage';
+            const wallThickness = Number(floor.wallThickness);
+            floor.wallThickness = Number.isFinite(wallThickness) && wallThickness > 0
+                ? Math.max(1, Math.min(60, wallThickness))
+                : 12;
+            if (typeof floor.showWallDimensions !== 'boolean') {
+                floor.showWallDimensions = false;
+            }
+            if (typeof floor.showInsideDimensions !== 'boolean') {
+                floor.showInsideDimensions = false;
+            }
+            if (typeof floor.showOutsideDimensions !== 'boolean') {
+                floor.showOutsideDimensions = false;
+            }
             floor.walls = Array.isArray(floor.walls) ? floor.walls : [];
             floor.openings = Array.isArray(floor.openings) ? floor.openings : [];
+            for (const opening of floor.openings) {
+                if (typeof opening.shutterValueMappingEnabled !== 'boolean') {
+                    opening.shutterValueMappingEnabled = false;
+                }
+                if (!opening.shutterValueMap || typeof opening.shutterValueMap !== 'object' || Array.isArray(opening.shutterValueMap)) {
+                    opening.shutterValueMap = {};
+                }
+                if (typeof opening.shutterSideInvert !== 'boolean') {
+                    opening.shutterSideInvert = false;
+                }
+                if (typeof opening.doorSideInvert !== 'boolean') {
+                    opening.doorSideInvert = false;
+                }
+                opening.openStatusColor = normalizeStatusColor(opening.openStatusColor || '#4da3ff');
+                if (typeof opening.openStatusColorManual !== 'boolean') {
+                    opening.openStatusColorManual = false;
+                }
+            }
             floor.items = Array.isArray(floor.items) ? floor.items : [];
+            for (const item of floor.items) {
+                item.statusColor = normalizeStatusColor(item.statusColor);
+                if (typeof item.statusColorManual !== 'boolean') item.statusColorManual = false;
+                // Migration älterer Projekte: Der frühere Gerätetyp wird nur noch
+                // verwendet, um einmalig ein passendes Standardsymbol zu übernehmen.
+                // Die Bedienlogik hängt NICHT mehr vom Gerätetyp ab.
+                if (!item.icon || String(item.icon).startsWith('mdi:')) {
+                    item.icon = defaultSymconIconForLegacyKind(item.kind);
+                    item.iconManual = false;
+                }
+                if (typeof item.iconManual !== 'boolean') item.iconManual = false;
+                if (typeof item.iconSvg !== 'string') item.iconSvg = '';
+                if (typeof item.iconOffSvg !== 'string') item.iconOffSvg = '';
+                if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
+                if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
+                item.colorVariableID = Number(item.colorVariableID) || 0;
+            }
+            floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
+            for (const furniture of floor.furniture) {
+                if (typeof furniture.showName !== 'boolean') furniture.showName = false;
+            }
             floor.texts = Array.isArray(floor.texts) ? floor.texts : [];
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             floor.areas = Array.isArray(floor.areas) ? floor.areas : [];
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            for (const shape of floor.shapes) {
+                if (!shape.name) {
+                    const shapeNames = {
+                        line: 'Linie',
+                        rect: 'Rechteck',
+                        circle: 'Kreis / Ellipse',
+                        triangle: 'Dreieck',
+                        arrow: 'Pfeil',
+                            };
+                    shape.name = shapeNames[shape.kind || 'rect'] || 'Form';
+                }
+                if (typeof shape.showName !== 'boolean') shape.showName = false;
+                if (typeof shape.fillEnabled !== 'boolean') shape.fillEnabled = false;
+                if (!['light', 'hatch', 'tiles'].includes(shape.fillMode)) shape.fillMode = 'light';
+                if (!Number.isFinite(Number(shape.fillRotation))) shape.fillRotation = 0;
+                if (!Number.isFinite(Number(shape.rotation))) shape.rotation = 0;
+
+                if (shape.kind === 'circle') {
+                    const cx = Number(shape.x1) || 0;
+                    const cy = Number(shape.y1) || 0;
+                    const diameter = Math.max(
+                        1,
+                        Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2
+                    );
+                    if (!Number(shape.width)) shape.width = diameter;
+                    if (!Number(shape.height)) shape.height = diameter;
+                }
+            }
             floor.trackers = Array.isArray(floor.trackers) ? floor.trackers : [];
         }
         q.defaultFloor ||= q.floors[0].id;
@@ -585,6 +2264,27 @@ class Foorplaner extends IPSModuleStrict
 
     function currentFloor() {
         return state.floors.find(f => f.id === state.activeFloor) || state.floors[0];
+    }
+
+    function rememberLastViewFloor() {
+        if (state.mode !== 'view' || !state.activeFloor) return;
+        try {
+            localStorage.setItem(lastViewFloorStorageKey, state.activeFloor);
+        } catch (e) {
+            // localStorage kann je nach WebView/Browser deaktiviert sein.
+        }
+    }
+
+    function restoreLastViewFloor() {
+        if (state.mode !== 'view') return;
+        try {
+            const savedFloorID = localStorage.getItem(lastViewFloorStorageKey);
+            if (savedFloorID && state.floors.some(f => f.id === savedFloorID)) {
+                state.activeFloor = savedFloorID;
+            }
+        } catch (e) {
+            // Ohne localStorage bleibt die im Projekt gespeicherte Etage aktiv.
+        }
     }
 
     function pushHistory() {
@@ -604,7 +2304,8 @@ class Foorplaner extends IPSModuleStrict
         state = normalizeProject(JSON.parse(history[historyIndex]));
         selected = null;
         wallStart = null;
-        renderAll();
+        detectTheme();
+    renderAll();
         markDirty();
         updateUndoButtons();
     }
@@ -616,7 +2317,9 @@ class Foorplaner extends IPSModuleStrict
 
     function markDirty() {
         dirty = true;
-        statusEl.textContent = 'Nicht gespeichert';
+        statusEl.textContent = '';
+        statusEl.classList.add('dirty');
+        statusEl.setAttribute('title', 'Nicht gespeichert');
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveProject, 1200);
     }
@@ -627,38 +2330,101 @@ class Foorplaner extends IPSModuleStrict
         try {
             requestAction('save', JSON.stringify(state));
             dirty = false;
-            statusEl.textContent = 'Gespeichert';
+            statusEl.textContent = '';
+            statusEl.classList.remove('dirty');
+            statusEl.setAttribute('title', 'Gespeichert');
         } catch (e) {
-            statusEl.textContent = 'Speichern fehlgeschlagen';
+            statusEl.textContent = '';
+            statusEl.classList.add('dirty');
+            statusEl.setAttribute('title', 'Speichern fehlgeschlagen');
             console.error(e);
         }
     }
 
     function setTool(next) {
-        tool = next;
+        // Erneuter Klick auf das bereits aktive Werkzeug schaltet es wieder aus.
+        if (next && tool === next) {
+            next = '';
+        }
+
+        tool = next || '';
         wallStart = null;
         preview = null;
+
         document.querySelectorAll('[data-tool]').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
+
         render();
     }
 
-    function snapValue(v) {
-        const s = Number(state.snap) || 0;
-        return s > 0 ? Math.round(v / s) * s : v;
+    function deactivateToolWithoutRender() {
+        tool = '';
+        wallStart = null;
+        preview = null;
+
+        document.querySelectorAll('[data-tool]').forEach(btn => {
+            btn.classList.remove('active');
+        });
     }
 
-    function svgPoint(evt) {
+    function updateModeUI() {
+        const isView = state.mode === 'view';
+        app.classList.toggle('view-mode', isView);
+        scene.classList.toggle('runtime-view', isView);
+        // Im Editor keinen dauerhaften Modus-Text anzeigen. Der freie Platz
+        // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
+        // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
+        statusEl.textContent = '';
+        statusEl.classList.toggle('dirty', Boolean(dirty));
+        statusEl.setAttribute('title', dirty ? 'Nicht gespeichert' : 'Gespeichert');
+
+        const gridControls = document.querySelector('.grid-editor-controls');
+        if (gridControls) {
+            gridControls.style.display = isView ? 'none' : 'inline-flex';
+        }
+    }
+
+    function setMode(mode) {
+        // Jeder Wechsel zwischen Editor und Live-Ansicht beendet ein aktives Werkzeug.
+        deactivateToolWithoutRender();
+
+        state.mode = mode === 'view' ? 'view' : 'edit';
+
+        const gridControls = document.querySelector('.grid-editor-controls');
+        if (gridControls) {
+            gridControls.style.display = state.mode === 'edit' ? 'inline-flex' : 'none';
+        }
+        selected = null;
+        wallStart = null;
+        preview = null;
+        pushHistory();
+        saveProject();
+        updateModeUI();
+        render();
+        requestAnimationFrame(fit);
+    }
+
+    function snapValue(v) {
+        const s = Math.max(2, Number(state.grid) || 20);
+        return Math.round(v / s) * s;
+    }
+
+    function svgPointRaw(evt) {
         const pt = svg.createSVGPoint();
         pt.x = evt.clientX;
         pt.y = evt.clientY;
         const matrix = scene.getScreenCTM();
         if (!matrix) return {x: 0, y: 0};
         const p = pt.matrixTransform(matrix.inverse());
+        return {x: p.x, y: p.y};
+    }
+
+    function svgPoint(evt) {
+        const p = svgPointRaw(evt);
         return {
-            x: Math.max(0, Math.min(state.width, snapValue(p.x))),
-            y: Math.max(0, Math.min(state.height, snapValue(p.y)))
+            x: snapValue(p.x),
+            y: snapValue(p.y)
         };
     }
 
@@ -666,14 +2432,395 @@ class Foorplaner extends IPSModuleStrict
         scene.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
     }
 
+    function viewSafeArea() {
+        const box = svg.getBoundingClientRect();
+
+        /*
+         * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
+         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen.
+         *
+         * Wichtig: SVG und Gitternetz bleiben unverändert über die komplette
+         * Fläche sichtbar. Nur Einpassen/Start/Zoom behandeln den oberen
+         * Bereich als Sicherheitszone für interaktive Grundrisselemente.
+         *
+         * Auf der Symcon-WebConsole reicht 40 px nicht zuverlässig aus.
+         * Deshalb verwenden wir hier 72 px Kopf-Sicherheitszone.
+         */
+        const headerTop = 72;
+
+        // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
+        const footerBottom = state.mode === 'view' ? 40 : 0;
+        const padding = 24;
+
+        return {
+            left: padding,
+            right: Math.max(padding, box.width - padding),
+            top: padding + headerTop,
+            bottom: Math.max(padding + headerTop, box.height - padding - footerBottom)
+        };
+    }
+
+    function rememberCurrentFloorView(autoFit = false) {
+        if (!state?.activeFloor) return;
+        floorViews.set(state.activeFloor, {
+            zoom,
+            panX,
+            panY,
+            autoFit: autoFit === true
+        });
+    }
+
+    function makeDefaultFloorView() {
+        const safe = viewSafeArea();
+
+        // Die "Startgröße" ist bewusst 1:1. Im Live-Modus beginnt die
+        // nutzbare Fläche unterhalb der HTML-SDK-Kopfzeile.
+        const centerX = (safe.left + safe.right) / 2;
+        const centerY = (safe.top + safe.bottom) / 2;
+
+        return {
+            zoom: 1,
+            panX: centerX,
+            panY: centerY
+        };
+    }
+
+    function ensureCurrentFloorHomeView() {
+        if (!state?.activeFloor || floorHomeViews.has(state.activeFloor)) return;
+        floorHomeViews.set(state.activeFloor, makeDefaultFloorView());
+    }
+
+    function resetCurrentFloorView() {
+        ensureCurrentFloorHomeView();
+        const home = floorHomeViews.get(state.activeFloor);
+        if (!home) return;
+
+        zoom = home.zoom;
+        panX = home.panX;
+        panY = home.panY;
+
+        rememberCurrentFloorView(false);
+        setTransform();
+        render();
+    }
+
+    function restoreCurrentFloorViewOrFit() {
+        ensureCurrentFloorHomeView();
+        const saved = floorViews.get(state.activeFloor);
+        if (!saved) {
+            fit();
+            return;
+        }
+
+        zoom = Math.max(0.05, Math.min(20, Number(saved.zoom) || 1));
+        panX = Number(saved.panX) || 0;
+        panY = Number(saved.panY) || 0;
+        setTransform();
+        render();
+    }
+
+    function switchFloorView(nextFloorID) {
+        if (!state.floors.some(f => f.id === nextFloorID)) return;
+
+        rememberCurrentFloorView(false);
+        releasePropertiesControl();
+        state.activeFloor = nextFloorID;
+        rememberLastViewFloor();
+        selected = null;
+        wallStart = null;
+        preview = null;
+        render();
+        requestAnimationFrame(fit);
+    }
+
+    function zoomManual(factor) {
+        const box = svg.getBoundingClientRect();
+        if (!box.width || !box.height) return;
+
+        const safe = viewSafeArea();
+        const centerX = (safe.left + safe.right) / 2;
+        const centerY = (safe.top + safe.bottom) / 2;
+
+        const worldX = (centerX - panX) / Math.max(0.0001, zoom);
+        const worldY = (centerY - panY) / Math.max(0.0001, zoom);
+
+        const nextZoom = Math.max(0.05, Math.min(20, zoom * factor));
+        panX = centerX - worldX * nextZoom;
+        panY = centerY - worldY * nextZoom;
+        zoom = nextZoom;
+
+        rememberCurrentFloorView(false);
+        setTransform();
+        render();
+    }
+
+    function visibleWorldBounds(extra = 80) {
+        const box = svg.getBoundingClientRect();
+        const z = Math.max(0.0001, zoom);
+        return {
+            minX: (-panX / z) - extra,
+            minY: (-panY / z) - extra,
+            maxX: ((box.width - panX) / z) + extra,
+            maxY: ((box.height - panY) / z) + extra
+        };
+    }
+
+    function contentBounds(floor = currentFloor()) {
+        const points = [];
+        const addBox = (minX, minY, maxX, maxY) => {
+            points.push([minX, minY], [maxX, maxY]);
+        };
+
+        // Hauptreferenz bleibt der eigentliche Grundriss.
+        for (const w of floor.walls || []) {
+            points.push([Number(w.x1) || 0, Number(w.y1) || 0]);
+            points.push([Number(w.x2) || 0, Number(w.y2) || 0]);
+        }
+
+        for (const o of floor.openings || []) {
+            const wall = (floor.walls || []).find(w => w.id === o.wallId);
+            if (!wall) continue;
+            const g = openingGeometry(wall, o);
+            points.push(
+                [g.x1, g.y1], [g.x2, g.y2],
+                [g.wx1, g.wy1], [g.wx2, g.wy2]
+            );
+        }
+
+        /*
+         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
+         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
+         * Dieser Block verwendet exakt die Datenstruktur der bereits
+         * funktionierenden Formen-Version: x1/y1/x2/y2 + kind.
+         */
+        for (const shape of floor.shapes || []) {
+            const kind = shape.kind || 'line';
+
+            if (kind === 'line') {
+                points.push(
+                    [Number(shape.x1) || 0, Number(shape.y1) || 0],
+                    [Number(shape.x2) || 0, Number(shape.y2) || 0]
+                );
+                continue;
+            }
+
+            if (kind === 'rect' || kind === 'triangle' || kind === 'arrow') {
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+                const minX = Math.min(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxX = Math.max(x1, x2);
+                const maxY = Math.max(y1, y2);
+                const cx = (minX + maxX) / 2;
+                const cy = (minY + maxY) / 2;
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+
+                for (const [px, py] of [
+                    [minX, minY], [maxX, minY],
+                    [maxX, maxY], [minX, maxY]
+                ]) {
+                    const dx = px - cx;
+                    const dy = py - cy;
+                    points.push([
+                        cx + dx * cos - dy * sin,
+                        cy + dx * sin + dy * cos
+                    ]);
+                }
+                continue;
+            }
+
+            if (kind === 'circle') {
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(
+                    1,
+                    Math.hypot(
+                        (Number(shape.x2) || 0) - cx,
+                        (Number(shape.y2) || 0) - cy
+                    ) * 2
+                );
+                const rx = Math.max(0.5, (Number(shape.width) || fallbackDiameter) / 2);
+                const ry = Math.max(0.5, (Number(shape.height) || fallbackDiameter) / 2);
+                const rotation = (Number(shape.rotation) || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+
+                const extentX = Math.sqrt(rx * rx * cos * cos + ry * ry * sin * sin);
+                const extentY = Math.sqrt(rx * rx * sin * sin + ry * ry * cos * cos);
+
+                addBox(
+                    cx - extentX,
+                    cy - extentY,
+                    cx + extentX,
+                    cy + extentY
+                );
+            }
+        }
+
+        /*
+         * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
+         * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
+         * verändert es die Bounds nicht. Steht es z.B. auf einer Terrasse
+         * außerhalb, erweitert es die Bounds nur genau so weit wie nötig.
+         */
+        for (const item of floor.items || []) {
+            const x = Number(item.x) || 0;
+            const y = Number(item.y) || 0;
+            const radius = Math.max(0, Number(item.size) || 18);
+            const showIcon = item.showIcon !== false;
+            const showName = item.showName === true;
+            const showValue = item.showValue === true;
+            const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
+            const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
+            const valueText = item._valueText !== undefined && item._valueText !== ''
+                ? String(item._valueText)
+                : '—';
+
+            if (showIcon) {
+                addBox(x - radius, y - radius, x + radius, y + radius);
+            }
+
+            const addDeviceText = (textValue, position, size, extra = 0) => {
+                if (!textValue) return;
+
+                const width = Math.max(size, String(textValue).length * size * 0.62);
+                const height = size * 1.2;
+                const pos = ['above','left','right','below'].includes(position) ? position : 'below';
+
+                let minX, minY, maxX, maxY;
+
+                if (pos === 'above') {
+                    const baselineY = y - (radius + 7 + extra);
+                    minX = x - width / 2;
+                    maxX = x + width / 2;
+                    minY = baselineY - height;
+                    maxY = baselineY + size * 0.3;
+                } else if (pos === 'left') {
+                    const rightX = x - (radius + 7 + extra);
+                    minX = rightX - width;
+                    maxX = rightX;
+                    minY = y - height * 0.55;
+                    maxY = y + height * 0.45;
+                } else if (pos === 'right') {
+                    const leftX = x + radius + 7 + extra;
+                    minX = leftX;
+                    maxX = leftX + width;
+                    minY = y - height * 0.55;
+                    maxY = y + height * 0.45;
+                } else {
+                    const baselineY = y + radius + size + 5 + extra;
+                    minX = x - width / 2;
+                    maxX = x + width / 2;
+                    minY = baselineY - height;
+                    maxY = baselineY + size * 0.3;
+                }
+
+                addBox(minX, minY, maxX, maxY);
+            };
+
+            if (showName && item.name) {
+                addDeviceText(String(item.name), item.labelPosition || 'below', labelSize, 0);
+            }
+
+            if (showValue) {
+                let valueExtra = 0;
+                if (showName && (item.valuePosition || 'below') === (item.labelPosition || 'below')) {
+                    valueExtra = Math.max(labelSize, valueSize) + 3;
+                }
+                addDeviceText(valueText, item.valuePosition || 'below', valueSize, valueExtra);
+            }
+
+            // Unsichtbares Gerät nur minimal berücksichtigen.
+            if (!showIcon && !showName && !showValue) {
+                addBox(x - 2, y - 2, x + 2, y + 2);
+            }
+        }
+
+        // Nur bei einer Etage komplett ohne Wände noch Möbel/Texte als Fallback verwenden.
+        if (!(floor.walls || []).length) {
+            for (const f of floor.furniture || []) {
+                const x = Number(f.x) || 0;
+                const y = Number(f.y) || 0;
+                const halfW = Math.max(8, Number(f.width) || 100) / 2;
+                const halfH = Math.max(8, Number(f.height) || 60) / 2;
+                points.push([x - halfW, y - halfH], [x + halfW, y + halfH]);
+            }
+
+            for (const t of floor.texts || []) {
+                const x = Number(t.x) || 0;
+                const y = Number(t.y) || 0;
+                const size = Math.max(6, Number(t.size) || 18);
+                const width = Math.max(20, String(t.text || 'Text').length * size * 0.65);
+                points.push([x, y - size], [x + width, y + size * 0.35]);
+            }
+        }
+
+        if (!points.length) return null;
+
+        return {
+            minX: Math.min(...points.map(p => p[0])),
+            minY: Math.min(...points.map(p => p[1])),
+            maxX: Math.max(...points.map(p => p[0])),
+            maxY: Math.max(...points.map(p => p[1]))
+        };
+    }
+
     function fit() {
         const box = svg.getBoundingClientRect();
         if (!box.width || !box.height) return;
-        const z = Math.min(box.width / state.width, box.height / state.height) * 0.94;
-        zoom = Math.max(0.1, z);
-        panX = (box.width - state.width * zoom) / 2;
-        panY = (box.height - state.height * zoom) / 2;
+
+        const bounds = contentBounds();
+        if (!bounds) {
+            zoom = 1;
+            panX = box.width / 2;
+            panY = box.height / 2;
+            rememberCurrentFloorView(true);
+            setTransform();
+            render();
+            return;
+        }
+
+        const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+        const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+
+        /*
+         * Jede Etage wird für die AKTUELLE Fenster-/Tile-Größe separat optimal
+         * eingepasst. Dadurch nutzt jeder Grundriss den verfügbaren Platz aus.
+         * Wichtig: Beim Etagenwechsel wird immer neu berechnet; alte Zoom-/Pan-
+         * Werte werden dabei nicht wiederverwendet.
+         */
+        const safe = viewSafeArea();
+        const left = safe.left;
+        const right = safe.right;
+        const top = safe.top;
+        const bottom = safe.bottom;
+
+        const availableWidth = Math.max(1, right - left);
+        const availableHeight = Math.max(1, bottom - top);
+
+        const scaleX = availableWidth / contentWidth;
+        const scaleY = availableHeight / contentHeight;
+
+        // Proportional einpassen: maximal groß, aber vollständig sichtbar.
+        zoom = Math.max(0.05, Math.min(20, Math.min(scaleX, scaleY)));
+
+        const contentCenterX = (bounds.minX + bounds.maxX) / 2;
+        const contentCenterY = (bounds.minY + bounds.maxY) / 2;
+
+        // In der tatsächlich verfügbaren Fläche horizontal UND vertikal zentrieren.
+        const targetCenterX = (left + right) / 2;
+        const targetCenterY = (top + bottom) / 2;
+
+        panX = targetCenterX - contentCenterX * zoom;
+        panY = targetCenterY - contentCenterY * zoom;
+
+        rememberCurrentFloorView(true);
         setTransform();
+        render();
     }
 
     function escapeHtml(value) {
@@ -685,20 +2832,510 @@ class Foorplaner extends IPSModuleStrict
             .replaceAll("'", '&#039;');
     }
 
-    function renderFloorSelect() {
-        floorSelect.innerHTML = state.floors.map(f =>
-            `<option value="${escapeHtml(f.id)}"${f.id === state.activeFloor ? ' selected' : ''}>${escapeHtml(f.name)}</option>`
-        ).join('');
+    function updateLiveFloorSelectWidth() {
+        if (!liveFloorSelect) return;
+
+        const style = getComputedStyle(liveFloorSelect);
+        const canvas = updateLiveFloorSelectWidth._canvas || (updateLiveFloorSelectWidth._canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+
+        if (ctx) {
+            ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+
+            let longestWidth = 0;
+            for (const option of liveFloorSelect.options) {
+                longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
+            }
+
+            // Immer gleich breit: längster Etagenname + Innenabstand + nativer Auswahlpfeil.
+            // Etwas Reserve verhindert Abschneiden je nach Browser/WebView.
+            const width = Math.ceil(longestWidth + 64);
+            const finalWidth = Math.max(110, width);
+            liveFloorSelect.style.width = `${finalWidth}px`;
+            liveFloorSelect.style.minWidth = `${finalWidth}px`;
+            liveFloorSelect.style.maxWidth = 'none';
+        }
     }
 
-    function renderGrid(parts) {
-        if (!state.showGrid || state.grid <= 0) return;
-        const g = state.grid;
-        for (let x = 0; x <= state.width; x += g) {
-            parts.push(`<line class="grid-line" x1="${x}" y1="0" x2="${x}" y2="${state.height}"/>`);
+    function renderFloorSelect() {
+        // Android-WebViews reagieren sichtbar auf ein wiederholtes Neuaufbauen
+        // nativer <select>-Elemente. Deshalb werden die Etagen-Optionen nur dann
+        // ersetzt, wenn sich IDs oder Namen der Etagen wirklich geändert haben.
+        const signature = state.floors
+            .map(f => `${String(f.id)}\u0000${String(f.name)}`)
+            .join('\u0001');
+
+        if (renderFloorSelect._signature !== signature) {
+            const options = state.floors.map(f =>
+                `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`
+            ).join('');
+
+            floorSelect.innerHTML = options;
+            if (liveFloorSelect) {
+                liveFloorSelect.innerHTML = options;
+                updateLiveFloorSelectWidth();
+            }
+            renderFloorSelect._signature = signature;
         }
-        for (let y = 0; y <= state.height; y += g) {
-            parts.push(`<line class="grid-line" x1="0" y1="${y}" x2="${state.width}" y2="${y}"/>`);
+
+        if (floorSelect.value !== state.activeFloor) {
+            floorSelect.value = state.activeFloor;
+        }
+
+        if (liveFloorSelect) {
+            if (liveFloorSelect.value !== state.activeFloor) {
+                liveFloorSelect.value = state.activeFloor;
+            }
+
+            const showLiveFloorSelect = state.floors.length > 1;
+            const wantedDisplay = showLiveFloorSelect ? '' : 'none';
+            if (liveFloorSelect.style.display !== wantedDisplay) {
+                liveFloorSelect.style.display = wantedDisplay;
+            }
+            if (liveFloorSelect.disabled === showLiveFloorSelect) {
+                liveFloorSelect.disabled = !showLiveFloorSelect;
+            }
+        }
+    }
+
+    function renderGrid(parts, bounds) {
+        if (!state.showGrid || state.grid <= 0) return;
+
+        const g = Number(state.grid);
+        const startX = Math.floor(bounds.minX / g) * g;
+        const endX = Math.ceil(bounds.maxX / g) * g;
+        const startY = Math.floor(bounds.minY / g) * g;
+        const endY = Math.ceil(bounds.maxY / g) * g;
+
+        // Sicherheitsgrenze bei sehr weitem Herauszoomen.
+        const maxLines = 500;
+        let count = 0;
+
+        for (let x = startX; x <= endX && count < maxLines; x += g, count++) {
+            parts.push(`<line class="grid-line" x1="${x}" y1="${startY}" x2="${x}" y2="${endY}"/>`);
+        }
+
+        count = 0;
+        for (let y = startY; y <= endY && count < maxLines; y += g, count++) {
+            parts.push(`<line class="grid-line" x1="${startX}" y1="${y}" x2="${endX}" y2="${y}"/>`);
+        }
+    }
+
+    function defaultSymconIconForLegacyKind(kind) {
+        const icons = {
+            light: 'fa-light fa-lightbulb',
+            switch: 'fa-light fa-toggle-on',
+            socket: 'fa-light fa-plug',
+            shutter: 'fa-light fa-blinds',
+            temperature: 'fa-light fa-temperature-half',
+            humidity: 'fa-light fa-droplet-percent',
+            motion: 'fa-light fa-person-walking',
+            window: 'fa-light fa-window-frame',
+            door: 'fa-light fa-door-open',
+            climate: 'fa-light fa-temperature-half',
+            fan: 'fa-light fa-fan',
+            radiator: 'fa-light fa-radiator',
+            television: 'fa-light fa-tv',
+            camera: 'fa-light fa-camera',
+            washer: 'fa-light fa-washing-machine',
+            dishwasher: 'fa-light fa-dishwasher',
+            boiler: 'fa-light fa-water',
+            car: 'fa-light fa-car',
+            vacuum: 'fa-light fa-vacuum-robot',
+            lock: 'fa-light fa-lock',
+            generic: 'fa-light fa-circle'
+        };
+        return icons[String(kind || 'generic')] || icons.generic;
+    }
+
+    const legacySymconIconMap = {
+        'light': 'fa-light fa-lightbulb',
+        'bulb': 'fa-light fa-lightbulb',
+        'lamp': 'fa-light fa-lightbulb',
+        'switch': 'fa-light fa-toggle-on',
+        'power': 'fa-light fa-power-off',
+        'electricity': 'fa-light fa-bolt',
+        'energy': 'fa-light fa-bolt',
+        'temperature': 'fa-light fa-temperature-half',
+        'thermometer': 'fa-light fa-temperature-half',
+        'humidity': 'fa-light fa-droplet-percent',
+        'rainfall': 'fa-light fa-droplet',
+        'window': 'fa-light fa-window-frame',
+        'door': 'fa-light fa-door-open',
+        'lock': 'fa-light fa-lock',
+        'motion': 'fa-light fa-person-walking',
+        'presence': 'fa-light fa-person',
+        'camera': 'fa-light fa-camera',
+        'speaker': 'fa-light fa-speaker',
+        'music': 'fa-light fa-music',
+        'tv': 'fa-light fa-tv',
+        'car': 'fa-light fa-car',
+        'battery': 'fa-light fa-battery-half',
+        'clock': 'fa-light fa-clock',
+        'calendar': 'fa-light fa-calendar',
+        'information': 'fa-light fa-circle-info',
+        'warning': 'fa-light fa-triangle-exclamation',
+        'alert': 'fa-light fa-triangle-exclamation',
+        'gear': 'fa-light fa-gear',
+        'cog': 'fa-light fa-gear',
+        'home': 'fa-light fa-house',
+        'house': 'fa-light fa-house'
+    };
+
+    function normalizeSymconIcon(icon) {
+        const raw = String(icon || '').trim();
+        if (!raw) return 'fa-light fa-circle';
+        if (/\bfa-(light|brands|kit|solid|regular|thin|duotone|sharp)\b/.test(raw) && /\bfa-[a-z0-9-]+\b/.test(raw.replace(/fa-(light|brands|kit|solid|regular|thin|duotone|sharp)/g, ''))) {
+            return raw;
+        }
+        if (/^fa-[a-z0-9-]+$/i.test(raw)) return `fa-light ${raw}`;
+        const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (legacySymconIconMap[key]) return legacySymconIconMap[key];
+        // Alte Symcon-Iconnamen bestmöglich auf Font-Awesome-Namen abbilden.
+        const slug = raw.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/[_\s]+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+        return slug ? `fa-light fa-${slug}` : 'fa-light fa-circle';
+    }
+
+    function parseSymconIcon(icon) {
+        const cls = normalizeSymconIcon(icon);
+        const parts = cls.split(/\s+/).filter(Boolean);
+        const styleClass = parts.find(part => /^fa-(light|brands|kit|solid|regular|thin|duotone|sharp)$/.test(part)) || 'fa-light';
+        const iconClass = parts.find(part => /^fa-[a-z0-9-]+$/i.test(part) && part !== styleClass) || 'fa-circle';
+        const prefixMap = {
+            'fa-light': 'fal',
+            'fa-brands': 'fab',
+            'fa-kit': 'fak',
+            'fa-solid': 'fas',
+            'fa-regular': 'far',
+            'fa-thin': 'fat',
+            'fa-duotone': 'fad',
+            'fa-sharp': 'fass'
+        };
+        return {
+            cls,
+            prefix: prefixMap[styleClass] || 'fal',
+            iconName: iconClass.replace(/^fa-/, '')
+        };
+    }
+
+    function fontAwesomeSvgHtml(icon) {
+        const parsed = parseSymconIcon(icon);
+
+        try {
+            if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
+                // Zuerst genau den gelieferten Stil versuchen.
+                const prefixes = [parsed.prefix];
+
+                // Die zusätzlichen visuellen Einstellungen der neuen Symcon-
+                // Visualisierung liefern auch Symcon-eigene Icons, z.B.
+                // window-left-open, volant-open, marquee-half usw.
+                // Diese liegen in /icons.js als Kit-Icons (fak) und NICHT als
+                // normale FontAwesome-Light-Icons (fal). Der bisherige Code
+                // hat daraus fa-light fa-... gemacht -> Fragezeichen.
+                if (!prefixes.includes('fak')) prefixes.push('fak');
+                if (!prefixes.includes('fal')) prefixes.push('fal');
+
+                // Einige von Symcon gelieferte Iconnamen sind Font-Awesome-
+                // Markenicons, z.B. "500px". Symcon liefert dabei teilweise
+                // nur den Iconnamen ohne "fa-brands". Brands deshalb erst als
+                // letzten Fallback versuchen. Dadurch bleiben bereits korrekt
+                // aufgelöste Light-/Kit-Icons unverändert.
+                if (!prefixes.includes('fab')) prefixes.push('fab');
+
+                for (const prefix of prefixes) {
+                    const rendered = window.FontAwesome.icon({
+                        prefix,
+                        iconName: parsed.iconName
+                    });
+
+                    if (
+                        rendered &&
+                        Array.isArray(rendered.html) &&
+                        rendered.html.length > 0
+                    ) {
+                        return rendered.html.join('');
+                    }
+                }
+            }
+        } catch (e) {
+            // Fallback weiter unten.
+        }
+
+        return '';
+    }
+
+    function effectiveItemIcon(item, forcedState = null) {
+        const fallback = item?.icon || item?._objectIcon || defaultSymconIconForLegacyKind(item?.kind);
+        if (Number(item?._variableType) !== 0) return fallback;
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? (item?.iconOn || fallback)
+            : (item?.iconOff || fallback);
+    }
+
+    function effectiveItemIconSvg(item, forcedState = null) {
+        if (Number(item?._variableType) !== 0) {
+            return String(item?.iconSvg || '');
+        }
+
+        const active = forcedState === null
+            ? (item?._rawValue === true || item?._rawValue === 1 || item?._rawValue === '1' || item?._rawValue === 'true')
+            : forcedState === true;
+
+        return active
+            ? String(item?.iconOnSvg || '')
+            : String(item?.iconOffSvg || '');
+    }
+
+    function propertySpecificIconPreviewHtml(item, state = null) {
+        const persisted = effectiveItemIconSvg(item, state);
+        if (persisted.startsWith('<svg')) {
+            return persisted;
+        }
+
+        const icon = normalizeSymconIcon(effectiveItemIcon(item, state));
+        const generated = fontAwesomeSvgHtml(icon);
+        if (generated) return generated;
+        return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
+    function propertyIconPreviewHtml(item) {
+        const icon = normalizeSymconIcon(item?.icon || defaultSymconIconForLegacyKind(item?.kind));
+        const storedSvg = String(item?.iconSvg || '').trim();
+        if (storedSvg.startsWith('<svg')) {
+            return storedSvg;
+        }
+        const generated = fontAwesomeSvgHtml(icon);
+        if (generated) {
+            return generated;
+        }
+        return `<i class="${escapeHtml(icon)}"></i>`;
+    }
+
+    function renderSymconGlyph(icon, radius, storedSvg = '') {
+        const parsed = parseSymconIcon(icon);
+        const r = Math.max(8, Number(radius) || 18);
+        const fontSize = Math.max(12, r * 1.18);
+        // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
+        // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
+        const persisted = String(storedSvg || '').trim();
+        const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
+        const content = svgHtml !== ''
+            ? svgHtml
+            : `<i class="${escapeHtml(parsed.cls)}"></i>`;
+        return `<foreignObject class="device-icon-foreign" x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" pointer-events="none">` +
+            `<div xmlns="http://www.w3.org/1999/xhtml" class="device-icon-html" style="font-size:${fontSize}px">${content}</div></foreignObject>`;
+    }
+
+
+    const originalMdiPaths = {
+        'mdi:lightbulb': 'M12,2A7,7 0 0,0 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H15A1,1 0 0,0 16,17V14.74C17.81,13.47 19,11.38 19,9A7,7 0 0,0 12,2M9,21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9V21Z',
+        'mdi:toggle-switch': 'M17,7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7M17,15A3,3 0 0,1 14,12A3,3 0 0,1 17,9A3,3 0 0,1 20,12A3,3 0 0,1 17,15Z',
+        'mdi:power-socket-eu': 'M7.5,10.5A1.5,1.5 0 0,1 9,12A1.5,1.5 0 0,1 7.5,13.5C6.66,13.5 6,12.83 6,12A1.5,1.5 0 0,1 7.5,10.5M16.5,10.5A1.5,1.5 0 0,1 18,12A1.5,1.5 0 0,1 16.5,13.5A1.5,1.5 0 0,1 15,12A1.5,1.5 0 0,1 16.5,10.5M4.22,2H19.78C21,2 22,3 22,4.22V19.78A2.22,2.22 0 0,1 19.78,22H4.22C3,22 2,21 2,19.78V4.22A2.22,2.22 0 0,1 4.22,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z',
+        'mdi:thermometer': 'M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z',
+        'mdi:water-percent': 'M12,3.25C12,3.25 6,10 6,14C6,17.32 8.69,20 12,20A6,6 0 0,0 18,14C18,10 12,3.25 12,3.25M14.47,9.97L15.53,11.03L9.53,17.03L8.47,15.97M9.75,10A1.25,1.25 0 0,1 11,11.25A1.25,1.25 0 0,1 9.75,12.5A1.25,1.25 0 0,1 8.5,11.25A1.25,1.25 0 0,1 9.75,10M14.25,14.5A1.25,1.25 0 0,1 15.5,15.75A1.25,1.25 0 0,1 14.25,17A1.25,1.25 0 0,1 13,15.75A1.25,1.25 0 0,1 14.25,14.5Z',
+        'mdi:motion-sensor': 'M10,0.2C9,0.2 8.2,1 8.2,2C8.2,3 9,3.8 10,3.8C11,3.8 11.8,3 11.8,2C11.8,1 11,0.2 10,0.2M15.67,1A7.33,7.33 0 0,0 23,8.33V7A6,6 0 0,1 17,1H15.67M18.33,1C18.33,3.58 20.42,5.67 23,5.67V4.33C21.16,4.33 19.67,2.84 19.67,1H18.33M21,1A2,2 0 0,0 23,3V1H21M7.92,4.03C7.75,4.03 7.58,4.06 7.42,4.11L2,5.8V11H3.8V7.33L5.91,6.67L2,22H3.8L6.67,13.89L9,17V22H10.8V15.59L8.31,11.05L9.04,8.18L10.12,10H15V8.2H11.38L9.38,4.87C9.08,4.37 8.54,4.03 7.92,4.03Z',
+        'mdi:door': 'M8,3C6.89,3 6,3.89 6,5V21H18V5C18,3.89 17.11,3 16,3H8M8,5H16V19H8V5M13,11V13H15V11H13Z',
+        'mdi:window-closed': 'M6,11H10V9H14V11H18V4H6V11M18,13H6V20H18V13M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2Z',
+        'mdi:blinds': 'M3,2H21A1,1 0 0,1 22,3V5A1,1 0 0,1 21,6H20V13A1,1 0 0,1 19,14H13V16.17C14.17,16.58 15,17.69 15,19A3,3 0 0,1 12,22A3,3 0 0,1 9,19C9,17.69 9.83,16.58 11,16.17V14H5A1,1 0 0,1 4,13V6H3A1,1 0 0,1 2,5V3A1,1 0 0,1 3,2M12,18A1,1 0 0,0 11,19A1,1 0 0,0 12,20A1,1 0 0,0 13,19A1,1 0 0,0 12,18Z',
+        'mdi:thermostat': 'M16.95,16.95L14.83,14.83C15.55,14.1 16,13.1 16,12C16,11.26 15.79,10.57 15.43,10L17.6,7.81C18.5,9 19,10.43 19,12C19,13.93 18.22,15.68 16.95,16.95M12,5C13.57,5 15,5.5 16.19,6.4L14,8.56C13.43,8.21 12.74,8 12,8A4,4 0 0,0 8,12C8,13.1 8.45,14.1 9.17,14.83L7.05,16.95C5.78,15.68 5,13.93 5,12A7,7 0 0,1 12,5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z',
+        'mdi:fan': 'M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12.5,2C17,2 17.11,5.57 14.75,6.75C13.76,7.24 13.32,8.29 13.13,9.22C13.61,9.42 14.03,9.73 14.35,10.13C18.05,8.13 22.03,8.92 22.03,12.5C22.03,17 18.46,17.1 17.28,14.73C16.78,13.74 15.72,13.3 14.79,13.11C14.59,13.59 14.28,14 13.88,14.34C15.87,18.03 15.08,22 11.5,22C7,22 6.91,18.42 9.27,17.24C10.25,16.75 10.69,15.71 10.89,14.79C10.4,14.59 9.97,14.27 9.65,13.87C5.96,15.85 2,15.07 2,11.5C2,7 5.56,6.89 6.74,9.26C7.24,10.25 8.29,10.68 9.22,10.87C9.41,10.39 9.73,9.97 10.14,9.65C8.15,5.96 8.94,2 12.5,2Z',
+        'mdi:radiator': 'M7.95,3L6.53,5.19L7.95,7.4H7.94L5.95,10.5L4.22,9.6L5.64,7.39L4.22,5.19L6.22,2.09L7.95,3M13.95,2.89L12.53,5.1L13.95,7.3L13.94,7.31L11.95,10.4L10.22,9.5L11.64,7.3L10.22,5.1L12.22,2L13.95,2.89M20,2.89L18.56,5.1L20,7.3V7.31L18,10.4L16.25,9.5L17.67,7.3L16.25,5.1L18.25,2L20,2.89M2,22V14A2,2 0 0,1 4,12H20A2,2 0 0,1 22,14V22H20V20H4V22H2M6,14A1,1 0 0,0 5,15V17A1,1 0 0,0 6,18A1,1 0 0,0 7,17V15A1,1 0 0,0 6,14M10,14A1,1 0 0,0 9,15V17A1,1 0 0,0 10,18A1,1 0 0,0 11,17V15A1,1 0 0,0 10,14M14,14A1,1 0 0,0 13,15V17A1,1 0 0,0 14,18A1,1 0 0,0 15,17V15A1,1 0 0,0 14,14M18,14A1,1 0 0,0 17,15V17A1,1 0 0,0 18,18A1,1 0 0,0 19,17V15A1,1 0 0,0 18,14Z',
+        'mdi:television': 'M21,17H3V5H21M21,3H3A2,2 0 0,0 1,5V17A2,2 0 0,0 3,19H8V21H16V19H21A2,2 0 0,0 23,17V5A2,2 0 0,0 21,3Z',
+        'mdi:camera': 'M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z',
+        'mdi:washing-machine': 'M14.83,11.17C16.39,12.73 16.39,15.27 14.83,16.83C13.27,18.39 10.73,18.39 9.17,16.83L14.83,11.17M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M7,4A1,1 0 0,0 6,5A1,1 0 0,0 7,6A1,1 0 0,0 8,5A1,1 0 0,0 7,4M10,4A1,1 0 0,0 9,5A1,1 0 0,0 10,6A1,1 0 0,0 11,5A1,1 0 0,0 10,4M12,8A6,6 0 0,0 6,14A6,6 0 0,0 12,20A6,6 0 0,0 18,14A6,6 0 0,0 12,8Z',
+        'mdi:dishwasher': 'M18,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V4A2,2 0 0,0 18,2M10,4A1,1 0 0,1 11,5A1,1 0 0,1 10,6A1,1 0 0,1 9,5A1,1 0 0,1 10,4M7,4A1,1 0 0,1 8,5A1,1 0 0,1 7,6A1,1 0 0,1 6,5A1,1 0 0,1 7,4M18,20H6V8H18V20M14.67,15.33C14.69,16.03 14.41,16.71 13.91,17.21C12.86,18.26 11.15,18.27 10.09,17.21C9.59,16.71 9.31,16.03 9.33,15.33C9.4,14.62 9.63,13.94 10,13.33C10.37,12.5 10.81,11.73 11.33,11L12,10C13.79,12.59 14.67,14.36 14.67,15.33',
+        'mdi:water-boiler': 'M8 2C6.89 2 6 2.89 6 4V16C6 17.11 6.89 18 8 18H9V20H6V22H9C10.11 22 11 21.11 11 20V18H13V20C13 21.11 13.89 22 15 22H18V20H15V18H16C17.11 18 18 17.11 18 16V4C18 2.89 17.11 2 16 2H8M12 4.97A2 2 0 0 1 14 6.97A2 2 0 0 1 12 8.97A2 2 0 0 1 10 6.97A2 2 0 0 1 12 4.97M10 14.5H14V16H10V14.5Z',
+        'mdi:car-electric': 'M18.92 2C18.72 1.42 18.16 1 17.5 1H6.5C5.84 1 5.29 1.42 5.08 2L3 8V16C3 16.55 3.45 17 4 17H5C5.55 17 6 16.55 6 16V15H18V16C18 16.55 18.45 17 19 17H20C20.55 17 21 16.55 21 16V8L18.92 2M6.5 12C5.67 12 5 11.33 5 10.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12M17.5 12C16.67 12 16 11.33 16 10.5S16.67 9 17.5 9 19 9.67 19 10.5 18.33 12 17.5 12M5 7L6.5 2.5H17.5L19 7H5M7 20H11V18L17 21H13V23L7 20Z',
+        'mdi:robot-vacuum': 'M12,2C14.65,2 17.19,3.06 19.07,4.93L17.65,6.35C16.15,4.85 14.12,4 12,4C9.88,4 7.84,4.84 6.35,6.35L4.93,4.93C6.81,3.06 9.35,2 12,2M3.66,6.5L5.11,7.94C4.39,9.17 4,10.57 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12C20,10.57 19.61,9.17 18.88,7.94L20.34,6.5C21.42,8.12 22,10.04 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12C2,10.04 2.58,8.12 3.66,6.5M12,6A6,6 0 0,1 18,12C18,13.59 17.37,15.12 16.24,16.24L14.83,14.83C14.08,15.58 13.06,16 12,16C10.94,16 9.92,15.58 9.17,14.83L7.76,16.24C6.63,15.12 6,13.59 6,12A6,6 0 0,1 12,6M12,8A1,1 0 0,0 11,9A1,1 0 0,0 12,10A1,1 0 0,0 13,9A1,1 0 0,0 12,8Z',
+        'mdi:lock': 'M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z',
+        'mdi:home': 'M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z',
+        'mdi:cog': 'M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z',
+        'mdi:circle': 'M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z'
+    };
+
+    function renderMdiGlyph(iconName, radius) {
+        const r = Math.max(8, Number(radius) || 18);
+
+        const originalPath = originalMdiPaths[iconName];
+        if (originalPath) {
+            // Original-MDI verwenden ein 24x24-Koordinatensystem.
+            const targetSize = r * 1.55;
+            const scale = targetSize / 24;
+            const offset = -12 * scale;
+            return `<g transform="translate(${offset} ${offset}) scale(${scale})"><path d="${originalPath}" fill="currentColor"/></g>`;
+        }
+
+        const s = r * 1.05;
+        const sw = Math.max(.9, r * .085);
+        const common = `fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
+
+        switch (iconName) {
+            case 'mdi:lightbulb': return `<g ${common}><circle cx="0" cy="-2" r="${s*.42}"/><path d="M${-s*.22} ${s*.33} L${-s*.14} ${s*.58} L${s*.14} ${s*.58} L${s*.22} ${s*.33}"/><line x1="${-s*.13}" y1="${s*.72}" x2="${s*.13}" y2="${s*.72}"/></g>`;
+            case 'mdi:toggle-switch': return `<g ${common}><rect x="${-s*.62}" y="${-s*.28}" width="${s*1.24}" height="${s*.56}" rx="${s*.28}"/><circle cx="${s*.26}" cy="0" r="${s*.20}" fill="currentColor" stroke="none"/></g>`;
+            case 'mdi:power-socket-eu': return `<g ${common}><circle r="${s*.56}"/><circle cx="${-s*.20}" cy="${-s*.08}" r="${s*.06}" fill="currentColor" stroke="none"/><circle cx="${s*.20}" cy="${-s*.08}" r="${s*.06}" fill="currentColor" stroke="none"/><path d="M${-s*.22} ${s*.23} Q0 ${s*.40} ${s*.22} ${s*.23}"/></g>`;
+            case 'mdi:thermometer': return `<g ${common}><rect x="${-s*.14}" y="${-s*.70}" width="${s*.28}" height="${s*.98}" rx="${s*.14}"/><line y1="${-s*.48}" y2="${s*.26}"/><circle cy="${s*.43}" r="${s*.24}"/></g>`;
+            case 'mdi:water-percent': return `<g ${common}><path d="M0 ${-s*.68} C${-s*.38} ${-s*.25},${-s*.48} ${s*.05},0 ${s*.62} C${s*.48} ${s*.05},${s*.38} ${-s*.25},0 ${-s*.68} Z"/><line x1="${-s*.24}" y1="${s*.25}" x2="${s*.24}" y2="${-s*.25}"/><circle cx="${-s*.22}" cy="${-s*.20}" r="${s*.07}"/><circle cx="${s*.22}" cy="${s*.20}" r="${s*.07}"/></g>`;
+            case 'mdi:motion-sensor': return `<g ${common}><circle cx="${-s*.12}" cy="${-s*.35}" r="${s*.10}"/><path d="M${-s*.12} ${-s*.23} L${-s*.30} ${s*.08} L${-s*.06} ${s*.20} L${-s*.24} ${s*.58} M${-s*.08} ${s*.02} L${s*.20} ${s*.20}"/><path d="M${s*.24} ${-s*.34} Q${s*.58} 0 ${s*.24} ${s*.34} M${s*.43} ${-s*.52} Q${s*.86} 0 ${s*.43} ${s*.52}"/></g>`;
+            case 'mdi:door': return `<g ${common}><rect x="${-s*.48}" y="${-s*.68}" width="${s*.96}" height="${s*1.36}"/><line x1="${-s*.30}" y1="${-s*.58}" x2="${-s*.30}" y2="${s*.58}"/><circle cx="${s*.20}" cy="${s*.02}" r="${s*.045}" fill="currentColor" stroke="none"/></g>`;
+            case 'mdi:window-closed': return `<g ${common}><rect x="${-s*.60}" y="${-s*.55}" width="${s*1.20}" height="${s*1.10}"/><line y1="${-s*.55}" y2="${s*.55}"/><line x1="${-s*.60}" x2="${s*.60}"/></g>`;
+            case 'mdi:blinds': return `<g ${common}><rect x="${-s*.58}" y="${-s*.60}" width="${s*1.16}" height="${s*1.20}"/><line x1="${-s*.48}" y1="${-s*.32}" x2="${s*.48}" y2="${-s*.32}"/><line x1="${-s*.48}" y1="${-s*.08}" x2="${s*.48}" y2="${-s*.08}"/><line x1="${-s*.48}" y1="${s*.16}" x2="${s*.48}" y2="${s*.16}"/><line x1="${-s*.48}" y1="${s*.40}" x2="${s*.48}" y2="${s*.40}"/></g>`;
+            case 'mdi:thermostat': return `<g ${common}><circle r="${s*.58}"/><line y1="${-s*.34}" y2="${s*.12}"/><circle cy="${s*.28}" r="${s*.15}"/></g>`;
+            case 'mdi:fan': return `<g fill="currentColor"><circle r="${s*.09}"/><ellipse cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/><ellipse transform="rotate(120)" cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/><ellipse transform="rotate(240)" cy="${-s*.34}" ry="${s*.35}" rx="${s*.15}"/></g>`;
+            case 'mdi:radiator': return `<g ${common}><rect x="${-s*.60}" y="${-s*.50}" width="${s*1.20}" height="${s}"/><line x1="${-s*.36}" y1="${-s*.42}" x2="${-s*.36}" y2="${s*.42}"/><line x1="${-s*.12}" y1="${-s*.42}" x2="${-s*.12}" y2="${s*.42}"/><line x1="${s*.12}" y1="${-s*.42}" x2="${s*.12}" y2="${s*.42}"/><line x1="${s*.36}" y1="${-s*.42}" x2="${s*.36}" y2="${s*.42}"/></g>`;
+            case 'mdi:television': return `<g ${common}><rect x="${-s*.64}" y="${-s*.48}" width="${s*1.28}" height="${s*.88}" rx="${s*.07}"/><path d="M${-s*.24} ${s*.60} H${s*.24} M0 ${s*.40} V${s*.60}"/></g>`;
+            case 'mdi:camera': return `<g ${common}><rect x="${-s*.62}" y="${-s*.40}" width="${s*1.24}" height="${s*.88}" rx="${s*.08}"/><path d="M${-s*.28} ${-s*.40} L${-s*.14} ${-s*.58} H${s*.16} L${s*.30} ${-s*.40}"/><circle cy="${s*.03}" r="${s*.24}"/></g>`;
+            case 'mdi:washing-machine':
+            case 'mdi:dishwasher': return `<g ${common}><rect x="${-s*.52}" y="${-s*.64}" width="${s*1.04}" height="${s*1.28}" rx="${s*.06}"/><line x1="${-s*.42}" y1="${-s*.38}" x2="${s*.42}" y2="${-s*.38}"/><circle cy="${s*.12}" r="${s*.30}"/></g>`;
+            case 'mdi:water-boiler': return `<g ${common}><rect x="${-s*.44}" y="${-s*.62}" width="${s*.88}" height="${s*1.24}" rx="${s*.22}"/><path d="M${-s*.16} ${s*.10} Q0 ${-s*.14} ${s*.16} ${s*.10} Q0 ${s*.34} ${-s*.16} ${s*.10} Z"/></g>`;
+            case 'mdi:car-electric': return `<g ${common}><path d="M${-s*.62} ${s*.18} L${-s*.44} ${-s*.26} Q${-s*.36} ${-s*.48} ${-s*.10} ${-s*.48} H${s*.30} Q${s*.46} ${-s*.48} ${s*.54} ${-s*.24} L${s*.66} ${s*.18} V${s*.42} H${-s*.66} Z"/><circle cx="${-s*.36}" cy="${s*.42}" r="${s*.14}"/><circle cx="${s*.36}" cy="${s*.42}" r="${s*.14}"/></g>`;
+            case 'mdi:robot-vacuum': return `<g ${common}><circle r="${s*.58}"/><circle cx="${-s*.20}" cy="${-s*.12}" r="${s*.05}" fill="currentColor" stroke="none"/><circle cx="${s*.20}" cy="${-s*.12}" r="${s*.05}" fill="currentColor" stroke="none"/><path d="M${-s*.24} ${s*.18} Q0 ${s*.34} ${s*.24} ${s*.18}"/></g>`;
+            case 'mdi:lock': return `<g ${common}><rect x="${-s*.46}" y="${-s*.12}" width="${s*.92}" height="${s*.72}" rx="${s*.08}"/><path d="M${-s*.28} ${-s*.12} V${-s*.34} A${s*.28} ${s*.28} 0 0 1 ${s*.28} ${-s*.34} V${-s*.12}"/></g>`;
+            case 'mdi:home': return `<g ${common}><path d="M${-s*.66} ${-s*.04} L0 ${-s*.62} L${s*.66} ${-s*.04} M${-s*.48} ${-s*.12} V${s*.58} H${s*.48} V${-s*.12}"/><rect x="${-s*.13}" y="${s*.16}" width="${s*.26}" height="${s*.42}"/></g>`;
+            case 'mdi:cog': return `<g ${common}><circle r="${s*.22}"/><circle r="${s*.52}" stroke-dasharray="${s*.20} ${s*.13}"/></g>`;
+            default: return `<g ${common}><circle r="${s*.48}"/></g>`;
+        }
+    }
+
+    const furnitureTemplates = {"airHandler":{"id":"airHandler","name":"Lüftungsgerät","category":"utility","size":{"w":60,"h":56},"parts":[{"rect":[0,0,100,100],"rx":7.142857},{"line":[8,8,92,92],"role":"detail","opacity":0.8},{"line":[8,92,92,8],"role":"detail","opacity":0.8}]},"heatPump":{"id":"heatPump","name":"Wärmepumpe","category":"utility","size":{"w":90,"h":58},"parts":[{"rect":[0,0,100,100],"rx":6.5},{"circle":[36,50,30],"role":"line"},{"circle":[36,50,5],"role":"thin"},{"path":[["M",36,45],["C",23,25,18,30,25,47],["C",28,52,32,53,36,50]],"role":"detail"},{"path":[["M",41,50],["C",61,37,58,30,41,36],["C",36,39,35,44,36,50]],"role":"detail"},{"path":[["M",36,55],["C",49,75,55,70,47,54],["C",44,49,40,47,36,50]],"role":"detail"},{"path":[["M",31,50],["C",12,63,15,70,31,64],["C",36,61,37,56,36,50]],"role":"detail"},{"line":[72,14,72,86],"role":"line"},{"line":[79,22,91,22],"role":"thin"},{"line":[79,34,91,34],"role":"thin"},{"line":[79,66,91,66],"role":"thin"},{"line":[79,78,91,78],"role":"thin"}]},"bathtub":{"id":"bathtub","name":"Badewanne","category":"bath","size":{"w":150,"h":76},"parts":[{"rect":[0,0,100,100],"rx":5.263158},{"rect":[6,12,88,76],"rx":12,"role":"line"},{"circle":[14,50,5.5],"role":"thin"}]},"bed":{"id":"bed","name":"Bett","category":"bedroom","size":{"w":150,"h":200},"parts":[{"rect":[0,0,100,100],"rx":2.666667},{"line":[0,26,100,26],"role":"line"},{"rect":[10,6,34,14],"rx":2,"role":"thin"},{"rect":[56,6,34,14],"rx":2,"role":"thin"}]},"chair":{"id":"chair","name":"Stuhl","category":"living","size":{"w":44,"h":44},"parts":[{"rect":[0,0,100,100],"rx":9.090909},{"line":[0,22,100,22],"role":"line"}]},"desk":{"id":"desk","name":"Schreibtisch","category":"living","size":{"w":120,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,55,100,55],"role":"detail"}]},"dishwasher":{"id":"dishwasher","name":"Geschirrspüler","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"rect":[10,24,80,62],"rx":5,"role":"detail","opacity":0.8},{"line":[6,88,94,88],"role":"line"}]},"dryer":{"id":"dryer","name":"Trockner","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[50,56,13.5],"role":"detail"}]},"fishTank":{"id":"fishTank","name":"Aquarium","category":"living","size":{"w":100,"h":40},"parts":[{"rect":[0,0,100,100],"rx":10},{"rect":[5,12,90,76],"role":"hint"},{"ellipse":[32,40,7,9],"role":"thin"},{"path":[["M",39,40],["L",44,32],["L",44,48],["Z"]],"role":"solid"},{"ellipse":[68,60,7,9],"role":"thin"},{"path":[["M",61,60],["L",56,52],["L",56,68],["Z"]],"role":"solid"},{"circle":[82,32,4],"role":"hint"}]},"fridge":{"id":"fridge","name":"Kühlschrank","category":"kitchen","size":{"w":60,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[0,40,100,40],"role":"line"},{"line":[84,12,84,30],"role":"line"},{"line":[84,50,84,84],"role":"line"}]},"hotTub":{"id":"hotTub","name":"Whirlpool","category":"bath","size":{"w":120,"h":120},"parts":[{"rect":[0,0,100,100],"rx":3.333333},{"circle":[50,50,36],"role":"line"},{"circle":[27.68,27.68,5],"role":"hint","space":"square"},{"circle":[72.32,27.68,5],"role":"hint","space":"square"},{"circle":[27.68,72.32,5],"role":"hint","space":"square"},{"circle":[72.32,72.32,5],"role":"hint","space":"square"}]},"piano":{"id":"piano","name":"Klavier","category":"living","size":{"w":140,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[4,70,96,70],"role":"thin"},{"repeat":7,"step":[12.5,0],"part":{"line":[12.5,70,12.5,94],"role":"hint"}},{"line":[4,22,96,22],"role":"hint","opacity":0.5}]},"plant":{"id":"plant","name":"Pflanze","category":"living","size":{"w":44,"h":44},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,38,18],"role":"thin"},{"circle":[34,58,18],"role":"thin"},{"circle":[66,58,18],"role":"thin"}]},"roundTable":{"id":"roundTable","name":"Runder Tisch","category":"living","size":{"w":100,"h":100},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"}]},"rug":{"id":"rug","name":"Teppich","category":"living","size":{"w":180,"h":120},"parts":[{"rect":[0,0,100,100],"rx":12,"role":"body","fillOpacity":0.08,"dash":[8,5]},{"rect":[10,10,80,80],"rx":8,"role":"detail","opacity":0.6}]},"sectional":{"id":"sectional","name":"Ecksofa","category":"living","size":{"w":230,"h":180},"parts":[{"polygon":[[0,0],[100,0],[100,100],[58,100],[58,55],[0,55]],"role":"body"},{"line":[0,16,100,16],"role":"line"},{"line":[9,16,9,55],"role":"line"},{"line":[58,16,58,100],"role":"line"}]},"sink":{"id":"sink","name":"Spüle","category":"kitchen","size":{"w":64,"h":48},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[12,18,76,50],"rx":8.333333,"role":"line"},{"circle":[50,10,5],"role":"line"}]},"sofa":{"id":"sofa","name":"Sofa","category":"living","size":{"w":170,"h":72},"parts":[{"rect":[0,0,100,100],"rx":5.555556},{"line":[0,30,100,30],"role":"line"},{"line":[12,30,12,100],"role":"line"},{"line":[88,30,88,100],"role":"line"}]},"stairs":{"id":"stairs","name":"Treppe","category":"utility","size":{"w":90,"h":170},"parts":[{"rect":[0,0,100,100],"rx":4.444444},{"repeat":6,"step":[0,14.285714],"part":{"line":[0,14.285714,100,14.285714],"role":"thin"}},{"line":[50,96.470588,50,3.529412],"role":"thin"},{"path":[["M",38,16],["L",50,2.352941],["L",62,16]],"role":"thin"}]},"stove":{"id":"stove","name":"Herd","category":"kitchen","size":{"w":64,"h":64},"parts":[{"rect":[0,0,100,100],"rx":6.25},{"circle":[28,28,16],"role":"line"},{"circle":[72,28,16],"role":"line"},{"circle":[28,72,16],"role":"line"},{"circle":[72,72,16],"role":"line"}]},"table":{"id":"table","name":"Tisch","category":"living","size":{"w":120,"h":80},"parts":[{"rect":[0,0,100,100],"rx":5}]},"toilet":{"id":"toilet","name":"WC","category":"bath","size":{"w":48,"h":68},"parts":[{"rect":[0,0,100,100],"rx":8.333333},{"rect":[10,0,80,22],"rx":6.25,"role":"line"},{"ellipse":[50,68,34,30],"role":"line"}]},"tv":{"id":"tv","name":"TV","category":"living","size":{"w":110,"h":18},"parts":[{"rect":[0,0,100,100],"rx":22.222222},{"line":[32,100,68,200],"role":"line"}]},"vanity":{"id":"vanity","name":"Waschtisch","category":"bath","size":{"w":110,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"ellipse":[50,56,20,26],"role":"line"},{"circle":[50,14,5],"role":"thin"}]},"wardrobe":{"id":"wardrobe","name":"Schrank","category":"bedroom","size":{"w":120,"h":55},"parts":[{"rect":[0,0,100,100],"rx":7.272727},{"line":[50,0,50,100],"role":"line"},{"line":[44,40,44,60],"role":"line"},{"line":[56,40,56,60],"role":"line"}]},"washer":{"id":"washer","name":"Waschmaschine","category":"utility","size":{"w":60,"h":62},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[6,18,94,18],"role":"detail"},{"circle":[50,56,30],"role":"line"},{"circle":[16,9,4.5],"role":"thin"}]},"waterHeater":{"id":"waterHeater","name":"Boiler","category":"utility","size":{"w":52,"h":52},"footprint":"ellipse","parts":[{"ellipse":[50,50,50,50],"role":"body"},{"circle":[50,50,17],"role":"thin"}]},"shower":{"id":"shower","name":"Dusche","category":"bath","size":{"w":100,"h":80},"parts":[{"rect":[0,0,100,100],"rx":2},{"line":[8,8,92,92],"role":"detail","opacity":0.65},{"line":[8,92,92,8],"role":"detail","opacity":0.65},{"circle":[50,50,5],"role":"thin"},{"circle":[50,50,1.8],"role":"detail"}]},"car":{"id":"car","name":"Kompaktwagen","category":"vehicle","size":{"w":96,"h":155},"parts":[
+{"path":[["M",34,2],["C",25,2,18,6,14,14],["C",10,22,8,34,7,48],["L",6,105],["C",6,121,10,136,19,146],["C",25,152,33,154,42,154],["L",58,154],["C",67,154,75,152,81,146],["C",90,136,94,121,94,105],["L",93,48],["C",92,34,90,22,86,14],["C",82,6,75,2,66,2],["Z"]],"role":"body"},
+{"path":[["M",29,24],["C",35,14,41,11,50,11],["C",59,11,65,14,71,24],["L",77,47],["L",23,47],["Z"]],"role":"line"},
+{"path":[["M",21,55],["L",79,55],["L",79,101],["L",21,101],["Z"]],"role":"line"},
+{"path":[["M",24,109],["L",76,109],["C",72,128,65,139,50,143],["C",35,139,28,128,24,109],["Z"]],"role":"line"},
+{"line":[50,11,50,143],"role":"hint"},
+{"path":[["M",22,51],["L",13,62],["L",13,94],["L",21,101]],"role":"detail"},
+{"path":[["M",78,51],["L",87,62],["L",87,94],["L",79,101]],"role":"detail"},
+{"path":[["M",13,26],["L",25,22],["L",22,35],["L",10,39]],"role":"detail"},
+{"path":[["M",87,26],["L",75,22],["L",78,35],["L",90,39]],"role":"detail"},
+{"rect":[0,37,7,27],"rx":3,"role":"solid"},
+{"rect":[93,37,7,27],"rx":3,"role":"solid"},
+{"rect":[0,96,7,27],"rx":3,"role":"solid"},
+{"rect":[93,96,7,27],"rx":3,"role":"solid"},
+{"path":[["M",18,130],["C",27,135,37,137,50,137],["C",63,137,73,135,82,130]],"role":"detail"},
+{"line":[20,139,34,139],"role":"detail"},
+{"line":[66,139,80,139],"role":"detail"},
+{"path":[["M",42,66],["L",42,92],["M",58,66],["L",58,92]],"role":"hint"}
+]},"motorcycle":{"id":"motorcycle","name":"Motorrad","category":"vehicle","size":{"w":60,"h":150},"parts":[{"ellipse":[50,10,12,20],"role":"body"},{"ellipse":[50,90,14,24],"role":"body"},{"path":[["M",42,25],["L",58,25],["L",64,50],["L",58,72],["L",42,72],["L",36,50],["Z"]],"role":"body"},{"path":[["M",43,45],["C",43,35,57,35,57,45],["L",57,65],["C",57,74,43,74,43,65],["Z"]],"role":"line"},{"line":[24,32,76,32],"role":"line"},{"line":[50,30,50,12],"role":"detail"},{"line":[38,78,25,94],"role":"detail"},{"line":[62,78,75,94],"role":"detail"}]},"bicycle":{"id":"bicycle","name":"Fahrrad","category":"vehicle","size":{"w":55,"h":170},"parts":[{"ellipse":[50,12,11,22],"role":"body"},{"ellipse":[50,88,11,22],"role":"body"},{"line":[50,28,50,72],"role":"line"},{"line":[50,40,31,58],"role":"line"},{"line":[31,58,50,72],"role":"line"},{"line":[31,58,69,58],"role":"line"},{"line":[69,58,50,40],"role":"line"},{"line":[31,58,24,48],"role":"detail"},{"line":[69,58,76,48],"role":"detail"},{"line":[35,34,65,34],"role":"line"},{"line":[50,72,50,78],"role":"detail"}]},"shelf":{"id":"shelf","name":"Regal","category":"storage","size":{"w":120,"h":35},"parts":[{"rect":[0,0,100,100],"rx":2,"role":"body"},{"line":[20,4,20,96],"role":"line"},{"line":[40,4,40,96],"role":"line"},{"line":[60,4,60,96],"role":"line"},{"line":[80,4,80,96],"role":"line"},{"line":[3,15,97,15],"role":"hint"},{"line":[3,85,97,85],"role":"hint"}]},"semiRoundToilet":{"id":"semiRoundToilet","name":"WC halbrund","category":"bath","size":{"w":70,"h":90},"parts":[{"rect":[25,0,50,24],"rx":5,"role":"body"},{"line":[30,10,70,10],"role":"detail"},{"path":[["M",18,24],["L",82,24],["L",82,38],["C",82,70,68,94,50,94],["C",32,94,18,70,18,38],["Z"]],"role":"body"},{"path":[["M",28,34],["L",72,34],["L",72,42],["C",72,65,63,82,50,82],["C",37,82,28,65,28,42],["Z"]],"role":"line"},{"circle":[50,12,3],"role":"thin"}]},"semiRoundSink":{"id":"semiRoundSink","name":"Waschbecken halbrund","category":"bath","size":{"w":70,"h":50},"parts":[{"path":[["M",8,8],["L",92,8],["L",92,20],["C",92,62,73,92,50,92],["C",27,92,8,62,8,20],["Z"]],"role":"body"},{"path":[["M",18,20],["C",18,54,32,78,50,78],["C",68,78,82,54,82,20]],"role":"line"},{"circle":[50,47,5],"role":"thin"},{"circle":[50,14,3],"role":"detail"}]},"doubleRoundTub":{"id":"doubleRoundTub","name":"Badewanne beidseitig rund","category":"bath","size":{"w":160,"h":75},"parts":[{"path":[["M",24,4],["L",76,4],["C",92,4,100,25,100,50],["C",100,75,92,96,76,96],["L",24,96],["C",8,96,0,75,0,50],["C",0,25,8,4,24,4],["Z"]],"role":"body"},{"path":[["M",25,14],["L",75,14],["C",86,14,92,30,92,50],["C",92,70,86,86,75,86],["L",25,86],["C",14,86,8,70,8,50],["C",8,30,14,14,25,14],["Z"]],"role":"line"},{"circle":[50,76,4],"role":"thin"}]},"cornerShowerCurved":{"id":"cornerShowerCurved","name":"Eckdusche","category":"bath","size":{"w":100,"h":100},"parts":[{"path":[["M",100,0],["L",100,100],["L",94,100],["C",47,105,-5,53,0,6],["L",0,0],["Z"]],"role":"body"}]},"quarterTub":{"id":"quarterTub","name":"Eck-Whirlpool","category":"bath","size":{"w":140,"h":140},"parts":[{"path":[["M",100,0],["L",100,100],["C",50,100,0,50,0,0],["Z"]],"role":"body"},{"path":[["M",85,5],["C",90,5,95,10,95,15],["L",95,95],["C",55,95,5,45,5,5],["Z"]],"role":"line"},{"path":[["M",20,5],["C",75,10,90,25,95,80]],"role":"detail"}]},"oven":{"id":"oven","name":"Backofen","category":"kitchen","size":{"w":60,"h":60},"parts":[{"rect":[0,0,100,100],"rx":6.666667},{"line":[8,20,92,20],"role":"detail"},{"rect":[12,30,76,56],"rx":5,"role":"line"},{"line":[24,38,76,38],"role":"thin"},{"circle":[20,10,4.5],"role":"thin"},{"circle":[50,10,4.5],"role":"thin"},{"circle":[80,10,4.5],"role":"thin"}]}};
+
+    function furnitureRoleStyle(part) {
+        const role = part.role || ((part.rect || part.ellipse || part.polygon) ? 'body' : 'line');
+        const map = {
+            body: {fill:.12,width:2,opacity:1}, line: {fill:0,width:2,opacity:1},
+            thin: {fill:0,width:1.5,opacity:1}, detail: {fill:0,width:1.5,opacity:.7},
+            hint: {fill:0,width:1,opacity:.6}, solid: {fill:.7,width:0,opacity:.7}
+        };
+        return map[role] || map.line;
+    }
+
+    function furnitureShape(f) {
+        const tpl = furnitureTemplates[f.type] || furnitureTemplates.sofa;
+        const w = Math.max(8, Number(f.width) || tpl.size.w);
+        const h = Math.max(8, Number(f.height) || tpl.size.h);
+        const view = tpl.viewBox || [0,0,100,100];
+        const [vx,vy,vw,vh] = view;
+        const fullX = x => -w/2 + ((x-vx)/vw)*w;
+        const fullY = y => -h/2 + ((y-vy)/vh)*h;
+        const square = Math.min(w,h);
+        const sqX = x => -square/2 + ((x-vx)/vw)*square;
+        const sqY = y => -square/2 + ((y-vy)/vh)*square;
+        const lenX = v => (v/vw)*w;
+        const lenY = v => (v/vh)*h;
+        const lenMin = v => (v/Math.min(vw,vh))*Math.min(w,h);
+
+        const drawPart = (part, ox=0, oy=0) => {
+            if (part.repeat) {
+                const step = part.step || [0,0];
+                let out = '';
+                for (let i=0;i<part.repeat;i++) out += drawPart(part.part, ox+step[0]*i, oy+step[1]*i);
+                return out;
+            }
+            const squareSpace = part.space === 'square';
+            const X = x => squareSpace ? sqX(x+ox) : fullX(x+ox);
+            const Y = y => squareSpace ? sqY(y+oy) : fullY(y+oy);
+            const st = furnitureRoleStyle(part);
+            const strokeWidth = part.width ?? st.width;
+            const opacity = part.opacity ?? st.opacity;
+            const fillOpacity = part.fillOpacity ?? st.fill;
+            const dash = part.dash ? ` stroke-dasharray="${part.dash.map(lenMin).join(' ')}"` : '';
+            const style = `stroke="currentColor" stroke-width="${strokeWidth}" vector-effect="non-scaling-stroke" opacity="${opacity}"` +
+                (fillOpacity > 0 ? ` fill="currentColor" fill-opacity="${fillOpacity}"` : ' fill="none"') + dash;
+
+            if (part.rect) {
+                const [x,y,pw,ph]=part.rect;
+                return `<rect ${style} x="${X(x)}" y="${Y(y)}" width="${squareSpace?lenMin(pw):lenX(pw)}" height="${squareSpace?lenMin(ph):lenY(ph)}" rx="${lenMin(part.rx||0)}"/>`;
+            }
+            if (part.line) { const [x1,y1,x2,y2]=part.line; return `<line ${style} x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}"/>`; }
+            if (part.circle) { const [cx,cy,r]=part.circle; return `<circle ${style} cx="${X(cx)}" cy="${Y(cy)}" r="${lenMin(r)}"/>`; }
+            if (part.ellipse) { const [cx,cy,rx,ry]=part.ellipse; return `<ellipse ${style} cx="${X(cx)}" cy="${Y(cy)}" rx="${squareSpace?lenMin(rx):lenX(rx)}" ry="${squareSpace?lenMin(ry):lenY(ry)}"/>`; }
+            if (part.polygon || part.polyline) {
+                const pts=(part.polygon||part.polyline).map(p=>`${X(p[0])},${Y(p[1])}`).join(' ');
+                return `<${part.polygon?'polygon':'polyline'} ${style} points="${pts}"/>`;
+            }
+            if (part.path) {
+                let d='';
+                for (const cmd of part.path) {
+                    const op=cmd[0];
+                    if(op==='Z') d+=' Z';
+                    else if(op==='M'||op==='L') d+=` ${op} ${X(cmd[1])} ${Y(cmd[2])}`;
+                    else if(op==='Q') d+=` Q ${X(cmd[1])} ${Y(cmd[2])} ${X(cmd[3])} ${Y(cmd[4])}`;
+                    else if(op==='C') d+=` C ${X(cmd[1])} ${Y(cmd[2])} ${X(cmd[3])} ${Y(cmd[4])} ${X(cmd[5])} ${Y(cmd[6])}`;
+                }
+                return `<path ${style} d="${d.trim()}"/>`;
+            }
+            return '';
+        };
+        return (tpl.parts||[]).map(p=>drawPart(p)).join('');
+    }
+
+    // Exakt das bewährte Verfahren aus dem Energiefluss-Modul:
+    // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
+    // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
+    function detectTheme() {
+        let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
+        if (!probe) probe = getComputedStyle(document.body).color;
+
+        let dark = null;
+        const m = probe && probe.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+        if (m) {
+            const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
+            dark = lum > 0.5;
+        } else if (probe && probe[0] === '#' && probe.length >= 7) {
+            const r = parseInt(probe.substr(1, 2), 16);
+            const g = parseInt(probe.substr(3, 2), 16);
+            const b = parseInt(probe.substr(5, 2), 16);
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+        }
+
+        if (dark === null) {
+            dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    }
+
+
+    function renderEditorGrid(parts) {
+        if (state.mode !== 'edit' || !editorShowGrid) return;
+
+        const rect = svg.getBoundingClientRect();
+        const left = (-panX) / zoom;
+        const top = (-panY) / zoom;
+        const right = left + rect.width / zoom;
+        const bottom = top + rect.height / zoom;
+        const step = Math.max(2, Number(editorGridSize) || 20);
+
+        const startX = Math.floor(left / step) * step;
+        const startY = Math.floor(top / step) * step;
+
+        for (let x = startX; x <= right; x += step) {
+            parts.push(`<line class="grid-line" x1="${x}" y1="${top}" x2="${x}" y2="${bottom}"/>`);
+        }
+        for (let y = startY; y <= bottom; y += step) {
+            parts.push(`<line class="grid-line" x1="${left}" y1="${y}" x2="${right}" y2="${y}"/>`);
         }
     }
 
@@ -706,51 +3343,655 @@ class Foorplaner extends IPSModuleStrict
         const floor = currentFloor();
         const parts = [];
 
-        parts.push(`<rect x="0" y="0" width="${state.width}" height="${state.height}" fill="${escapeHtml(state.background)}"/>`);
-        renderGrid(parts);
+        // Dezente Füllmuster für Formen. Jedes Muster erhält pro Form eine
+        // eigene Definition, damit dessen Ausrichtung unabhängig von der Form
+        // über fillRotation gedreht werden kann.
+        function shapePatternId(shape, mode = '') {
+            const safeId = String(shape?.id || 'shape').replace(/[^A-Za-z0-9_-]/g, '');
+            return `shapePattern_${safeId}_${mode || shape?.fillMode || 'pattern'}`;
+        }
 
-        for (const w of floor.walls) {
-            const sel = selected?.type === 'wall' && selected.id === w.id ? ' selected' : '';
+        const shapePatternDefinitions = [];
+        for (const shape of floor.shapes || []) {
+            if (shape.fillEnabled !== true) continue;
+
+            const mode = shape.fillMode || 'light';
+            if (mode !== 'hatch' && mode !== 'tiles') continue;
+
+            const angle = Number.isFinite(Number(shape.fillRotation))
+                ? Number(shape.fillRotation)
+                : 0;
+            const patternId = shapePatternId(shape, mode);
+
+            if (mode === 'hatch') {
+                shapePatternDefinitions.push(`
+                    <pattern id="${patternId}" width="8" height="8"
+                             patternUnits="userSpaceOnUse"
+                             patternTransform="rotate(${angle})">
+                        <path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"
+                              fill="none" stroke="var(--fp-text)" stroke-opacity=".28"
+                              stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    </pattern>
+                `);
+            } else {
+                shapePatternDefinitions.push(`
+                    <pattern id="${patternId}" width="18" height="12"
+                             patternUnits="userSpaceOnUse"
+                             patternTransform="rotate(${angle})">
+                        <path d="M0,0 H18 V12 H0 Z M9,0 V12"
+                              fill="none" stroke="var(--fp-text)" stroke-opacity=".24"
+                              stroke-width="1" vector-effect="non-scaling-stroke"/>
+                    </pattern>
+                `);
+            }
+        }
+
+        if (shapePatternDefinitions.length > 0) {
+            parts.push(`<defs>${shapePatternDefinitions.join('')}</defs>`);
+        }
+        // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
+        // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
+        // zuverlässig anklickbar.
+        const shutterControlParts = [];
+        const variableTopParts = [];
+        // Transparente Variablenboxen brauchen eine echte Aussparung in den
+        // darunterliegenden Floorplan-Ebenen. So scheint der reale Tile-/IPSView-
+        // Hintergrund durch, ohne dass Wände, Möbel usw. durch die Box sichtbar sind.
+        const variableFrameCutoutParts = [];
+        // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
+        // gesammelt und nach den Möbeln nochmals gezeichnet.
+        // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
+        const openOpeningTopParts = [];
+        renderEditorGrid(parts);
+        const bounds = visibleWorldBounds(120);
+        const wallThickness = Math.max(1, Math.min(60, Number(floor.wallThickness) || 12));
+        const openingGapThickness = wallThickness + 4;
+
+        function shapeFillAttribute(shape) {
+            if (shape.fillEnabled !== true) return 'style="fill:none"';
+            const mode = shape.fillMode || 'light';
+            if (mode === 'hatch' || mode === 'tiles') {
+                return `style="fill:url(#${shapePatternId(shape, mode)})"`;
+            }
+            return 'style="fill:rgba(150,160,175,.18)"';
+        }
+
+        // Formen liegen als eigene Ebene unter den Möbeln.
+        // Da viele Möbel-Symbole teilweise transparent gezeichnet werden, reicht
+        // die reine SVG-Reihenfolge nicht aus: Die Form würde sonst durch das
+        // Möbel hindurch sichtbar bleiben. Deshalb schneiden wir die Grundfläche
+        // jedes Möbels aus der Formen-Ebene heraus.
+        const furnitureMaskParts = [];
+        for (const furniture of floor.furniture || []) {
+            const tpl = furnitureTemplates[furniture.type] || furnitureTemplates.sofa;
+            const fw = Math.max(8, Number(furniture.width) || Number(tpl?.size?.w) || 100);
+            const fh = Math.max(8, Number(furniture.height) || Number(tpl?.size?.h) || 60);
+            const fx = Number(furniture.x) || 0;
+            const fy = Number(furniture.y) || 0;
+            const rotation = Number(furniture.rotation) || 0;
+
+            furnitureMaskParts.push(
+                `<rect x="${-fw / 2}" y="${-fh / 2}" width="${fw}" height="${fh}" ` +
+                `transform="translate(${fx} ${fy}) rotate(${rotation})" fill="black"/>`
+            );
+        }
+
+        parts.push(
+            `<defs><mask id="shapeBelowFurnitureMask" maskUnits="userSpaceOnUse" ` +
+            `x="-100000" y="-100000" width="200000" height="200000">` +
+            `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+            furnitureMaskParts.join('') +
+            `</mask></defs>`
+        );
+
+        parts.push(`<g class="shape-layer" mask="url(#shapeBelowFurnitureMask)">`);
+
+        for (const shape of floor.shapes || []) {
+            const sel = selected?.type === 'shape' && selected.id === shape.id;
+            const cls = sel ? ' selection-shape' : '';
+
+            if (shape.kind === 'line') {
+                const x1 = Number(shape.x1) || 0;
+                const y1 = Number(shape.y1) || 0;
+                const x2 = Number(shape.x2) || 0;
+                const y2 = Number(shape.y2) || 0;
+
+                parts.push(`<line class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+                parts.push(`<line class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+
+                if (sel) {
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${x2}" cy="${y2}" r="2.8"/>`);
+
+                    const cx = (x1 + x2) / 2;
+                    const cy = (y1 + y2) / 2;
+                    const len = Math.max(1, Math.hypot(x2 - x1, y2 - y1));
+                    const nx = -(y2 - y1) / len;
+                    const ny =  (x2 - x1) / len;
+                    const rhx = cx + nx * 16;
+                    const rhy = cy + ny * 16;
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${cx}" y1="${cy}" x2="${rhx}" y2="${rhy}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rhx}" cy="${rhy}" r="3.2"/>`
+                    );
+                }
+            } else if (shape.kind === 'rect') {
+                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
+                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
+                const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
+                const h = Math.max(1, Math.abs((Number(shape.y2) || 0) - (Number(shape.y1) || 0)));
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                parts.push(`<rect class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}"${transform}/>`);
+                parts.push(`<rect class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" x="${x}" y="${y}" width="${w}" height="${h}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad);
+                    const hy = cy + (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + (h / 2) * Math.sin(rad);
+                    const topY = cy - (h / 2) * Math.cos(rad);
+                    const rotateX = cx + (h / 2 + 16) * Math.sin(rad);
+                    const rotateY = cy - (h / 2 + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
+            } else if (shape.kind === 'triangle' || shape.kind === 'arrow') {
+                const x = Math.min(Number(shape.x1) || 0, Number(shape.x2) || 0);
+                const y = Math.min(Number(shape.y1) || 0, Number(shape.y2) || 0);
+                const w = Math.max(1, Math.abs((Number(shape.x2) || 0) - (Number(shape.x1) || 0)));
+                const h = Math.max(1, Math.abs((Number(shape.y2) || 0) - (Number(shape.y1) || 0)));
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                let points;
+                if (shape.kind === 'triangle') {
+                    points = `${cx},${y} ${x + w},${y + h} ${x},${y + h}`;
+                } else {
+                    const shaftY1 = y + h * .34;
+                    const shaftY2 = y + h * .66;
+                    const headX = x + w * .58;
+                    points = `${x},${shaftY1} ${headX},${shaftY1} ${headX},${y} ${x + w},${cy} ${headX},${y + h} ${headX},${shaftY2} ${x},${shaftY2}`;
+                }
+
+                parts.push(`<polygon class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" points="${points}"${transform}/>`);
+                parts.push(`<polygon class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" points="${points}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad);
+                    const hy = cy + (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + (h / 2) * Math.sin(rad);
+                    const topY = cy - (h / 2) * Math.cos(rad);
+                    const rotateX = cx + (h / 2 + 16) * Math.sin(rad);
+                    const rotateY = cy - (h / 2 + 16) * Math.cos(rad);
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
+            } else if (shape.kind === 'circle') {
+                const cx = Number(shape.x1) || 0;
+                const cy = Number(shape.y1) || 0;
+                const fallbackDiameter = Math.max(1, Math.hypot((Number(shape.x2) || 0) - cx, (Number(shape.y2) || 0) - cy) * 2);
+                const w = Math.max(1, Number(shape.width) || fallbackDiameter);
+                const h = Math.max(1, Number(shape.height) || fallbackDiameter);
+                const rx = w / 2;
+                const ry = h / 2;
+                const rotation = Number(shape.rotation) || 0;
+                const transform = rotation ? ` transform="rotate(${rotation} ${cx} ${cy})"` : '';
+
+                parts.push(`<ellipse class="drawing-shape-hit" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"${transform}/>`);
+                parts.push(`<ellipse class="drawing-shape${cls}" data-type="shape" data-id="${shape.id}" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" ${shapeFillAttribute(shape)}${transform}/>`);
+
+                if (sel) {
+                    const rad = rotation * Math.PI / 180;
+                    const hx = cx + rx * Math.cos(rad) - ry * Math.sin(rad);
+                    const hy = cy + rx * Math.sin(rad) + ry * Math.cos(rad);
+                    parts.push(`<circle class="resize-handle" data-resize-type="shape" data-id="${shape.id}" cx="${hx}" cy="${hy}" r="2.8"/>`);
+
+                    const topX = cx + ry * Math.sin(rad);
+                    const topY = cy - ry * Math.cos(rad);
+                    const rotateX = cx + (ry + 16) * Math.sin(rad);
+                    const rotateY = cy - (ry + 16) * Math.cos(rad);
+
+                    parts.push(
+                        `<line class="rotate-handle-line" x1="${topX}" y1="${topY}" x2="${rotateX}" y2="${rotateY}"/>` +
+                        `<circle class="rotate-handle" data-rotate-type="shape" data-id="${shape.id}" cx="${rotateX}" cy="${rotateY}" r="3.2"/>`
+                    );
+                }
+            }
+        }
+
+
+        // Optionaler Formenname – wie bei Möbeln standardmäßig ausgeblendet.
+        for (const shape of floor.shapes || []) {
+            if (shape.showName !== true || !shape.name) continue;
+
+            let nx;
+            let ny;
+            if ((shape.kind || 'rect') === 'circle') {
+                nx = Number(shape.x1) || 0;
+                ny = Number(shape.y1) || 0;
+            } else {
+                nx = ((Number(shape.x1) || 0) + (Number(shape.x2) || 0)) / 2;
+                ny = ((Number(shape.y1) || 0) + (Number(shape.y2) || 0)) / 2;
+            }
+
+            parts.push(`<text class="furniture-label" x="${nx}" y="${ny}" dy=".35em">${escapeHtml(shape.name)}</text>`);
+        }
+
+        parts.push(`</g>`);
+
+        // Nicht ausgewählte Wände zuerst, die ausgewählte Wand zuletzt.
+        // Dadurch liegt die angeklickte Wand bei Kreuzungen/Überlagerungen vorne.
+        const selectedWallID = selected?.type === 'wall' ? selected.id : null;
+        const wallRenderOrder = selectedWallID
+            ? [
+                ...floor.walls.filter(w => w.id !== selectedWallID),
+                ...floor.walls.filter(w => w.id === selectedWallID)
+            ]
+            : floor.walls;
+
+        for (const w of wallRenderOrder) {
+            const sel = selectedWallID === w.id ? ' selected' : '';
+            const dimensionTitle = state.mode !== 'view' && floor.showWallDimensions === true
+                ? `<title>${escapeHtml(wallDimensionInfo(w, floor))}</title>`
+                : '';
             parts.push(
-                `<line class="wall${sel}" data-type="wall" data-id="${w.id}" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>`
+                `<line class="wall${sel}" data-type="wall" data-id="${w.id}" ` +
+                `style="stroke-width:${wallThickness}px" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}">` +
+                dimensionTitle +
+                `</line>`
             );
         }
 
         for (const o of floor.openings) {
             const wall = floor.walls.find(w => w.id === o.wallId);
             if (!wall) continue;
+
             const geom = openingGeometry(wall, o);
             const sel = selected?.type === 'opening' && selected.id === o.id ? ' selected' : '';
-            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}">`);
-            parts.push(`<line class="opening-gap" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+            const amount = openingState(o);
+            const isOpen = amount > 0.02;
+            const stateClass = isOpen ? ' opening-state-open' : '';
+            const openingColor = effectiveOpeningStatusColor(o);
+
+            parts.push(`<g class="opening${sel}" data-type="opening" data-id="${o.id}" style="cursor:${state.mode === 'view' ? 'default' : 'pointer'}">`);
+            parts.push(`<line class="opening-hit" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
+            parts.push(`<line class="opening-gap" style="stroke-width:${openingGapThickness}px" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
 
             if (o.type === 'door') {
-                parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.dx}" y2="${geom.dy}"/>`);
-                parts.push(`<path class="opening-line" d="M ${geom.x2} ${geom.y2} Q ${geom.cx} ${geom.cy} ${geom.dx} ${geom.dy}"/>`);
+                const leafLength = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1);
+                const angle = amount * Math.PI / 2;
+                const doorSide = o.doorSideInvert === true ? -1 : 1;
+                const ex = geom.x1 + geom.ux * leafLength * Math.cos(angle) + geom.nx * doorSide * leafLength * Math.sin(angle);
+                const ey = geom.y1 + geom.uy * leafLength * Math.cos(angle) + geom.ny * doorSide * leafLength * Math.sin(angle);
+
+                parts.push(
+                    `<line class="opening-line${stateClass}" ${isOpen ? `style="stroke:${openingColor}" ` : ''}` +
+                    `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>`
+                );
+
+                if (isOpen) {
+                    const qx = geom.x1 + geom.ux * leafLength * .72 + geom.nx * doorSide * leafLength * .28 * amount;
+                    const qy = geom.y1 + geom.uy * leafLength * .72 + geom.ny * doorSide * leafLength * .28 * amount;
+                    parts.push(`<path class="opening-line${stateClass}" style="stroke:${openingColor}" d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<g pointer-events="none">` +
+                        `<line class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `x1="${geom.x1}" y1="${geom.y1}" x2="${ex}" y2="${ey}"/>` +
+                        `<path class="opening-line${stateClass}" style="stroke:${openingColor}" ` +
+                        `d="M ${geom.x2} ${geom.y2} Q ${qx} ${qy} ${ex} ${ey}"/>` +
+                        `</g>`
+                    );
+                }
             } else {
-                parts.push(`<line class="opening-line" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x2}" y2="${geom.y2}"/>`);
-                parts.push(`<line class="opening-line" x1="${geom.wx1}" y1="${geom.wy1}" x2="${geom.wx2}" y2="${geom.wy2}"/>`);
+                if (!isOpen) {
+                    // Fenster immer exakt mittig im Mauerwerk darstellen.
+                    // Die beiden Fensterlinien liegen symmetrisch links/rechts
+                    // der Wandmittellinie und sind damit unabhängig vom Rollo.
+                    const windowHalfOffset = 2;
+
+                    const wx1a = geom.x1 - geom.nx * windowHalfOffset;
+                    const wy1a = geom.y1 - geom.ny * windowHalfOffset;
+                    const wx2a = geom.x2 - geom.nx * windowHalfOffset;
+                    const wy2a = geom.y2 - geom.ny * windowHalfOffset;
+
+                    const wx1b = geom.x1 + geom.nx * windowHalfOffset;
+                    const wy1b = geom.y1 + geom.ny * windowHalfOffset;
+                    const wx2b = geom.x2 + geom.nx * windowHalfOffset;
+                    const wy2b = geom.y2 + geom.ny * windowHalfOffset;
+
+                    parts.push(`<line class="opening-line" x1="${wx1a}" y1="${wy1a}" x2="${wx2a}" y2="${wy2a}"/>`);
+                    parts.push(`<line class="opening-line" x1="${wx1b}" y1="${wy1b}" x2="${wx2b}" y2="${wy2b}"/>`);
+                } else {
+                    // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
+                    // Der komplette Flügel bleibt parallel zur Wand und wird mit
+                    // zunehmendem Öffnungsgrad gleichmäßig nach INNEN versetzt.
+                    // Die negative Normale ist hier die Innenseite des Grundrisses.
+                    const maxInset = 14;
+                    const inset = maxInset * amount;
+                    const ix1 = geom.x1 - geom.nx * inset;
+                    const iy1 = geom.y1 - geom.ny * inset;
+                    const ix2 = geom.x2 - geom.nx * inset;
+                    const iy2 = geom.y2 - geom.ny * inset;
+
+                    parts.push(`<line class="opening-line opening-state-open" style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`);
+
+                    openOpeningTopParts.push(
+                        `<line class="opening-line opening-state-open" pointer-events="none" ` +
+                        `style="stroke:${openingColor}" x1="${ix1}" y1="${iy1}" x2="${ix2}" y2="${iy2}"/>`
+                    );
+                }
             }
+
+            if (o.type === 'window' && o.shutterVariableID) {
+                const shutterOpen = shutterState(o);
+                const closed = 1 - shutterOpen;
+                const shutterOffset = 8;
+                const shutterSide = o.shutterSideInvert === true ? 1 : -1;
+                const sx1 = geom.x1 + geom.nx * shutterSide * shutterOffset;
+                const sy1 = geom.y1 + geom.ny * shutterSide * shutterOffset;
+                const sx2 = geom.x2 + geom.nx * shutterSide * shutterOffset;
+                const sy2 = geom.y2 + geom.ny * shutterSide * shutterOffset;
+
+                if ((o.shutterStyle || 'roll') === 'roll') {
+                    if (closed > 0.01) {
+                        parts.push(
+                            `<line class="opening-shutter" opacity="${Math.max(.18, closed)}" ` +
+                            `x1="${sx1}" y1="${sy1}" x2="${sx2}" y2="${sy2}"/>`
+                        );
+
+                        const slats = Math.max(1, Math.round(7 * closed));
+                        for (let i = 0; i < slats; i++) {
+                            const t = slats === 1 ? .5 : i / (slats - 1);
+                            const px = sx1 + (sx2 - sx1) * t;
+                            const py = sy1 + (sy2 - sy1) * t;
+                            parts.push(
+                                `<line class="opening-shutter-slat" x1="${px - geom.nx * 4}" y1="${py - geom.ny * 4}" ` +
+                                `x2="${px + geom.nx * 4}" y2="${py + geom.ny * 4}"/>`
+                            );
+                        }
+                    }
+                } else {
+                    const panel = Math.hypot(geom.x2 - geom.x1, geom.y2 - geom.y1) * .24 * closed;
+                    if (panel > .5) {
+                        parts.push(`<line class="opening-shutter" x1="${geom.x1}" y1="${geom.y1}" x2="${geom.x1 + geom.nx * shutterSide * panel}" y2="${geom.y1 + geom.ny * shutterSide * panel}"/>`);
+                        parts.push(`<line class="opening-shutter" x1="${geom.x2}" y1="${geom.y2}" x2="${geom.x2 + geom.nx * shutterSide * panel}" y2="${geom.y2 + geom.ny * shutterSide * panel}"/>`);
+                    }
+                }
+            }
+
+            if (selected?.type === 'opening' && selected.id === o.id) {
+                // Griff am rechten Ende der Öffnung: damit Tür/Fenster direkt
+                // entlang der zugehörigen Wand breiter oder schmaler gezogen werden kann.
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="opening" data-id="${o.id}" ` +
+                    `cx="${geom.x2}" cy="${geom.y2}" r="2.8"/>`
+                );
+            }
+
+            parts.push(`</g>`);
+
+            // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
+            // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
+            // damit kein anderes SVG-Element den Klick abfangen kann.
+            const shutterField = o.type === 'window'
+                ? (
+                    Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
+                    (Number(o.shutterSecondaryVariableID) > 0 ? 'shutterSecondaryVariableID' : '')
+                )
+                : '';
+
+            if (shutterField) {
+                const sx = geom.cx;
+                const sy = geom.cy;
+                shutterControlParts.push(
+                    `<g class="shutter-control" data-shutter-control="${o.id}" data-shutter-field="${shutterField}" ` +
+                    `transform="translate(${sx} ${sy})">` +
+                    `<circle class="shutter-hit" r="20"/>` +
+                    `<circle r="12"/>` +
+                    `<text x="0" y="0">↕</text>` +
+                    `</g>`
+                );
+            }
+        }
+
+        // Die Endpunkt-Griffe der ausgewählten Wand werden nach allen Wänden
+        // und Öffnungen gezeichnet und bleiben dadurch immer sichtbar/greifbar.
+        if (state.mode !== 'view' && selectedWallID) {
+            const selectedWall = floor.walls.find(w => w.id === selectedWallID);
+            if (selectedWall) {
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="start" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x1}" cy="${selectedWall.y1}" r="2.8"/>`
+                );
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="wall" data-wall-end="end" data-id="${selectedWall.id}" ` +
+                    `cx="${selectedWall.x2}" cy="${selectedWall.y2}" r="2.8"/>`
+                );
+            }
+        }
+
+        for (const f of floor.furniture || []) {
+            const sel = selected?.type === 'furniture' && selected.id === f.id ? ' selected' : '';
+            const rot = Number(f.rotation) || 0;
+
+            parts.push(
+                `<g class="furniture${sel}" data-type="furniture" data-id="${f.id}" style="cursor:${state.mode === 'view' ? 'default' : 'move'}" ` +
+                `transform="translate(${Number(f.x) || 0} ${Number(f.y) || 0}) rotate(${rot})">`
+            );
+            parts.push(furnitureShape(f));
+            if (f.showName === true) {
+                parts.push(
+                    `<text class="furniture-label" x="0" y="${(Number(f.height) || 60) / 2 + 16}">` +
+                    `${escapeHtml(f.name || furnitureTemplates[f.type]?.name || 'Möbel')}</text>`
+                );
+            }
+
+            if (selected?.type === 'furniture' && selected.id === f.id) {
+                const fw = Math.max(8, Number(f.width) || 100);
+                const fh = Math.max(8, Number(f.height) || 60);
+                const rotateY = -fh / 2 - 16;
+
+                parts.push(
+                    `<circle class="resize-handle" data-resize-type="furniture" data-id="${f.id}" ` +
+                    `cx="${fw / 2}" cy="${fh / 2}" r="2.8"/>`
+                );
+                parts.push(
+                    `<line class="rotate-handle-line" x1="0" y1="${-fh / 2}" x2="0" y2="${rotateY}"/>` +
+                    `<circle class="rotate-handle" data-rotate-type="furniture" data-id="${f.id}" ` +
+                    `cx="0" cy="${rotateY}" r="3.2"/>`
+                );
+            }
+
             parts.push(`</g>`);
         }
 
+        // Geöffnete Türen/Fenster liegen optisch immer über Möbeln.
+        // Die ursprünglichen Openings bleiben für Auswahl und Bedienung unverändert.
+        parts.push(...openOpeningTopParts);
+
         for (const item of floor.items) {
             const sel = selected?.type === 'item' && selected.id === item.id ? ' selected' : '';
-            const label = item.name || (item.variableID ? '#' + item.variableID : 'Gerät');
-            parts.push(
-                `<g class="device${sel}" data-type="item" data-id="${item.id}" transform="translate(${item.x} ${item.y})">` +
-                `<circle r="${item.size || 18}"/>` +
-                `<text text-anchor="middle" dominant-baseline="central" font-size="${Math.max(10,(item.size || 18)*0.7)}">${escapeHtml(item.icon || '●')}</text>` +
-                `<text x="0" y="${(item.size || 18)+17}" text-anchor="middle" font-size="13">${escapeHtml(label)}</text>` +
+            const raw = item._rawValue;
+            const isBooleanDevice = Number(item._variableType) === 0;
+            const isIntegerDevice = Number(item._variableType) === 1;
+            const boolActive = isBooleanDevice && (raw === true || raw === 1 || raw === '1' || raw === 'true');
+
+            const newIntegerColor = isIntegerDevice
+                ? newIntegerPresentationColor(item)
+                : '';
+            const legacyIntegerColor = isIntegerDevice
+                ? legacyIntegerCurrentColor(item)
+                : '';
+            const effectiveIntegerColor = newIntegerColor || legacyIntegerColor;
+            const hasIntegerPresentationColor = /^#[0-9a-f]{6}$/i.test(effectiveIntegerColor);
+
+            const statusRingEnabled = supportsStatusColor(item);
+            const symconGlowColor = String(item._glowColor || '').trim();
+            const symconGlowIntensity = Math.max(0, Math.min(100, Number(item._glowIntensity) || 0));
+            const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
+
+            const numericLevel = numericStatusLevel(item);
+            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+            const numericClass = numericRingVisible ? ' numeric-status' : '';
+
+            // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
+            // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
+            const boolClass = isBooleanDevice
+                ? (
+                    boolActive && (statusRingEnabled || symconGlowEnabled)
+                        ? ' boolean-active'
+                        : (
+                            !symconGlowEnabled && statusRingEnabled
+                                ? ' boolean-inactive'
+                                : ''
+                        )
+                )
+                : '';
+
+            // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
+            // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
+            // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
+            const lightClass = '';
+            const manualStatusColor = item.statusColorManual === true;
+            const statusColor = manualStatusColor
+                ? normalizeStatusColor(item.statusColor)
+                : (
+                    (boolActive && symconGlowEnabled)
+                        ? symconGlowColor
+                        : normalizeStatusColor(item.statusColor)
+                );
+            const boolGlowPx = (boolActive && symconGlowEnabled)
+                ? Math.max(1, symconGlowIntensity * 0.14)
+                : 7;
+            const icon = effectiveItemIcon(item);
+            const controlledColor = itemColorControlCss(item);
+            const effectiveStatusColor = controlledColor
+                || (hasIntegerPresentationColor ? effectiveIntegerColor : statusColor);
+
+            const showName = item.showName === true;
+            const showValue = item.showValue === true;
+            const showIcon = item.showIcon !== false;
+            const valueText = item._valueText !== undefined && item._valueText !== ''
+                ? String(item._valueText)
+                : '—';
+            const labelSize = Math.max(8, Math.min(40, Number(item.labelSize) || 12));
+            const valueSize = Math.max(8, Math.min(40, Number(item.valueSize) || 12));
+            const radius = Number(item.size) || 18;
+            const directSlider = item.showDirectSlider === true ? directSliderConfig(item) : null;
+            const directSliderY = radius + 13;
+            const directSliderWidth = Math.max(64, radius * 2.8);
+            const directSliderLevel = directSlider
+                ? Math.max(0, Math.min(1, (directSlider.value - directSlider.min) / (directSlider.max - directSlider.min)))
+                : 0;
+
+            function deviceTextPlacement(position, size, extra = 0) {
+                const pos = ['above','left','right','below'].includes(position) ? position : 'below';
+                if (pos === 'above') return {x: 0, y: -(radius + 7 + extra), anchor: 'middle'};
+                if (pos === 'left') return {x: -(radius + 7 + extra), y: size * .34, anchor: 'end'};
+                if (pos === 'right') return {x: radius + 7 + extra, y: size * .34, anchor: 'start'};
+                return {x: 0, y: radius + size + 5 + extra, anchor: 'middle'};
+            }
+
+            // Wenn ein Direkt-Slider sichtbar ist, beginnt Text mit Position "unten"
+            // erst unterhalb des Sliders. Name und Wert werden danach wie bisher
+            // untereinander angeordnet.
+            const sliderTextOffset = directSlider ? 16 : 0;
+            const namePosition = item.labelPosition || 'below';
+            const valuePosition = item.valuePosition || 'below';
+            const nameBaseExtra = namePosition === 'below' ? sliderTextOffset : 0;
+            const valueBaseExtra = valuePosition === 'below' ? sliderTextOffset : 0;
+
+            const namePlace = deviceTextPlacement(namePosition, labelSize, nameBaseExtra);
+            let valueExtra = valueBaseExtra;
+            if (showName && valuePosition === namePosition) {
+                valueExtra += Math.max(labelSize, valueSize) + 3;
+            }
+
+            // Wertebox minimal weiter vom Geräte-Icon abrücken.
+            // Nur die Position wird verändert; Boxgröße, Schrift und sonstige Abstände bleiben gleich.
+            const valueIconGap = 4;
+            valueExtra += valueIconGap;
+
+            const valuePlace = deviceTextPlacement(valuePosition, valueSize, valueExtra);
+            const statusOnlyClass = item._canAction === true ? '' : ' status-only';
+            const valueFrameWidth = Math.max(26, valueText.length * valueSize * 0.62 + 12);
+            const valueFrameHeight = valueSize + 10;
+            const valueFrameX = valuePlace.anchor === 'end'
+                ? valuePlace.x - valueFrameWidth - 4
+                : (valuePlace.anchor === 'start' ? valuePlace.x - 4 : valuePlace.x - valueFrameWidth / 2);
+            const valueFrameY = valuePlace.y - valueSize * 0.82 - 5;
+
+            if (showValue && item.valueFrame === true) {
+                variableFrameCutoutParts.push(
+                    `<rect x="${Number(item.x) + valueFrameX}" y="${Number(item.y) + valueFrameY}" ` +
+                    `width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4" fill="black"/>`
+                );
+            }
+
+            variableTopParts.push(
+                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                (showIcon
+                    ? `<circle r="${radius}"/>` +
+                      (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
+                      `<g class="device-glyph" transform="rotate(${Number(item.angle) || 0})">${renderSymconGlyph(icon, radius * .78, effectiveItemIconSvg(item))}</g>`
+                    : '') +
+                (showName && item.name
+                    ? `<text class="device-label" x="${namePlace.x}" y="${namePlace.y}" text-anchor="${namePlace.anchor}" font-size="${labelSize}">${escapeHtml(String(item.name))}</text>`
+                    : '') +
+                (showValue && item.valueFrame === true
+                    ? `<rect class="runtime-value-frame" x="${valueFrameX}" y="${valueFrameY}" width="${valueFrameWidth}" height="${valueFrameHeight}" rx="4"/>`
+                    : '') +
+                (showValue
+                    ? `<text class="runtime-value" x="${valuePlace.x}" y="${valuePlace.y}" text-anchor="${valuePlace.anchor}" font-size="${valueSize}">${escapeHtml(valueText)}</text>`
+                    : '') +
+                (directSlider
+                    ? `<g class="device-direct-slider" data-direct-slider="${item.id}" transform="translate(0 ${directSliderY})">` +
+                      `<line class="device-direct-slider-hit" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
+                      `<line class="device-direct-slider-track" x1="${-directSliderWidth / 2}" y1="0" x2="${directSliderWidth / 2}" y2="0"/>` +
+                      `<line class="device-direct-slider-fill" x1="${-directSliderWidth / 2}" y1="0" x2="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" y2="0"/>` +
+                      `<circle class="device-direct-slider-thumb" cx="${-directSliderWidth / 2 + directSliderWidth * directSliderLevel}" cy="0" r="6.5"/>` +
+                      `</g>`
+                    : '') +
+                (selected?.type === 'item' && selected.id === item.id
+                    ? `<circle class="resize-handle" data-resize-type="item" data-id="${item.id}" cx="${radius * 0.707}" cy="${radius * 0.707}" r="2.8"/>`
+                    : '') +
                 `</g>`
             );
         }
 
         for (const t of floor.texts) {
             const sel = selected?.type === 'text' && selected.id === t.id;
+            const textSize = Math.max(6, Number(t.size) || 18);
+            const textValue = String(t.text || 'Text');
+            const estimatedWidth = Math.max(20, textValue.length * textSize * 0.65);
+
             parts.push(
-                `<text class="plan-text" data-type="text" data-id="${t.id}" x="${t.x}" y="${t.y}" font-size="${t.size || 18}"` +
-                `${sel ? ' style="fill:#74b9ff"' : ''}>${escapeHtml(t.text || 'Text')}</text>`
+                `<g data-type="text" data-id="${t.id}">` +
+                `<text class="plan-text" x="${t.x}" y="${t.y}" font-size="${textSize}"` +
+                `${sel ? ' style="fill:#74b9ff"' : ''}>${escapeHtml(textValue)}</text>` +
+                (sel
+                    ? `<circle class="resize-handle" data-resize-type="text" data-id="${t.id}" ` +
+                      `cx="${Number(t.x) + estimatedWidth}" cy="${Number(t.y)}" r="2.8"/>`
+                    : '') +
+                `</g>`
             );
         }
 
@@ -758,7 +3999,35 @@ class Foorplaner extends IPSModuleStrict
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
 
-        scene.innerHTML = parts.join('');
+        // Immer als letzte Ebene der Basis: Rollladen-Steuerung bleibt sichtbar und anklickbar.
+        parts.push(...shutterControlParts);
+
+        // V2 Variablenbox-Aussparung:
+        // Alle bisherigen Floorplan-Ebenen werden an den Werteboxen wirklich ausgeschnitten.
+        // Die Variablen selbst werden danach unmaskiert darübergelegt. Dadurch ist innerhalb
+        // der Box exakt derselbe reale Tile-/IPSView-Hintergrund sichtbar wie außerhalb.
+        let basePlanHtml = parts.join('');
+        if (variableFrameCutoutParts.length > 0) {
+            basePlanHtml =
+                `<defs><mask id="variableFrameBackgroundMask" maskUnits="userSpaceOnUse" ` +
+                `x="-100000" y="-100000" width="200000" height="200000">` +
+                `<rect x="-100000" y="-100000" width="200000" height="200000" fill="white"/>` +
+                variableFrameCutoutParts.join('') +
+                `</mask></defs>` +
+                `<g mask="url(#variableFrameBackgroundMask)">${basePlanHtml}</g>`;
+        }
+
+        const finalParts = [basePlanHtml];
+
+        // Variablen-/Geräteebene unmaskiert ganz oben.
+        finalParts.push(...variableTopParts);
+
+        // Maßlinien bleiben wie bisher als letzte SVG-Ebene sichtbar.
+        if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
+            finalParts.push(renderGraphicWallDimensions(floor));
+        }
+
+        scene.innerHTML = finalParts.join('');
         setTransform();
         renderProperties();
         renderFloorSelect();
@@ -767,6 +4036,794 @@ class Foorplaner extends IPSModuleStrict
     function renderAll() {
         render();
         updateUndoButtons();
+    }
+
+    function normalizeStatusColor(value) {
+        const color = String(value || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffe66d';
+    }
+
+    function symconAssociationColorToCss(value) {
+        const direct = String(value ?? '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct.toUpperCase();
+        }
+
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function integerColorToCss(value) {
+        const color = Number(value);
+        if (!Number.isFinite(color) || color < 0) return '';
+        return `#${(Math.trunc(color) & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase()}`;
+    }
+
+    function cssColorToInteger(value) {
+        const color = String(value || '').trim();
+        if (!/^#[0-9a-f]{6}$/i.test(color)) return null;
+        return parseInt(color.slice(1), 16);
+    }
+
+    function rgbHexToHsv(hex) {
+        const color = String(hex || '').replace('#', '');
+        if (!/^[0-9a-f]{6}$/i.test(color)) return {h: 0, s: 0, v: 1};
+
+        const r = parseInt(color.slice(0, 2), 16) / 255;
+        const g = parseInt(color.slice(2, 4), 16) / 255;
+        const b = parseInt(color.slice(4, 6), 16) / 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const d = max - min;
+
+        let h = 0;
+        if (d !== 0) {
+            if (max === r) h = ((g - b) / d) % 6;
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+        }
+
+        return {
+            h,
+            s: max === 0 ? 0 : d / max,
+            v: max
+        };
+    }
+
+    function hsvToRgbHex(h, s, v = 1) {
+        h = ((Number(h) % 360) + 360) % 360;
+        s = Math.max(0, Math.min(1, Number(s)));
+        v = Math.max(0, Math.min(1, Number(v)));
+
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let rp = 0, gp = 0, bp = 0;
+
+        if (h < 60) [rp, gp, bp] = [c, x, 0];
+        else if (h < 120) [rp, gp, bp] = [x, c, 0];
+        else if (h < 180) [rp, gp, bp] = [0, c, x];
+        else if (h < 240) [rp, gp, bp] = [0, x, c];
+        else if (h < 300) [rp, gp, bp] = [x, 0, c];
+        else [rp, gp, bp] = [c, 0, x];
+
+        const toHex = n => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+        return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
+    }
+
+    function itemColorControlCss(item) {
+        if (
+            item?.colorControlEnabled !== true ||
+            Number(item?.colorVariableID || 0) <= 0 ||
+            Number(item?._colorVariableType) !== 1
+        ) {
+            return '';
+        }
+
+        // Bei Bool-Geräten darf die gespeicherte Leuchtfarbe nur sichtbar sein,
+        // wenn die Hauptvariable tatsächlich EIN ist. Der Farbwert selbst bleibt
+        // gespeichert und steht beim nächsten Einschalten wieder zur Verfügung.
+        if (
+            Number(item?._variableType) === 0 &&
+            !truthyVariableValue(item?._rawValue)
+        ) {
+            return '';
+        }
+
+        return integerColorToCss(item?._colorVariableRawValue);
+    }
+
+    function associationButtonStyle(value) {
+        const color = symconAssociationColorToCss(value);
+        if (!color) return '';
+
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+        const textColor = luminance > 165 ? '#111111' : '#FFFFFF';
+
+        return `background:${color};border-color:${color};color:${textColor};`;
+    }
+
+    function legacyBoolOnColorFromProfile(profile) {
+        const associations = Array.isArray(profile?.associations)
+            ? profile.associations
+            : [];
+
+        const onAssociation = associations.find(
+            association => Number(association?.value) === 1
+        );
+
+        return onAssociation
+            ? symconAssociationColorToCss(onAssociation.color)
+            : '';
+    }
+
+    function legacyIntegerCurrentColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasLegacyProfile !== true) {
+            return '';
+        }
+
+        const direct = String(item?._legacyCurrentColor || '').trim();
+        if (/^#[0-9a-f]{6}$/i.test(direct)) {
+            return direct;
+        }
+
+        const raw = Number(item?._rawValue);
+        if (!Number.isFinite(raw)) {
+            return '';
+        }
+
+        const associations = Array.isArray(item?._profile?.associations)
+            ? item._profile.associations
+            : [];
+
+        const association = associations.find(entry => {
+            const value = Number(entry?.value);
+            return Number.isFinite(value) && Math.abs(value - raw) < 0.000001;
+        });
+
+        return association
+            ? symconAssociationColorToCss(association.color)
+            : '';
+    }
+
+    function automaticOpeningStatusColor(opening) {
+        if (!opening) return '#4da3ff';
+
+        // Neue Bool-Darstellung: dieselbe GLOW_COLOR wie bei Geräten.
+        const glow = String(opening._glowColor || '');
+        if (
+            opening._hasNewPresentation === true &&
+            /^#[0-9a-f]{6}$/i.test(glow)
+        ) {
+            return glow;
+        }
+
+        // Legacy: Farbe der EIN/Offen-Assoziation.
+        const legacyDirect = String(opening._legacyColorOn || '');
+        if (/^#[0-9a-f]{6}$/i.test(legacyDirect)) {
+            return legacyDirect;
+        }
+
+        const legacyFromProfile = legacyBoolOnColorFromProfile(opening._profile);
+        if (legacyFromProfile) {
+            return legacyFromProfile;
+        }
+
+        return '#4da3ff';
+    }
+
+    function effectiveOpeningStatusColor(opening) {
+        return opening?.openStatusColorManual === true
+            ? normalizeStatusColor(opening.openStatusColor || '#4da3ff')
+            : automaticOpeningStatusColor(opening);
+    }
+
+    function newIntegerPresentationColor(item) {
+        if (Number(item?._variableType) !== 1 || item?._hasNewPresentation !== true) {
+            return '';
+        }
+
+        const color = String(item?._newIntegerStatusColor || '').trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : '';
+    }
+
+    function hasAutomaticIntegerStatusColor(item) {
+        if (Number(item?._variableType) !== 1) {
+            return false;
+        }
+
+        // Neue Variablendarstellung: OPTIONS / INTERVALS / COLOR.
+        if (newIntegerPresentationColor(item) !== '') {
+            return true;
+        }
+
+        // Legacy-Profil mit einer Farbe auf der aktuellen Association.
+        // Auch dort wäre die manuelle Floorplan-Farbe wirkungslos.
+        if (legacyIntegerCurrentColor(item) !== '') {
+            return true;
+        }
+
+        return false;
+    }
+
+    function canConfigureStatusColor(item) {
+        if (!supportsStatusColor(item)) {
+            return false;
+        }
+
+        // Neue Integer-Darstellung mit eigener Farbe (OPTIONS / INTERVALS /
+        // COLOR): Farbe kommt vollständig aus IP-Symcon und darf hier nicht
+        // scheinbar überschreibbar angeboten werden.
+        if (hasAutomaticIntegerStatusColor(item)) {
+            return false;
+        }
+
+        // Bool sowie numerische Integer/Float-Werte ohne eigene
+        // Präsentationsfarbe behalten die manuelle Floorplan-Farbe.
+        return true;
+    }
+
+    function supportsStatusColor(item) {
+        // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
+        // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
+        const type = Number(item?._variableType);
+        if (type === 0) return true;
+        if (type === 1) {
+            return newIntegerPresentationColor(item) !== '' ||
+                legacyIntegerCurrentColor(item) !== '' ||
+                numericStatusLevel(item) !== null;
+        }
+        if (type === 2) return numericStatusLevel(item) !== null;
+        return false;
+    }
+
+    function numericStatusLevel(item) {
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const raw = Number(item?._rawValue);
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(raw) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        return Math.max(0, Math.min(1, (raw - min) / (max - min)));
+    }
+
+    function directSliderConfig(item) {
+        // Ein Slider ist nur für Variablen sinnvoll, die in IP-Symcon
+        // tatsächlich eine Aktion besitzen. Reine Istwerte bleiben Anzeige.
+        if (item?._canAction !== true) return null;
+
+        const type = Number(item?._variableType);
+        if (type !== 1 && type !== 2) return null;
+
+        const profile = item?._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (associations.length > 0) return null;
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+
+        const configuredStep = Number(profile.step);
+        const step = Number.isFinite(configuredStep) && configuredStep > 0
+            ? configuredStep
+            : (type === 2 ? Math.max((max - min) / 100, 0.01) : 1);
+
+        const raw = Number(item?._rawValue);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+        return {min, max, step, value};
+    }
+
+    function directSliderValueFromPointer(item, clientX, clientY) {
+        const cfg = directSliderConfig(item);
+        if (!cfg) return null;
+
+        // Mauskoordinate in Grundriss-/Scene-Koordinaten umrechnen.
+        // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
+        const raw = svgPointRaw({clientX, clientY});
+        const radius = Number(item.size) || 18;
+        const width = Math.max(64, radius * 2.8);
+        const localX = raw.x - (Number(item.x) || 0);
+
+        const fraction = Math.max(0, Math.min(1, (localX + width / 2) / width));
+        let value = cfg.min + fraction * (cfg.max - cfg.min);
+
+        value = Math.round((value - cfg.min) / cfg.step) * cfg.step + cfg.min;
+        value = Math.max(cfg.min, Math.min(cfg.max, value));
+
+        if (Number(item._variableType) === 1) {
+            value = Math.round(value);
+        } else {
+            // Float-Werte auf sinnvolle Genauigkeit begrenzen.
+            value = Math.round(value * 10000) / 10000;
+        }
+
+        return value;
+    }
+
+    function truthyVariableValue(value) {
+        return value === true || value === 1 || value === '1' || value === 'true' || value === 'on' || value === 'open';
+    }
+
+    function normalizedOpeningAmount(rawValue, variableType, profile, invert = false) {
+        let amount = 0;
+
+        if (Number(variableType) === 0) {
+            amount = truthyVariableValue(rawValue) ? 1 : 0;
+
+            // Bei Fenster-/Türkontakten ist TRUE nicht immer automatisch "offen".
+            // Falls das Bool-Profil sprechende Assoziationen besitzt, verwenden wir
+            // deren Bezeichnung (z.B. Offen/Geschlossen) für die Darstellung.
+            const associations = Array.isArray(profile?.associations) ? profile.associations : [];
+            const currentAssociation = associations.find(a =>
+                Boolean(Number(a.value)) === Boolean(truthyVariableValue(rawValue))
+            );
+
+            if (currentAssociation?.name) {
+                const name = String(currentAssociation.name).toLowerCase();
+                if (/(geschlossen|closed|zu\b)/.test(name)) {
+                    amount = 0;
+                } else if (/(geöffnet|offen|opened|open\b)/.test(name)) {
+                    amount = 1;
+                }
+            }
+        } else if (Number(variableType) === 1 || Number(variableType) === 2) {
+            const raw = Number(rawValue);
+            const min = Number(profile?.min);
+            const max = Number(profile?.max);
+
+            if (Number.isFinite(raw) && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+                amount = (raw - min) / (max - min);
+            } else if (Number.isFinite(raw)) {
+                amount = raw > 1 ? raw / 100 : raw;
+            }
+        } else {
+            amount = truthyVariableValue(String(rawValue).toLowerCase()) ? 1 : 0;
+        }
+
+        amount = Math.max(0, Math.min(1, amount));
+        return invert ? 1 - amount : amount;
+    }
+
+    function openingState(o) {
+        return normalizedOpeningAmount(
+            o._rawValue,
+            o._variableType,
+            o._profile,
+            o.invert === true
+        );
+    }
+
+    function mappedShutterAmount(o) {
+        if (!o || o.shutterValueMappingEnabled !== true) return null;
+        if (Number(o._shutterVariableType) !== 1) return null;
+
+        const map = o.shutterValueMap && typeof o.shutterValueMap === 'object'
+            ? o.shutterValueMap
+            : {};
+        const raw = Number(o._shutterVariableRawValue);
+        if (!Number.isFinite(raw)) return null;
+
+        const key = String(raw);
+        if (!Object.prototype.hasOwnProperty.call(map, key)) return null;
+
+        const mapped = map[key];
+
+        // "keep" bedeutet: Dieser Befehlswert beschreibt keine feste Position
+        // (z.B. Stop / Schritt auf / Schritt zu). Dann bleibt die zuletzt
+        // bekannte grafische Stellung während der Laufzeit erhalten.
+        if (mapped === 'keep') {
+            return Number.isFinite(Number(o._shutterVisualAmount))
+                ? Math.max(0, Math.min(1, Number(o._shutterVisualAmount)))
+                : 0;
+        }
+
+        const percent = Number(mapped);
+        if (!Number.isFinite(percent)) return null;
+
+        const amount = Math.max(0, Math.min(1, percent / 100));
+        o._shutterVisualAmount = amount;
+        return amount;
+    }
+
+    function shutterState(o) {
+        let amount = mappedShutterAmount(o);
+
+        if (amount === null) {
+            amount = normalizedOpeningAmount(
+                o._shutterVariableRawValue,
+                o._shutterVariableType,
+                o._shutterVariableProfile,
+                false
+            );
+            o._shutterVisualAmount = amount;
+        }
+
+        amount = Math.max(0, Math.min(1, amount));
+        return o.shutterInvert === true ? 1 - amount : amount;
+    }
+
+    function formatDimensionCm(value) {
+        const cm = Math.max(0, Number(value) || 0);
+        if (cm >= 100) {
+            return `${(cm / 100).toFixed(2)} m (${Math.round(cm * 10) / 10} cm)`;
+        }
+        return `${Math.round(cm * 10) / 10} cm`;
+    }
+
+    function wallEndpointInset(w, floor, atStart) {
+        const x = Number(atStart ? w.x1 : w.x2) || 0;
+        const y = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+        const joined = (floor.walls || []).some(other => {
+            if (other.id === w.id) return false;
+            return (
+                Math.hypot((Number(other.x1) || 0) - x, (Number(other.y1) || 0) - y) <= tolerance ||
+                Math.hypot((Number(other.x2) || 0) - x, (Number(other.y2) || 0) - y) <= tolerance
+            );
+        });
+
+        // Die gespeicherte Wand läuft auf ihrer Mittellinie. Wenn am Endpunkt
+        // eine weitere Wand anschliesst, liegt die sichtbare Innenkante um eine
+        // halbe Wanddicke innerhalb dieses Mittellinien-Schnittpunkts.
+        return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
+    }
+
+    function wallEndpointConnectedForDimension(w, floor, atStart) {
+        const px = Number(atStart ? w.x1 : w.x2) || 0;
+        const py = Number(atStart ? w.y1 : w.y2) || 0;
+        const tolerance = 0.75;
+
+        for (const other of floor.walls || []) {
+            if (other.id === w.id) continue;
+            const ax = Number(other.x1) || 0, ay = Number(other.y1) || 0;
+            const bx = Number(other.x2) || 0, by = Number(other.y2) || 0;
+            const vx = bx - ax, vy = by - ay;
+            const len2 = vx * vx + vy * vy;
+            if (len2 < 0.0001) continue;
+
+            let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const qx = ax + vx * t, qy = ay + vy * t;
+            if (Math.hypot(px - qx, py - qy) <= tolerance) return true;
+        }
+        return false;
+    }
+
+    function wallIntersectionData(w, other) {
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const ox1 = Number(other.x1) || 0, oy1 = Number(other.y1) || 0;
+        const ox2 = Number(other.x2) || 0, oy2 = Number(other.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const odx = ox2 - ox1, ody = oy2 - oy1;
+        const cross = dx * ody - dy * odx;
+        if (Math.abs(cross) < 0.0001) return null;
+
+        const rx = ox1 - x1, ry = oy1 - y1;
+        const t = (rx * ody - ry * odx) / cross;
+        const u = (rx * dy - ry * dx) / cross;
+        return {t, u};
+    }
+
+    function wallDimensionBreaks(w, floor, mode) {
+        const x1=Number(w.x1)||0, y1=Number(w.y1)||0;
+        const x2=Number(w.x2)||0, y2=Number(w.y2)||0;
+        const dx=x2-x1, dy=y2-y1, length=Math.hypot(dx,dy);
+        if(length<1) return [];
+
+        const thickness=Number(floor.wallThickness)||12;
+        const half=thickness/2;
+
+        // Maßgebend ist NICHT der gezeichnete Endpunkt dieser Wand.
+        // Maßgebend ist der geometrische Schnittpunkt mit der anschließenden
+        // Querwand und von dort deren reale Innen-/Außenkante.
+        function connectionAtEnd(atStart) {
+            const candidates=[];
+
+            for(const other of floor.walls||[]) {
+                if(other.id===w.id) continue;
+
+                const hit=wallIntersectionData(w,other);
+                if(!hit) continue;
+
+                const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+                const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+                const olen=Math.hypot(odx,ody);
+                if(olen<1) continue;
+
+                const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+                if(sinAngle<.05) continue;
+
+                // Ein paar cm Zeichenabweichung am Wandende werden für die
+                // Vermassung ignoriert. Auch der Endpunkt der Querwand darf
+                // leicht vor/hinter dem rechnerischen Schnitt liegen.
+                const alongTolerance=Math.max(thickness*1.5, 15);
+                const tTolerance=alongTolerance/length;
+                const uTolerance=alongTolerance/olen;
+
+                const nearRequestedEnd=atStart
+                    ? Math.abs(hit.t)<=tTolerance
+                    : Math.abs(hit.t-1)<=tTolerance;
+
+                if(!nearRequestedEnd) continue;
+                if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+                const center=hit.t*length;
+                const projectedHalf=half/sinAngle;
+                const endpoint=atStart ? 0 : length;
+
+                candidates.push({
+                    center,
+                    projectedHalf,
+                    distance:Math.abs(center-endpoint)
+                });
+            }
+
+            if(!candidates.length) return null;
+            candidates.sort((a,b)=>a.distance-b.distance);
+            return candidates[0];
+        }
+
+        const startConnection=connectionAtEnd(true);
+        const endConnection=connectionAtEnd(false);
+
+        // Nur echte Kanten sind Maßpunkte:
+        // Start: außen = vor der Querwand, innen = hinter der Querwand.
+        // Ende:  innen = vor der Querwand, außen = hinter der Querwand.
+        const startOutside=startConnection
+            ? startConnection.center-startConnection.projectedHalf
+            : 0;
+        const startInside=startConnection
+            ? startConnection.center+startConnection.projectedHalf
+            : 0;
+
+        const endInside=endConnection
+            ? endConnection.center-endConnection.projectedHalf
+            : length;
+        const endOutside=endConnection
+            ? endConnection.center+endConnection.projectedHalf
+            : length;
+
+        if(mode==='outside') {
+            return [startOutside,endOutside];
+        }
+
+        const points=[startInside,endInside];
+
+        // Innerhalb der Wand: jede Querwand unterbricht die Innenmaßkette
+        // an ihren beiden realen Wandkanten. Die Wandachse ist kein Maßpunkt.
+        for(const other of floor.walls||[]) {
+            if(other.id===w.id) continue;
+
+            const hit=wallIntersectionData(w,other);
+            if(!hit) continue;
+
+            const odx=(Number(other.x2)||0)-(Number(other.x1)||0);
+            const ody=(Number(other.y2)||0)-(Number(other.y1)||0);
+            const olen=Math.hypot(odx,ody);
+            if(olen<1) continue;
+
+            const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
+            if(sinAngle<.05) continue;
+
+            const tolerance=Math.max(2/length, .01);
+            if(hit.t<=tolerance || hit.t>=1-tolerance) continue;
+
+            const uTolerance=Math.max(thickness,10)/olen;
+            if(hit.u < -uTolerance || hit.u > 1+uTolerance) continue;
+
+            const center=hit.t*length;
+            const projectedHalf=half/sinAngle;
+            points.push(center-projectedHalf,center+projectedHalf);
+        }
+
+        return points
+            .filter(Number.isFinite)
+            .filter(v=>v>=startInside-.5 && v<=endInside+.5)
+            .sort((a,b)=>a-b)
+            .filter((v,i,a)=>i===0 || Math.abs(v-a[i-1])>.5);
+    }
+
+    function wallGraphicDimension(w, floor, side, mode) {
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const centerLength = Math.hypot(dx, dy);
+        if (centerLength < 1) return '';
+
+        const ux = dx / centerLength, uy = dy / centerLength;
+        const nx = -uy * side, ny = ux * side;
+        const thickness = Number(floor.wallThickness) || 12;
+        const breaks = wallDimensionBreaks(w, floor, mode);
+        if (breaks.length < 2) return '';
+
+        const offset = mode === 'inside' ? thickness / 2 + 12 : thickness / 2 + 30;
+        const ext = 7;
+        const pieces = [];
+        const first = breaks[0], last = breaks[breaks.length - 1];
+
+        const pointAt = d => ({x: x1 + ux * d, y: y1 + uy * d});
+        const f = pointAt(first), l = pointAt(last);
+
+        for (const d of breaks) {
+            const p = pointAt(d);
+
+            // Die Hilfslinie muss an der tatsächlich vermassten Kante beginnen:
+            // innen an der Innenkante, außen an der Außenkante – niemals an der
+            // gespeicherten Wand-Mittellinie.
+            const measuredEdgeOffset = mode === 'inside' ? thickness / 2 : thickness / 2;
+            const edgeX = p.x + nx * measuredEdgeOffset;
+            const edgeY = p.y + ny * measuredEdgeOffset;
+
+            const mx = p.x + nx * offset, my = p.y + ny * offset;
+            pieces.push(`<line x1="${edgeX}" y1="${edgeY}" x2="${mx + nx * ext}" y2="${my + ny * ext}"/>`);
+            pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
+        }
+
+        // Außenmaß: eine einzige Gesamtmaßzahl von Außenkante zu Außenkante.
+        // Innenmaß: Maßkette mit allen Zwischen-/Querwandkanten.
+        const segments = mode === 'outside'
+            ? [[first, last]]
+            : breaks.slice(0, -1).map((a, i) => [a, breaks[i + 1]]);
+
+        for (const [a, b] of segments) {
+            const value = b - a;
+            if (value < 0.5) continue;
+
+            const mid = (a + b) / 2;
+            const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
+            const label = String(Math.round(value * 10) / 10);
+
+            // Professionelle Vermassung: Die Zahl sitzt mittig in einer echten
+            // Unterbrechung der Maßlinie. Die Lücke passt sich Schriftgröße und
+            // Anzahl der Ziffern an.
+            const estimatedTextWidth = Math.max(
+                dimensionFontSize * 1.2,
+                label.length * dimensionFontSize * 0.62
+            );
+            const halfGap = Math.min(
+                (b - a) * 0.38,
+                (estimatedTextWidth + Math.max(8, dimensionFontSize * 0.55)) / 2
+            );
+            const leftEnd = mid - halfGap;
+            const rightStart = mid + halfGap;
+
+            const pa = pointAt(a);
+            const pb = pointAt(b);
+            const pl = pointAt(leftEnd);
+            const pr = pointAt(rightStart);
+
+            if (leftEnd > a + 0.5) {
+                pieces.push(`<line x1="${pa.x + nx * offset}" y1="${pa.y + ny * offset}" x2="${pl.x + nx * offset}" y2="${pl.y + ny * offset}"/>`);
+            }
+            if (rightStart < b - 0.5) {
+                pieces.push(`<line x1="${pr.x + nx * offset}" y1="${pr.y + ny * offset}" x2="${pb.x + nx * offset}" y2="${pb.y + ny * offset}"/>`);
+            }
+
+            const tx = x1 + ux * mid + nx * offset;
+            const ty = y1 + uy * mid + ny * offset;
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (angle > 90 || angle < -90) angle += 180;
+            pieces.push(`<text x="${tx}" y="${ty}" font-size="${dimensionFontSize}" transform="rotate(${angle} ${tx} ${ty})">${label}</text>`);
+        }
+
+        return `<g class="dimension-line ${mode === 'inside' ? 'dimension-inside' : 'dimension-outside'}" pointer-events="none">${pieces.join('')}</g>`;
+    }
+
+    function wallOutsideSide(w, floor) {
+        const walls = floor.walls || [];
+        if (!walls.length) return 1;
+
+        // Mittelpunkt des gesamten Wandgrundrisses.
+        let sx = 0, sy = 0, count = 0;
+        for (const wall of walls) {
+            sx += Number(wall.x1) || 0;
+            sy += Number(wall.y1) || 0;
+            sx += Number(wall.x2) || 0;
+            sy += Number(wall.y2) || 0;
+            count += 2;
+        }
+        const cx = sx / Math.max(1, count);
+        const cy = sy / Math.max(1, count);
+
+        const x1 = Number(w.x1) || 0, y1 = Number(w.y1) || 0;
+        const x2 = Number(w.x2) || 0, y2 = Number(w.y2) || 0;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return 1;
+
+        // Beide Normalen prüfen. Die Seite, die vom Grundrisszentrum weg zeigt,
+        // ist die geometrische Außenseite. Dadurch ist die Richtung, in der die
+        // Wand gezeichnet wurde, egal.
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const toCenterX = cx - mx, toCenterY = cy - my;
+
+        // Normal für side=1 in wallGraphicDimension:
+        // nx=-uy, ny=ux.
+        const nx = -dy / len, ny = dx / len;
+        const dot = nx * toCenterX + ny * toCenterY;
+
+        // Zeigt side=1 zum Zentrum, liegt außen auf side=-1.
+        return dot > 0 ? -1 : 1;
+    }
+
+    function renderGraphicWallDimensions(floor) {
+        // Bemaßung ist reine Editor-Hilfe und wird in der Live-Ansicht nie gezeigt.
+        if (state.mode === 'view') return '';
+        if (floor.showInsideDimensions !== true && floor.showOutsideDimensions !== true) return '';
+
+        const result = [];
+        for (const w of floor.walls || []) {
+            const outsideSide = wallOutsideSide(w, floor);
+            if (floor.showInsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, -outsideSide, 'inside'));
+            }
+            if (floor.showOutsideDimensions === true) {
+                result.push(wallGraphicDimension(w, floor, outsideSide, 'outside'));
+            }
+        }
+        return result.join('');
+    }
+
+    function wallDimensionInfo(w, floor) {
+        const centerLength = Math.hypot(
+            (Number(w.x2) || 0) - (Number(w.x1) || 0),
+            (Number(w.y2) || 0) - (Number(w.y1) || 0)
+        );
+        const startInset = wallEndpointInset(w, floor, true);
+        const endInset = wallEndpointInset(w, floor, false);
+        const halfThickness = (Number(floor.wallThickness) || 12) / 2;
+        const startConnected = wallEndpointConnectedForDimension(w, floor, true);
+        const endConnected = wallEndpointConnectedForDimension(w, floor, false);
+        const insideLength = Math.max(0,
+            centerLength - (startConnected ? halfThickness : 0) - (endConnected ? halfThickness : 0)
+        );
+        const outsideLength =
+            centerLength + (startConnected ? halfThickness : 0) + (endConnected ? halfThickness : 0);
+
+        const wallOpenings = (floor.openings || [])
+            .filter(o => o.wallId === w.id)
+            .map(o => {
+                const width = Math.min(Math.max(0, Number(o.length) || 0), centerLength);
+                const center = Math.max(0, Math.min(centerLength, (Number(o.position ?? .5) || 0) * centerLength));
+                return {
+                    type: o.type === 'door' ? 'Tür' : 'Fenster',
+                    width,
+                    start: Math.max(startInset, center - width / 2),
+                    end: Math.min(centerLength - endInset, center + width / 2)
+                };
+            })
+            .sort((a, b) => a.start - b.start);
+
+        const lines = [
+            `Innenmaß: ${formatDimensionCm(insideLength)}`,
+            `Außenmaß: ${formatDimensionCm(outsideLength)}`
+        ];
+
+        if (!wallOpenings.length) {
+            return lines.join('\n');
+        }
+
+        let cursor = startInset;
+        wallOpenings.forEach((o, index) => {
+            lines.push(`Innen – Abstand bis ${o.type} ${index + 1}: ${formatDimensionCm(Math.max(0, o.start - cursor))}`);
+            lines.push(`${o.type} ${index + 1} Breite: ${formatDimensionCm(Math.max(0, o.end - o.start))}`);
+            cursor = Math.max(cursor, o.end);
+        });
+        lines.push(`Innen – Abstand nach letzter Öffnung: ${formatDimensionCm(Math.max(0, centerLength - endInset - cursor))}`);
+        return lines.join('\n');
     }
 
     function openingGeometry(w, o) {
@@ -793,7 +4850,7 @@ class Foorplaner extends IPSModuleStrict
         const dy = y1 + ny * depth;
 
         return {
-            x1, y1, x2, y2, cx, cy, dx, dy,
+            x1, y1, x2, y2, cx, cy, dx, dy, ux, uy, nx, ny,
             wx1: x1 + nx * 4,
             wy1: y1 + ny * 4,
             wx2: x2 + nx * 4,
@@ -830,7 +4887,9 @@ class Foorplaner extends IPSModuleStrict
         if (type === 'wall') return floor.walls.find(v => v.id === id);
         if (type === 'opening') return floor.openings.find(v => v.id === id);
         if (type === 'item') return floor.items.find(v => v.id === id);
+        if (type === 'furniture') return (floor.furniture || []).find(v => v.id === id);
         if (type === 'text') return floor.texts.find(v => v.id === id);
+        if (type === 'shape') return (floor.shapes || []).find(v => v.id === id);
         return null;
     }
 
@@ -845,8 +4904,12 @@ class Foorplaner extends IPSModuleStrict
             floor.openings = floor.openings.filter(v => v.id !== selected.id);
         } else if (selected.type === 'item') {
             floor.items = floor.items.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'furniture') {
+            floor.furniture = (floor.furniture || []).filter(v => v.id !== selected.id);
         } else if (selected.type === 'text') {
             floor.texts = floor.texts.filter(v => v.id !== selected.id);
+        } else if (selected.type === 'shape') {
+            floor.shapes = (floor.shapes || []).filter(v => v.id !== selected.id);
         }
 
         selected = null;
@@ -855,7 +4918,168 @@ class Foorplaner extends IPSModuleStrict
         render();
     }
 
+    function defaultDisplayModeForKind(kind) {
+        return ['temperature','humidity'].includes(kind) ? 'value' : 'icon';
+    }
+
+    function shutterMappingOptions(selectedValue) {
+        const options = [
+            ['keep', 'Position nicht ändern'],
+            ['100', 'Offen (100 %)'],
+            ['75', '75 % offen'],
+            ['50', 'Halb (50 %)'],
+            ['25', '25 % offen'],
+            ['0', 'Geschlossen (0 %)']
+        ];
+
+        return options.map(([value, label]) =>
+            `<option value="${value}"${String(selectedValue) === value ? ' selected' : ''}>${label}</option>`
+        ).join('');
+    }
+
+    function shutterValueMappingHtml(obj) {
+        if (!obj || Number(obj.shutterVariableID || 0) <= 0) return '';
+        if (Number(obj._shutterVariableType) !== 1) return '';
+
+        const profile = obj._shutterVariableProfile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        if (!associations.length) return '';
+
+        const enabled = obj.shutterValueMappingEnabled === true;
+        const map = obj.shutterValueMap && typeof obj.shutterValueMap === 'object'
+            ? obj.shutterValueMap
+            : {};
+
+        let html = `
+            <div class="field">
+                <label class="check">
+                    <input data-field="shutterValueMappingEnabled" type="checkbox"${enabled ? ' checked' : ''}>
+                    Rollo-Werte zuordnen
+                </label>
+            </div>
+        `;
+
+        if (!enabled) return html;
+
+        html += `<div class="field"><label>Integerwerte → Rollo-Status</label>`;
+        html += `<div class="profile-hint">Jedem Profilwert kannst du eine grafische Stellung zuordnen.</div>`;
+
+        for (const association of associations) {
+            const rawValue = Number(association.value);
+            if (!Number.isFinite(rawValue)) continue;
+
+            const key = String(rawValue);
+            let selectedValue = Object.prototype.hasOwnProperty.call(map, key)
+                ? String(map[key])
+                : 'keep';
+
+            html += `
+                <div class="row2" style="align-items:center;margin-top:6px">
+                    <div class="field" style="margin:0">
+                        <label>${escapeHtml(String(association.name || key))} (${escapeHtml(key)})</label>
+                    </div>
+                    <div class="field" style="margin:0">
+                        <select data-shutter-map-value="${escapeHtml(key)}">
+                            ${shutterMappingOptions(selectedValue)}
+                        </select>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    function renderSelectionHelp() {
+        if (!selectionHelp) return;
+
+        if (!selected) {
+            selectionHelp.innerHTML = `
+                <b>Bedienung – Etage</b><br>
+                Hier werden die Eigenschaften der aktuellen Etage eingestellt.<br>
+                Mittlere Maustaste: Grundriss verschieben.<br>
+                − / +: manuell zoomen.<br>
+                Einpassen: aktuelle Etage vollständig einpassen.
+            `;
+            return;
+        }
+
+        const helpByType = {
+            item: `
+                <b>Bedienung – Gerät</b><br>
+                Gerät anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern.<br>
+                Hauptvariable über den IP-Symcon-Objektbaum auswählen.<br>
+                Boolean: direkt Ein/Aus schalten; bei vorhandenen Assoziationen werden deren Bezeichnungen verwendet.<br>
+                Boolean mit Farbsteuerung: zusätzlich eine Integer-Farbvariable (RGB/Hex) auswählen. In der Live-Ansicht stehen dann Ein/Aus und der Farbkreis gemeinsam zur Verfügung.<br>
+                Integer/Float: je nach Variablenprofil bzw. Darstellung über Assoziationen oder Zahlenbereich/Slider bedienen.<br>
+                String: Wert bzw. vorhandene String-Assoziation anzeigen; ohne Aktion reine Statusanzeige.<br>
+                Variablen ohne Aktion sind nur Statusanzeigen und nicht bedienbar.<br>
+                Icon und Statusdarstellung werden soweit möglich aus IP-Symcon übernommen und können angepasst werden.<br>
+                Löschen: ausgewähltes Gerät löschen.
+            `,
+            wall: `
+                <b>Bedienung – Wand</b><br>
+                Wand anklicken und über die Eigenschaften konfigurieren.<br>
+                Start- und Endpunkt können direkt verschoben werden.<br>
+                Löschen: ausgewählte Wand löschen.
+            `,
+            opening: `
+                <b>Bedienung – Tür/Fenster</b><br>
+                Element anklicken und entlang der Wand verschieben.<br>
+                Breite und weitere Eigenschaften konfigurieren.<br>
+                Löschen: ausgewähltes Element löschen.
+            `,
+            furniture: `
+                <b>Bedienung – Objekt</b><br>
+                Objekt anklicken und mit der Maus verschieben.<br>
+                Größe über den Resize-Punkt ändern und bei Bedarf drehen.<br>
+                Löschen: ausgewähltes Objekt löschen.
+            `,
+            shape: `
+                <b>Bedienung – Form</b><br>
+                Form anklicken und verschieben.<br>
+                Größe, Drehung, Füllung und Darstellung konfigurieren.<br>
+                Löschen: ausgewählte Form löschen.
+            `,
+            text: `
+                <b>Bedienung – Text</b><br>
+                Text anklicken und verschieben.<br>
+                Inhalt und Darstellung konfigurieren.<br>
+                Löschen: ausgewählten Text löschen.
+            `
+        };
+
+        selectionHelp.innerHTML = helpByType[selected.type] || `
+            <b>Bedienung</b><br>
+            Das ausgewählte Element kann über seine Eigenschaften konfiguriert werden.
+        `;
+    }
+
     function renderProperties() {
+        // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
+        // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
+        // (Möbeltyp, Icon, Profil-nahe Auswahlfelder usw.).
+        //
+        // document.activeElement allein reicht nicht in allen Browsern/HTML-SDK-
+        // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
+        // irgendein Select in der Eigenschaftenleiste aktiv benutzt wird.
+        const activeElement = document.activeElement;
+        const activePropertyControl =
+            activeElement &&
+            properties.contains(activeElement) &&
+            (
+                activeElement instanceof HTMLInputElement ||
+                activeElement instanceof HTMLSelectElement ||
+                activeElement instanceof HTMLTextAreaElement
+            );
+
+        if (propertiesControlActive || propertiesSelectOpen || activePropertyControl) {
+            return;
+        }
+
+        renderSelectionHelp();
         const floor = currentFloor();
 
         if (!selected) {
@@ -865,29 +5089,36 @@ class Foorplaner extends IPSModuleStrict
                     <label>Etagenname</label>
                     <input data-project="floorName" value="${escapeHtml(floor.name)}">
                 </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>Breite</label>
-                        <input value="${state.width}" disabled>
-                    </div>
-                    <div class="field">
-                        <label>Höhe</label>
-                        <input value="${state.height}" disabled>
-                    </div>
+                <div class="field">
+                    <label>Reihenfolge</label>
+                    <input type="number" min="1" max="${state.floors.length}" step="1" data-project="floorOrder" value="${Number(floor.order) || 1}">
                 </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>Raster</label>
-                        <input value="${state.grid}" disabled>
-                    </div>
-                    <div class="field">
-                        <label>Snap</label>
-                        <input value="${state.snap}" disabled>
-                    </div>
+                <div class="field">
+                    <label>Mauerwerkdicke</label>
+                    <input type="number" min="1" max="60" step="1" data-project="wallThickness" value="${Number(floor.wallThickness) || 12}">
+                </div>
+                <div class="field">
+                    <label class="check">
+                        <input type="checkbox" data-project="showWallDimensions" ${floor.showWallDimensions === true ? 'checked' : ''}>
+                        Wandmaße bei Mausover
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" data-project="showInsideDimensions" ${floor.showInsideDimensions === true ? 'checked' : ''}>
+                        Innenmaße anzeigen
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" data-project="showOutsideDimensions" ${floor.showOutsideDimensions === true ? 'checked' : ''}>
+                        Außenmaße anzeigen
+                    </label>
+                    <small>Maße in cm.</small>
+                </div>
+                <div class="field">
+                    <label>Schriftgröße Vermassung (px)</label>
+                    <input type="number" min="8" max="48" step="1" data-project="dimensionFontSize" value="${Number(floor.dimensionFontSize) || 18}">
                 </div>
                 <div class="field">
                     <label>Elemente</label>
-                    <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte" disabled>
+                    <input value="${floor.walls.length} Wände, ${floor.openings.length} Öffnungen, ${floor.items.length} Geräte, ${(floor.furniture || []).length} Möbel" disabled>
                 </div>
             `;
             bindPropertyInputs();
@@ -903,6 +5134,12 @@ class Foorplaner extends IPSModuleStrict
 
         if (selected.type === 'wall') {
             propTitle.textContent = 'Wand';
+            const wallLength = Math.round(
+                Math.hypot(
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0),
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0)
+                ) * 100
+            ) / 100;
             properties.innerHTML = `
                 <div class="row2">
                     <div class="field"><label>X1</label><input data-field="x1" type="number" value="${obj.x1}"></div>
@@ -912,32 +5149,430 @@ class Foorplaner extends IPSModuleStrict
                     <div class="field"><label>X2</label><input data-field="x2" type="number" value="${obj.x2}"></div>
                     <div class="field"><label>Y2</label><input data-field="y2" type="number" value="${obj.y2}"></div>
                 </div>
+                <div class="field">
+                    <label>Länge</label>
+                    <input data-field="wallLength" type="number" min="1" step="1" value="${wallLength}">
+                </div>
             `;
         } else if (selected.type === 'opening') {
             propTitle.textContent = obj.type === 'door' ? 'Tür' : 'Fenster';
-            properties.innerHTML = `
-                <div class="field">
-                    <label>Typ</label>
-                    <select data-field="type">
-                        <option value="door"${obj.type === 'door' ? ' selected' : ''}>Tür</option>
-                        <option value="window"${obj.type === 'window' ? ' selected' : ''}>Fenster</option>
-                    </select>
-                </div>
-                <div class="field"><label>Länge</label><input data-field="length" type="number" min="20" value="${obj.length || 80}"></div>
-                <div class="field"><label>Position auf Wand (0–1)</label><input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}"></div>
-                <div class="field"><label>IP-Symcon VariableID</label><input data-field="variableID" type="number" min="0" value="${obj.variableID || 0}"></div>
-            `;
+
+            if (obj.type === 'window') {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 120}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Fensterkontakt / Fensterposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <div class="field">
+                        <label>Rollo / Rollladen (optional)</label>
+                        <input class="variable-select-field" data-variable-field="shutterVariableID" readonly
+                            value="${obj.shutterVariableID ? '#' + obj.shutterVariableID + (obj._shutterVariablePath ? ' – ' + escapeHtml(obj._shutterVariablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label>Rollo-Typ</label>
+                            <select data-field="shutterStyle">
+                                <option value="roll"${(obj.shutterStyle || 'roll') === 'roll' ? ' selected' : ''}>Roll-up / Rollladen</option>
+                                <option value="swing"${obj.shutterStyle === 'swing' ? ' selected' : ''}>Klappladen</option>
+                            </select>
+                        </div>
+
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Fensterzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+
+                    ${obj.shutterVariableID ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterSideInvert" type="checkbox"${obj.shutterSideInvert === true ? ' checked' : ''}>
+                                Rollo innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="shutterInvert" type="checkbox"${obj.shutterInvert === true ? ' checked' : ''}>
+                                Rollo-Status invertieren
+                            </label>
+                        </div>
+
+                        ${shutterValueMappingHtml(obj)}
+                    ` : ''}
+
+                `;
+            } else {
+                properties.innerHTML = `
+                    <div class="field">
+                        <label>Länge</label>
+                        <input data-field="length" type="number" min="20" value="${obj.length || 80}">
+                    </div>
+
+                    <div class="field">
+                        <label>Position auf Wand (0–1)</label>
+                        <input data-field="position" type="number" min="0" max="1" step="0.01" value="${obj.position ?? .5}">
+                    </div>
+
+                    <div class="field">
+                        <label>Türkontakt / Türposition</label>
+                        <input class="variable-select-field" data-variable-field="variableID" readonly
+                            value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    </div>
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label>Farbe geöffnet</label>
+                            <input data-field="openStatusColor" type="color" value="${effectiveOpeningStatusColor(obj)}">
+                            <div class="profile-hint">Wird beim Zuordnen automatisch aus der Symcon-Variable übernommen und kann hier manuell geändert werden.</div>
+                        </div>
+                        <div class="field">
+                            <button class="refreshOpeningVariableSettings" type="button"
+                                title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                                Variableneinstellungen aktualisieren
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    ${Number(obj.variableID || 0) > 0 ? `
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="doorSideInvert" type="checkbox"${obj.doorSideInvert === true ? ' checked' : ''}>
+                                Öffnungsseite innen / außen tauschen
+                            </label>
+                        </div>
+
+                        <div class="field">
+                            <label class="check">
+                                <input data-field="invert" type="checkbox"${obj.invert === true ? ' checked' : ''}>
+                                Türzustand invertieren
+                            </label>
+                        </div>
+                    ` : ''}
+                `;
+            }
+
         } else if (selected.type === 'item') {
             propTitle.textContent = 'Gerät';
+            const kind = obj.kind || 'generic';
             properties.innerHTML = `
                 <div class="field"><label>Name</label><input data-field="name" value="${escapeHtml(obj.name || '')}"></div>
-                <div class="field"><label>IP-Symcon VariableID</label><input data-field="variableID" type="number" min="0" value="${obj.variableID || 0}"></div>
-                <div class="field"><label>Symbol/Text</label><input data-field="icon" value="${escapeHtml(obj.icon || '●')}"></div>
+                <div class="field">
+                    <label>IP-Symcon Variable</label>
+                    <input id="variableField" class="variable-select-field" data-variable-field="variableID" readonly title="Variable auswählen"
+                        value="${obj.variableID ? '#' + obj.variableID + (obj._variablePath ? ' – ' + escapeHtml(obj._variablePath) : '') : 'nicht zugeordnet'}">
+                    ${obj._profileName && obj._hasNewPresentation !== true
+                        ? `<div class="profile-hint">Profil: ${escapeHtml(obj._profileName)}${obj._profileSummary ? ' · ' + escapeHtml(obj._profileSummary) : ''}</div>`
+                        : ''}
+                </div>
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label class="check">
+                            <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
+                            Farbsteuerung
+                        </label>
+                        ${obj.colorControlEnabled === true ? `
+                            <label>Farbvariable (Integer / Hex Color)</label>
+                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                                value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
+                            ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
+                                ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
+                                : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                        ` : ''}
+                    </div>
+                ` : ''}
+                ${canConfigureStatusColor(obj) ? `
+                    <div class="field">
+                        ${(() => {
+                            const configuredLightColor = (
+                                obj.colorControlEnabled === true &&
+                                Number(obj.colorVariableID || 0) > 0 &&
+                                Number(obj._colorVariableType) === 1
+                            ) ? integerColorToCss(obj._colorVariableRawValue) : '';
+
+                            return `
+                                <label>${configuredLightColor
+                                    ? 'Aktuelle Leuchtfarbe'
+                                    : (Number(obj._variableType) === 0 ? 'Statusfarbe EIN' : 'Statusfarbe')}</label>
+                                <input data-field="statusColor" type="color"
+                                    value="${configuredLightColor || normalizeStatusColor(obj.statusColor)}"
+                                    ${configuredLightColor ? 'disabled' : ''}>
+                                ${configuredLightColor
+                                    ? `<div class="profile-hint">Die Statusfarbe folgt automatisch der ausgewählten Leuchtfarbe.</div>`
+                                    : (Number(obj._variableType) !== 0 ? `<div class="profile-hint">Leuchtstärke folgt dem Wert zwischen Profil-Minimum und -Maximum.</div>` : '')}
+                            `;
+                        })()}
+                    </div>
+                ` : (
+                    hasAutomaticIntegerStatusColor(obj)
+                        ? `<div class="field">
+                            <div class="profile-hint">Statusfarbe wird automatisch aus IP-Symcon übernommen.</div>
+                           </div>`
+                        : ''
+                )}
+
+                ${Number(obj._variableType) === 0 ? `
+                    <div class="field">
+                        <label>Icons</label>
+                        <div class="bool-icon-row">
+                            <div class="bool-icon-field">
+                                <label>AUS</label>
+                                <button id="itemIconOffSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für AUS auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, false)}</span>
+                                </button>
+                            </div>
+                            <div class="bool-icon-field">
+                                <label>EIN</label>
+                                <button id="itemIconOnSelect" class="icon-select-button bool-icon-button" type="button" title="Icon für EIN auswählen">
+                                    <span class="icon-select-preview">${propertySpecificIconPreviewHtml(obj, true)}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="profile-hint">${obj._hasLegacyProfile === true
+                            ? 'Legacy: Basis-Icon weiterhin aus „Weitere visuelle Einstellungen“. AUS/EIN können hier optional getrennt überschrieben werden.'
+                            : 'Neue Variablendarstellung: AUS/EIN werden automatisch übernommen und können hier getrennt geändert werden.'}</div>
+                    </div>
+                ` : `
+                    <div class="field">
+                        <label>Icon</label>
+                        <button id="itemIconSelect" class="icon-select-button" type="button" title="IP-Symcon Icon auswählen">
+                            <span class="icon-select-preview">${propertyIconPreviewHtml(obj)}</span>
+                            <span>${escapeHtml(String(obj.icon || 'Icon der Variable / Standard'))}</span>
+                        </button>
+                        <div class="profile-hint">Beim Zuordnen einer Variable wird deren IP-Symcon-Icon automatisch übernommen. Danach kann es hier geändert werden.</div>
+                    </div>
+                `}
+                ${Number(obj.variableID || 0) > 0 ? `
+                    <div class="field">
+                        <button id="refreshVariableSettings" type="button" title="Aktuelle Einstellungen dieser Variable erneut aus IP-Symcon laden">
+                            Variableneinstellungen aktualisieren
+                        </button>
+                    </div>
+                ` : ''}
+
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="showValue" type="checkbox"${obj.showValue === true ? ' checked' : ''}> Wert anzeigen</label></div>
+                </div>
+                <div class="row2">
+                    <div class="field"><label class="check"><input data-field="showIcon" type="checkbox"${obj.showIcon !== false ? ' checked' : ''}> Symbol anzeigen</label></div>
+                    <div class="field"><label class="check"><input data-field="valueFrame" type="checkbox"${obj.valueFrame === true ? ' checked' : ''}> Rahmen um Istwert</label></div>
+                </div>
+                ${obj.variableID && obj._canAction !== true ? `<div class="profile-hint">Reiner Istwert: Für diese Variable ist keine Aktion hinterlegt. Sie wird deshalb nur angezeigt und nicht bedient.</div>` : ''}
+                ${directSliderConfig(obj) ? `
+                    <div class="field">
+                        <label class="check"><input data-field="showDirectSlider" type="checkbox"${obj.showDirectSlider === true ? ' checked' : ''}> Slider anzeigen</label>
+                        <div class="profile-hint">Nur für echte Zahlenbereiche ohne Profil-Assoziationen.</div>
+                    </div>
+                ` : ''}
+
+                <div class="row2">
+                    <div class="field"><label>Namensgröße</label><input data-field="labelSize" type="number" min="8" max="40" value="${obj.labelSize || 12}"></div>
+                    <div class="field"><label>Wertgröße</label><input data-field="valueSize" type="number" min="8" max="40" value="${obj.valueSize || 12}"></div>
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>Name Position</label>
+                        <select data-field="labelPosition">
+                            <option value="below"${(obj.labelPosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.labelPosition === 'above' ? ' selected' : ''}>oben</option>
+                            <option value="left"${obj.labelPosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.labelPosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Wert Position</label>
+                        <select data-field="valuePosition">
+                            <option value="below"${(obj.valuePosition || 'below') === 'below' ? ' selected' : ''}>unten</option>
+                            <option value="above"${obj.valuePosition === 'above' ? ' selected' : ''}>oben</option>
+                            <option value="left"${obj.valuePosition === 'left' ? ' selected' : ''}>links</option>
+                            <option value="right"${obj.valuePosition === 'right' ? ' selected' : ''}>rechts</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="row2">
                     <div class="field"><label>X</label><input data-field="x" type="number" value="${obj.x}"></div>
                     <div class="field"><label>Y</label><input data-field="y" type="number" value="${obj.y}"></div>
                 </div>
-                <div class="field"><label>Größe</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                <div class="row2">
+                    <div class="field"><label>Symbolgröße</label><input data-field="size" type="number" min="8" max="80" value="${obj.size || 18}"></div>
+                    <div class="field"><label>Drehung</label><input data-field="angle" type="number" min="-360" max="360" step="5" value="${Number(obj.angle) || 0}"></div>
+                </div>
+            `;
+        } else if (selected.type === 'furniture') {
+            propTitle.textContent = 'Möbel';
+            const ftype = obj.type || 'sofa';
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Möbeltyp</label>
+                    <select data-field="type">
+                        ${Object.entries(furnitureTemplates)
+                            .sort(([, a], [, b]) => String(a?.name || '').localeCompare(String(b?.name || ''), 'de', {sensitivity: 'base'}))
+                            .map(([key,tpl]) => `<option value="${key}"${key === ftype ? ' selected' : ''}>${escapeHtml(tpl.name)}</option>`)
+                            .join('')}
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Name</label>
+                    <input data-field="name" value="${escapeHtml(obj.name || furnitureTemplates[ftype]?.name || 'Möbel')}">
+                </div>
+                <label class="check"><input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}> Name anzeigen</label>
+                <div class="row2">
+                    <div class="field">
+                        <label>X</label>
+                        <input data-field="x" type="number" value="${Number(obj.x) || 0}">
+                    </div>
+                    <div class="field">
+                        <label>Y</label>
+                        <input data-field="y" type="number" value="${Number(obj.y) || 0}">
+                    </div>
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>Breite</label>
+                        <input data-field="width" type="number" min="8" step="1" value="${Number(obj.width) || 100}">
+                    </div>
+                    <div class="field">
+                        <label>Tiefe</label>
+                        <input data-field="height" type="number" min="8" step="1" value="${Number(obj.height) || 60}">
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Drehung</label>
+                    <input data-field="rotation" type="number" min="-360" max="360" step="5" value="${Number(obj.rotation) || 0}">
+                </div>
+            `;
+        } else if (selected.type === 'shape') {
+            propTitle.textContent = 'Form';
+
+            const kind = obj.kind || 'rect';
+            const shapeNames = {
+                line: 'Linie',
+                rect: 'Rechteck',
+                circle: 'Kreis / Ellipse',
+                triangle: 'Dreieck',
+                arrow: 'Pfeil',
+            };
+
+            const x = kind === 'circle'
+                ? (Number(obj.x1) || 0)
+                : Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0);
+            const y = kind === 'circle'
+                ? (Number(obj.y1) || 0)
+                : Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0);
+
+            const fallbackWidth = Math.max(1, Math.abs((Number(obj.x2) || 0) - (Number(obj.x1) || 0)));
+            const fallbackHeight = Math.max(1, Math.abs((Number(obj.y2) || 0) - (Number(obj.y1) || 0)));
+
+            const width = kind === 'circle'
+                ? Math.max(1, Number(obj.width) || Math.max(fallbackWidth * 2, 80))
+                : Math.max(1, fallbackWidth || 80);
+            const height = kind === 'circle'
+                ? Math.max(1, Number(obj.height) || Math.max(fallbackHeight * 2, 60))
+                : Math.max(1, fallbackHeight || 60);
+
+            const lineLength = kind === 'line'
+                ? Math.max(1, Math.hypot(
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0),
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0)
+                ))
+                : width;
+            const lineAngle = kind === 'line'
+                ? Math.atan2(
+                    (Number(obj.y2) || 0) - (Number(obj.y1) || 0),
+                    (Number(obj.x2) || 0) - (Number(obj.x1) || 0)
+                ) * 180 / Math.PI
+                : (Number(obj.rotation) || 0);
+
+            properties.innerHTML = `
+                <div class="field">
+                    <label>Formtyp</label>
+                    <select data-field="shapeKind">
+                        ${Object.entries(shapeNames)
+                            .sort(([, a], [, b]) => String(a || '').localeCompare(String(b || ''), 'de', {sensitivity: 'base'}))
+                            .map(([key, name]) =>
+                                `<option value="${key}"${key === kind ? ' selected' : ''}>${escapeHtml(name)}</option>`
+                            ).join('')}
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Name</label>
+                    <input data-field="name" value="${escapeHtml(obj.name || shapeNames[kind] || 'Form')}">
+                </div>
+
+                <label class="check">
+                    <input data-field="showName" type="checkbox"${obj.showName === true ? ' checked' : ''}>
+                    Name anzeigen
+                </label>
+
+                <div class="row2">
+                    <div class="field"><label>X</label><input data-field="shapeX" type="number" step="1" value="${Math.round(x)}"></div>
+                    <div class="field"><label>Y</label><input data-field="shapeY" type="number" step="1" value="${Math.round(y)}"></div>
+                </div>
+
+                ${kind === 'line' ? `
+                    <div class="row2">
+                        <div class="field"><label>Länge</label><input data-field="shapeLength" type="number" min="1" step="1" value="${Math.round(lineLength)}"></div>
+                        <div class="field"><label>Drehung</label><input data-field="shapeAngle" type="number" min="-360" max="360" step="1" value="${Math.round(lineAngle)}"></div>
+                    </div>
+                ` : `
+                    <div class="row2">
+                        <div class="field"><label>Breite</label><input data-field="shapeWidth" type="number" min="1" step="1" value="${Math.round(width)}"></div>
+                        <div class="field"><label>Höhe</label><input data-field="shapeHeight" type="number" min="1" step="1" value="${Math.round(height)}"></div>
+                    </div>
+                    <div class="field"><label>Drehung</label><input data-field="shapeRotation" type="number" min="-360" max="360" step="1" value="${Math.round(Number(obj.rotation) || 0)}"></div>
+                    <label class="check"><input data-field="fillEnabled" type="checkbox"${obj.fillEnabled === true ? ' checked' : ''}> Inhalt ausfüllen</label>
+                    ${obj.fillEnabled === true ? `
+                        <div class="field">
+                            <label>Muster</label>
+                            <select data-field="fillMode">
+                                <option value="light"${(obj.fillMode || 'light') === 'light' ? ' selected' : ''}>Leicht gefüllt</option>
+                                <option value="hatch"${obj.fillMode === 'hatch' ? ' selected' : ''}>Schraffiert</option>
+                                <option value="tiles"${obj.fillMode === 'tiles' ? ' selected' : ''}>Platten</option>
+                            </select>
+                        </div>
+                        ${(obj.fillMode === 'hatch' || obj.fillMode === 'tiles') ? `
+                            <div class="field">
+                                <label>Muster-Drehung (°)</label>
+                                <input data-field="fillRotation" type="number" min="-360" max="360" step="1"
+                                       value="${Math.round(Number(obj.fillRotation) || 0)}">
+                            </div>
+                        ` : ''}
+                    ` : ''}
+                `}
             `;
         } else if (selected.type === 'text') {
             propTitle.textContent = 'Text';
@@ -961,9 +5596,239 @@ class Foorplaner extends IPSModuleStrict
                 const obj = findEntity(selected.type, selected.id);
                 if (!obj) return;
 
-                let value = input.value;
+                let value = input.type === 'checkbox' ? input.checked : input.value;
                 if (input.type === 'number') value = Number(value);
-                obj[input.dataset.field] = value;
+                const fieldName = input.dataset.field;
+                const oldFurnitureType = selected.type === 'furniture' ? (obj.type || 'sofa') : null;
+
+                if (selected.type === 'wall' && fieldName === 'wallLength') {
+                    const x1 = Number(obj.x1) || 0;
+                    const y1 = Number(obj.y1) || 0;
+                    const dx = (Number(obj.x2) || 0) - x1;
+                    const dy = (Number(obj.y2) || 0) - y1;
+                    const oldLength = Math.hypot(dx, dy);
+                    const length = Math.max(1, Number(value) || 1);
+
+                    // Startpunkt und Richtung bleiben unverändert,
+                    // nur der Endpunkt wird auf die neue Länge gesetzt.
+                    const ux = oldLength > 0.000001 ? dx / oldLength : 1;
+                    const uy = oldLength > 0.000001 ? dy / oldLength : 0;
+                    obj.x2 = x1 + ux * length;
+                    obj.y2 = y1 + uy * length;
+                } else if (selected.type === 'shape' && fieldName === 'shapeKind') {
+                    const oldKind = obj.kind || 'rect';
+                    const cx = oldKind === 'circle'
+                        ? (Number(obj.x1) || 0)
+                        : ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
+                    const cy = oldKind === 'circle'
+                        ? (Number(obj.y1) || 0)
+                        : ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
+
+                    const width = oldKind === 'circle'
+                        ? Math.max(1, Number(obj.width) || 80)
+                        : Math.max(1, Math.abs((Number(obj.x2) || 0) - (Number(obj.x1) || 0)) || 80);
+                    const height = oldKind === 'circle'
+                        ? Math.max(1, Number(obj.height) || 60)
+                        : Math.max(1, Math.abs((Number(obj.y2) || 0) - (Number(obj.y1) || 0)) || 60);
+
+                    obj.kind = String(value);
+                    obj.rotation = Number(obj.rotation) || 0;
+
+                    if (obj.kind === 'line') {
+                        obj.x1 = cx - width / 2;
+                        obj.y1 = cy;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy;
+                    } else if (obj.kind === 'circle') {
+                        obj.x1 = cx;
+                        obj.y1 = cy;
+                        obj.width = width;
+                        obj.height = height;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy;
+                    } else {
+                        obj.x1 = cx - width / 2;
+                        obj.y1 = cy - height / 2;
+                        obj.x2 = cx + width / 2;
+                        obj.y2 = cy + height / 2;
+                    }
+
+                    const defaultNames = {
+                        line: 'Linie',
+                        rect: 'Rechteck',
+                        circle: 'Kreis / Ellipse',
+                        triangle: 'Dreieck',
+                        arrow: 'Pfeil',
+                            };
+                    const automaticNames = ['Form', 'Linie', 'Rechteck', 'Kreis / Ellipse', 'Dreieck', 'Pfeil'];
+                    if (!obj.name || automaticNames.includes(obj.name)) {
+                        obj.name = defaultNames[obj.kind] || 'Form';
+                    }
+
+                    input.blur();
+                    refreshPropertiesAfterStructuralChange();
+                } else if (selected.type === 'shape' && fieldName.startsWith('shape')) {
+                    const kind = obj.kind || 'rect';
+
+                    if (kind === 'line') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const dx = Number(obj.x2) - oldX;
+                        const dy = Number(obj.y2) - oldY;
+                        let length = Math.max(1, Math.hypot(dx, dy));
+                        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else {
+                            if (fieldName === 'shapeLength') length = Math.max(1, Number(value) || 1);
+                            if (fieldName === 'shapeAngle') angle = Number(value) || 0;
+                            const rad = angle * Math.PI / 180;
+                            obj.x2 = oldX + Math.cos(rad) * length;
+                            obj.y2 = oldY + Math.sin(rad) * length;
+                        }
+                    } else if (kind !== 'circle') {
+                        let x = Math.min(Number(obj.x1), Number(obj.x2));
+                        let y = Math.min(Number(obj.y1), Number(obj.y2));
+                        let width = Math.max(1, Math.abs(Number(obj.x2) - Number(obj.x1)));
+                        let height = Math.max(1, Math.abs(Number(obj.y2) - Number(obj.y1)));
+
+                        if (fieldName === 'shapeX') x = Number(value) || 0;
+                        if (fieldName === 'shapeY') y = Number(value) || 0;
+                        if (fieldName === 'shapeWidth') width = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeHeight') height = Math.max(1, Number(value) || 1);
+                        if (fieldName === 'shapeRotation') obj.rotation = Number(value) || 0;
+
+                        obj.x1 = x;
+                        obj.y1 = y;
+                        obj.x2 = x + width;
+                        obj.y2 = y + height;
+                    } else if (kind === 'circle') {
+                        const oldX = Number(obj.x1) || 0;
+                        const oldY = Number(obj.y1) || 0;
+                        const fallbackDiameter = Math.max(
+                            1,
+                            Math.hypot((Number(obj.x2) || 0) - oldX, (Number(obj.y2) || 0) - oldY) * 2
+                        );
+
+                        if (fieldName === 'shapeX') {
+                            const delta = Number(value) - oldX;
+                            obj.x1 = Number(value);
+                            obj.x2 = Number(obj.x2) + delta;
+                        } else if (fieldName === 'shapeY') {
+                            const delta = Number(value) - oldY;
+                            obj.y1 = Number(value);
+                            obj.y2 = Number(obj.y2) + delta;
+                        } else if (fieldName === 'shapeWidth') {
+                            obj.width = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.height)) obj.height = fallbackDiameter;
+                        } else if (fieldName === 'shapeHeight') {
+                            obj.height = Math.max(1, Number(value) || 1);
+                            if (!Number(obj.width)) obj.width = fallbackDiameter;
+                        } else if (fieldName === 'shapeRotation') {
+                            obj.rotation = Number(value) || 0;
+                        }
+                    }
+                } else {
+                    obj[fieldName] = value;
+                }
+
+                if (
+                    selected.type === 'shape'
+                    && (fieldName === 'fillEnabled' || fieldName === 'fillMode')
+                ) {
+                    refreshPropertiesAfterStructuralChange();
+                }
+
+                if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
+                    // Die Zuordnung bleibt gespeichert, nur die Bedienung wird ein-/ausgeblendet.
+                    // Eigenschaften sofort neu aufbauen, damit kein weiterer Klick nötig ist.
+                    refreshPropertiesAfterStructuralChange();
+                }
+
+                if (selected.type === 'item' && fieldName === 'statusColor') {
+                    obj.statusColorManual = true;
+                }
+
+                if (selected.type === 'opening' && fieldName === 'openStatusColor') {
+                    obj.openStatusColorManual = true;
+                }
+
+                if (selected.type === 'opening' && fieldName === 'shutterValueMappingEnabled') {
+                    if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                        obj.shutterValueMap = {};
+                    }
+                    refreshPropertiesAfterStructuralChange();
+                }
+
+                if (selected.type === 'item' && fieldName === 'displayMode') {
+                    obj.displayModeManual = true;
+                }
+
+                if (selected.type === 'furniture' && fieldName === 'type') {
+                    const oldTpl = furnitureTemplates[oldFurnitureType];
+                    const newTpl = furnitureTemplates[value];
+                    if (newTpl) {
+                        if (!obj.name || (oldTpl && obj.name === oldTpl.name)) obj.name = newTpl.name;
+
+                        const oldWidth = Number(obj.width);
+                        const oldHeight = Number(obj.height);
+                        const wasHalfDefault =
+                            oldTpl &&
+                            Math.abs(oldWidth - Number(oldTpl.size?.w) * 0.5) < 0.001 &&
+                            Math.abs(oldHeight - Number(oldTpl.size?.h) * 0.5) < 0.001;
+                        const wasFullDefault =
+                            oldTpl &&
+                            Math.abs(oldWidth - Number(oldTpl.size?.w)) < 0.001 &&
+                            Math.abs(oldHeight - Number(oldTpl.size?.h)) < 0.001;
+
+                        if (!obj.width || !obj.height || wasHalfDefault) {
+                            obj.width = Number(newTpl.size.w) * 0.5;
+                            obj.height = Number(newTpl.size.h) * 0.5;
+                        } else if (wasFullDefault) {
+                            obj.width = Number(newTpl.size.w);
+                            obj.height = Number(newTpl.size.h);
+                        }
+                    }
+
+                    // Auswahl ist abgeschlossen: erst jetzt darf die Eigenschaftsansicht
+                    // neu aufgebaut werden.
+                    input.blur();
+                }
+
+                pushHistory();
+                markDirty();
+
+                render();
+            });
+        });
+
+        properties.querySelectorAll('[data-shutter-map-value]').forEach(select => {
+            select.addEventListener('change', () => {
+                if (!selected || selected.type !== 'opening') return;
+
+                const obj = findEntity('opening', selected.id);
+                if (!obj) return;
+
+                if (!obj.shutterValueMap || typeof obj.shutterValueMap !== 'object' || Array.isArray(obj.shutterValueMap)) {
+                    obj.shutterValueMap = {};
+                }
+
+                const rawValue = String(select.dataset.shutterMapValue || '');
+                if (!rawValue) return;
+
+                obj.shutterValueMap[rawValue] = String(select.value || 'keep');
+
+                // Die neue Zuordnung sofort auf die aktuelle grafische Stellung anwenden.
+                if (rawValue === String(Number(obj._shutterVariableRawValue))) {
+                    delete obj._shutterVisualAmount;
+                }
 
                 pushHistory();
                 markDirty();
@@ -971,14 +5836,166 @@ class Foorplaner extends IPSModuleStrict
             });
         });
 
+        const openItemIconPicker = slot => {
+            if (!selected || selected.type !== 'item') return;
+            iconPickerTarget = {floorId: state.activeFloor, itemId: selected.id, slot};
+            openSymconIconPicker();
+        };
+
+        // pointerdown statt click: Die Icon-Auswahl öffnet sofort beim ersten
+        // Antippen/Anklicken und ist nicht davon abhängig, ob zuvor ein anderes
+        // Eingabefeld den Fokus hatte.
+        const bindItemIconPicker = (selector, slot) => {
+            const button = properties.querySelector(selector);
+            if (!button) return;
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                openItemIconPicker(slot);
+            });
+        };
+
+        bindItemIconPicker('#itemIconSelect', 'single');
+        bindItemIconPicker('#itemIconOffSelect', 'off');
+        bindItemIconPicker('#itemIconOnSelect', 'on');
+
+        properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
+            field.addEventListener('click', () => {
+                if (!selected) return;
+                variablePickerTarget = {
+                    floorId: state.activeFloor,
+                    entityType: selected.type,
+                    entityId: selected.id,
+                    field: field.dataset.variableField || 'variableID'
+                };
+                statusEl.textContent = 'Objektbaum wird geladen …';
+                objectTree = [];
+                expandedObjectIDs.clear();
+                expandedObjectIDs.add(0);
+                requestAction('getObjectTreeChildren', JSON.stringify({
+                    parentID: 0,
+                    parentPath: ''
+                }));
+            });
+        });
+
+        properties.querySelector('#refreshVariableSettings')?.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!selected || selected.type !== 'item') return;
+            const floor = currentFloor();
+            const item = floor?.items?.find(i => i.id === selected.id);
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+            requestAction('refreshVariableSettings', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID)
+            }));
+        });
+
+        properties.querySelectorAll('.refreshOpeningVariableSettings').forEach(button => {
+            button.addEventListener('pointerdown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                if (!selected || selected.type !== 'opening') return;
+                const floor = currentFloor();
+                const opening = floor?.openings?.find(o => o.id === selected.id);
+                if (!opening || Number(opening.variableID || 0) <= 0) return;
+
+                statusEl.textContent = 'Variableneinstellungen werden aktualisiert …';
+                requestAction('refreshVariableSettings', JSON.stringify({
+                    floorId: state.activeFloor,
+                    openingId: opening.id,
+                    entityType: 'opening',
+                    variableID: Number(opening.variableID)
+                }));
+            });
+        });
+
         properties.querySelectorAll('[data-project]').forEach(input => {
             input.addEventListener('change', () => {
                 if (input.dataset.project === 'floorName') {
                     currentFloor().name = input.value.trim() || 'Etage';
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
                 }
-                pushHistory();
-                markDirty();
-                render();
+
+                if (input.dataset.project === 'wallThickness') {
+                    const floor = currentFloor();
+                    floor.wallThickness = Math.max(1, Math.min(60, Number(input.value) || 12));
+                    input.value = String(floor.wallThickness);
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showWallDimensions') {
+                    currentFloor().showWallDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showInsideDimensions') {
+                    currentFloor().showInsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'showOutsideDimensions') {
+                    currentFloor().showOutsideDimensions = input.checked === true;
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'dimensionFontSize') {
+                    const floor = currentFloor();
+                    floor.dimensionFontSize = Math.max(8, Math.min(48, Number(input.value) || 18));
+                    input.value = String(floor.dimensionFontSize);
+                    pushHistory();
+                    markDirty();
+                    render();
+                    return;
+                }
+
+                if (input.dataset.project === 'floorOrder') {
+                    const floor = currentFloor();
+                    const oldIndex = state.floors.findIndex(f => f.id === floor.id);
+                    if (oldIndex < 0) return;
+
+                    const requested = Math.max(1, Math.min(
+                        state.floors.length,
+                        Math.round(Number(input.value) || (oldIndex + 1))
+                    ));
+                    const newIndex = requested - 1;
+
+                    if (newIndex !== oldIndex) {
+                        pushHistory();
+                        const [movedFloor] = state.floors.splice(oldIndex, 1);
+                        state.floors.splice(newIndex, 0, movedFloor);
+                        state.floors.forEach((f, index) => {
+                            f.order = index + 1;
+                        });
+                        markDirty();
+                        renderAll();
+                    } else {
+                        floor.order = requested;
+                        renderProperties();
+                    }
+                    return;
+                }
             });
         });
     }
@@ -987,11 +6004,206 @@ class Foorplaner extends IPSModuleStrict
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
+    // Sobald ein anderer Button der Editor-Leiste gedrückt wird, darf kein
+    // Platzierungs-/Verschiebe-Werkzeug aktiv bleiben.
+    document.querySelectorAll('.toolbar button:not([data-tool])').forEach(btn => {
+        btn.addEventListener('click', () => {
+            deactivateToolWithoutRender();
+        });
+    });
+
     document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
     document.getElementById('undoBtn').addEventListener('click', () => restoreHistory(historyIndex - 1));
     document.getElementById('redoBtn').addEventListener('click', () => restoreHistory(historyIndex + 1));
     document.getElementById('fitBtn').addEventListener('click', fit);
-    document.getElementById('saveBtn').addEventListener('click', saveProject);
+    document.getElementById('zoomOutBtn').addEventListener('click', () => zoomManual(1 / 1.2));
+    document.getElementById('zoomInBtn').addEventListener('click', () => zoomManual(1.2));
+
+    function scheduleResponsiveFit() {
+        if (resizeFitTimer) {
+            clearTimeout(resizeFitTimer);
+        }
+
+        resizeFitTimer = setTimeout(() => {
+            const rect = svg.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            const widthChanged = Math.abs(rect.width - lastTileWidth) > 1;
+            const heightChanged = Math.abs(rect.height - lastTileHeight) > 1;
+
+            lastTileWidth = rect.width;
+            lastTileHeight = rect.height;
+
+            if (widthChanged || heightChanged) {
+                const saved = floorViews.get(state.activeFloor);
+                if (!saved || saved.autoFit !== false) {
+                    fit();
+                } else {
+                    setTransform();
+                    render();
+                }
+            }
+        }, 80);
+    }
+
+    const tileResizeObserver = new ResizeObserver(() => {
+        scheduleResponsiveFit();
+    });
+
+    tileResizeObserver.observe(svg);
+
+    window.addEventListener('resize', scheduleResponsiveFit);
+
+
+    const showGridVisu = document.getElementById('showGridVisu');
+    const gridSizeVisu = document.getElementById('gridSizeVisu');
+
+    if (showGridVisu) {
+        showGridVisu.checked = editorShowGrid;
+        showGridVisu.addEventListener('change', () => {
+            editorShowGrid = showGridVisu.checked;
+            state.showGrid = editorShowGrid;
+            render();
+            markDirty();
+        });
+    }
+
+    if (gridSizeVisu) {
+        gridSizeVisu.value = editorGridSize;
+        gridSizeVisu.addEventListener('input', () => {
+            editorGridSize = Math.max(2, Number(gridSizeVisu.value) || 20);
+            state.grid = editorGridSize;
+            render();
+            markDirty();
+        });
+    }
+
+    document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
+    document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
+
+    liveFloorSelect?.addEventListener('change', () => {
+        updateLiveFloorSelectWidth();
+        switchFloorView(liveFloorSelect.value);
+    });
+
+    document.getElementById('deleteFloorBtn')?.addEventListener('click', () => {
+        const floor = currentFloor();
+        if (!floor) return;
+
+        if (!confirm(`Etage "${floor.name}" wirklich komplett löschen?`)) {
+            return;
+        }
+
+        const index = state.floors.findIndex(f => f.id === floor.id);
+        if (index < 0) return;
+
+        state.floors.splice(index, 1);
+        floorViews.delete(floor.id);
+        floorHomeViews.delete(floor.id);
+
+        // Der Editor benötigt immer mindestens eine Etage.
+        // Wird die letzte gelöscht, entsteht eine wirklich leere neue Etage.
+        if (state.floors.length === 0) {
+            const replacement = {
+                id: uid('floor'),
+                name: 'Erdgeschoss',
+                order: 1,
+                walls: [],
+                openings: [],
+                items: [],
+                texts: [],
+                furniture: [],
+                areas: [],
+                trackers: []
+            };
+            state.floors.push(replacement);
+            state.activeFloor = replacement.id;
+        } else {
+            state.activeFloor = state.floors[Math.min(index, state.floors.length - 1)].id;
+        }
+
+        state.floors.forEach((f, floorIndex) => {
+            f.order = floorIndex + 1;
+        });
+
+        selected = null;
+        wallStart = null;
+        pushHistory();
+        markDirty();
+        renderAll();
+        requestAnimationFrame(fit);
+    });
+
+
+    document.getElementById('copyFloorBtn')?.addEventListener('click', () => {
+        const sourceFloor = currentFloor();
+        if (!sourceFloor) return;
+
+        const name = prompt('Name der kopierten Etage:', `${sourceFloor.name} Kopie`);
+        if (name === null) return;
+
+        rememberCurrentFloorView(false);
+
+        // Komplette Etage kopieren, aber alle internen IDs neu erzeugen.
+        // Öffnungen müssen anschließend auf die neu erzeugten Wand-IDs zeigen.
+        const floor = structuredClone(sourceFloor);
+        floor.id = uid('floor');
+        floor.name = name.trim() || `${sourceFloor.name} Kopie`;
+
+        const wallIdMap = new Map();
+        for (const wall of floor.walls || []) {
+            const oldID = wall.id;
+            wall.id = uid('wall');
+            wallIdMap.set(oldID, wall.id);
+        }
+
+        for (const opening of floor.openings || []) {
+            opening.id = uid('opening');
+            if (wallIdMap.has(opening.wallId)) {
+                opening.wallId = wallIdMap.get(opening.wallId);
+            }
+        }
+
+        for (const item of floor.items || []) {
+            item.id = uid('item');
+        }
+
+        for (const furniture of floor.furniture || []) {
+            furniture.id = uid('furniture');
+        }
+
+        for (const itemText of floor.texts || []) {
+            itemText.id = uid('text');
+        }
+
+        for (const area of floor.areas || []) {
+            area.id = uid('area');
+        }
+
+        for (const tracker of floor.trackers || []) {
+            tracker.id = uid('tracker');
+        }
+
+        const sourceIndex = state.floors.findIndex(f => f.id === sourceFloor.id);
+        state.floors.splice(sourceIndex >= 0 ? sourceIndex + 1 : state.floors.length, 0, floor);
+        state.floors.forEach((f, index) => {
+            f.order = index + 1;
+        });
+        state.activeFloor = floor.id;
+
+        // Keine alte Zoom-/Pan-Ansicht übernehmen.
+        // Die kopierte Etage wird anhand ihres Inhalts neu und reproduzierbar eingepasst.
+        floorViews.delete(floor.id);
+        floorHomeViews.delete(floor.id);
+
+        selected = null;
+        wallStart = null;
+        preview = null;
+        pushHistory();
+        markDirty();
+        renderAll();
+        requestAnimationFrame(fit);
+    });
 
     document.getElementById('addFloorBtn').addEventListener('click', () => {
         const name = prompt('Name der neuen Etage:', 'Obergeschoss');
@@ -999,29 +6211,144 @@ class Foorplaner extends IPSModuleStrict
         const floor = {
             id: uid('floor'),
             name: name.trim() || 'Etage',
+            order: state.floors.length + 1,
             walls: [],
             openings: [],
             items: [],
             texts: [],
             furniture: [],
             areas: [],
+            shapes: [],
             trackers: []
         };
+        rememberCurrentFloorView(false);
         state.floors.push(floor);
         state.activeFloor = floor.id;
         selected = null;
         pushHistory();
         markDirty();
         render();
-        fit();
+        requestAnimationFrame(fit);
     });
 
+
     floorSelect.addEventListener('change', () => {
-        state.activeFloor = floorSelect.value;
-        selected = null;
-        wallStart = null;
-        render();
+        switchFloorView(floorSelect.value);
     });
+
+    function openShutterControl(opening, field = 'shutterVariableID', clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !opening) return;
+
+        const secondary = field === 'shutterSecondaryVariableID';
+        const profile = secondary
+            ? (opening._shutterSecondaryVariableProfile || {})
+            : (opening._shutterVariableProfile || {});
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const raw = Number(secondary
+            ? opening._shutterSecondaryVariableRawValue
+            : opening._shutterVariableRawValue);
+        controlTitle.textContent = 'Rollladen / Jalousie';
+
+        let html = '';
+
+        if (associations.length) {
+            html += '<div class="control-associations">';
+            for (const association of associations) {
+                const value = Number(association.value);
+                const current = Number.isFinite(raw) && raw === value ? ' current' : '';
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-shutter-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
+            }
+            html += '</div>';
+        }
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const configuredStep = Number(profile.step);
+        const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
+
+        const shutterVariableType = Number(secondary
+            ? opening._shutterSecondaryVariableType
+            : opening._shutterVariableType);
+
+        if (shutterVariableType !== 0 && !associations.length && hasRange) {
+            const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const suffix = String(profile.suffix || '');
+            html = `
+                <div class="control-slider">
+                    <div class="control-slider-value" data-shutter-slider-value>${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-shutter-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-shutter-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-shutter-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
+                </div>
+            `;
+        }
+
+        if (!html) {
+            html = '<div class="profile-hint">Für die Rollladenvariable sind keine bedienbaren Profilwerte hinterlegt.</div>';
+        }
+
+        controlBody.innerHTML = html;
+
+        const send = value => requestAction('operateOpeningValue', JSON.stringify({
+            floorId: state.activeFloor,
+            openingId: opening.id,
+            field,
+            value
+        }));
+
+        controlBody.querySelectorAll('[data-shutter-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                send(Number(btn.dataset.shutterValue));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const slider = controlBody.querySelector('[data-shutter-slider]');
+        const sliderValue = controlBody.querySelector('[data-shutter-slider-value]');
+        controlBody.querySelectorAll('[data-shutter-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.shutterStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                if (sliderValue) sliderValue.textContent = `${slider.value}${String(profile.suffix || '')}`;
+                send(Number(slider.value));
+            });
+        });
+        if (slider) {
+            const suffix = String(profile.suffix || '');
+            slider.addEventListener('input', () => {
+                if (sliderValue) sliderValue.textContent = `${slider.value}${suffix}`;
+            });
+            slider.addEventListener('change', () => send(Number(slider.value)));
+        }
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+                let left = Number(clientX) + offset;
+                let top = Number(clientY) + offset;
+                if (left + rect.width > window.innerWidth - margin) left = Number(clientX) - rect.width - offset;
+                if (top + rect.height > window.innerHeight - margin) top = Number(clientY) - rect.height - offset;
+                dialog.style.left = `${Math.max(margin, left)}px`;
+                dialog.style.top = `${Math.max(margin, top)}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        }
+    }
 
     svg.addEventListener('pointerdown', evt => {
         if (evt.button === 1) {
@@ -1032,25 +6359,237 @@ class Foorplaner extends IPSModuleStrict
 
         if (evt.button !== 0) return;
 
+        const directSliderTarget = evt.target.closest?.('[data-direct-slider]');
+        if (state.mode === 'view' && directSliderTarget) {
+            const item = currentFloor().items.find(i => i.id === directSliderTarget.dataset.directSlider);
+            const cfg = directSliderConfig(item);
+            if (item && cfg) {
+                evt.preventDefault();
+                evt.stopPropagation();
+
+                const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+                if (value !== null) {
+                    item._rawValue = value;
+                    drag = {
+                        mode: 'direct-slider',
+                        type: 'item',
+                        id: item.id,
+                        value
+                    };
+                    svg.setPointerCapture(evt.pointerId);
+                    render();
+                }
+                return;
+            }
+        }
+
+        const shutterControl = evt.target.closest?.('[data-shutter-control]');
+        if (state.mode === 'view' && shutterControl) {
+            const opening = (currentFloor().openings || []).find(o => o.id === shutterControl.dataset.shutterControl);
+            if (opening) {
+                const field = shutterControl.dataset.shutterField || 'shutterVariableID';
+                if (Number(opening[field]) > 0) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    openShutterControl(opening, field, evt.clientX, evt.clientY);
+                    return;
+                }
+            }
+        }
+
+        const rotateHandle = evt.target.closest('[data-rotate-type]');
+        const resizeHandle = evt.target.closest('[data-resize-type]');
         const target = evt.target.closest('[data-type]');
         const p = svgPoint(evt);
         const floor = currentFloor();
 
-        if (tool === 'select') {
-            if (target) {
-                selected = {type: target.dataset.type, id: target.dataset.id};
-                const obj = findEntity(selected.type, selected.id);
+        if (state.mode !== 'view' && tool === 'pan' && !target) {
+            // Im Verschieben-Modus bewegt ein Klick auf freie Fläche den ganzen Plan.
+            // Ein Klick direkt auf ein Element fällt bewusst weiter zur Elementauswahl
+            // durch, damit kein separater Auswahl-Button benötigt wird.
+            drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
+            svg.setPointerCapture(evt.pointerId);
+            evt.preventDefault();
+            return;
+        }
+
+        if (state.mode !== 'view' && rotateHandle) {
+            const rotateType = rotateHandle.dataset.rotateType;
+            const id = rotateHandle.dataset.id;
+            const obj = findEntity(rotateType, id);
+
+            if (obj && (rotateType === 'furniture' || rotateType === 'shape')) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
+                const raw = svgPointRaw(evt);
+
+                let cx = 0;
+                let cy = 0;
+                let currentRotation = 0;
+
+                if (rotateType === 'furniture') {
+                    cx = Number(obj.x) || 0;
+                    cy = Number(obj.y) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else if ((obj.kind || 'line') === 'line') {
+                    cx = ((Number(obj.x1) || 0) + (Number(obj.x2) || 0)) / 2;
+                    cy = ((Number(obj.y1) || 0) + (Number(obj.y2) || 0)) / 2;
+                    currentRotation = Math.atan2(
+                        (Number(obj.y2) || 0) - (Number(obj.y1) || 0),
+                        (Number(obj.x2) || 0) - (Number(obj.x1) || 0)
+                    ) * 180 / Math.PI;
+                } else if (obj.kind === 'rect') {
+                    cx = (Math.min(Number(obj.x1) || 0, Number(obj.x2) || 0) + Math.max(Number(obj.x1) || 0, Number(obj.x2) || 0)) / 2;
+                    cy = (Math.min(Number(obj.y1) || 0, Number(obj.y2) || 0) + Math.max(Number(obj.y1) || 0, Number(obj.y2) || 0)) / 2;
+                    currentRotation = Number(obj.rotation) || 0;
+                } else {
+                    cx = Number(obj.x1) || 0;
+                    cy = Number(obj.y1) || 0;
+                    currentRotation = Number(obj.rotation) || 0;
+                }
+
+                const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
+
+                selected = {type: rotateType, id};
+                drag = {
+                    mode: 'rotate',
+                    type: rotateType,
+                    id,
+                    original: structuredClone(obj),
+                    centerX: cx,
+                    centerY: cy,
+                    angleOffset: currentRotation - pointerAngle
+                };
+                svg.setPointerCapture(evt.pointerId);
+                evt.preventDefault();
+                evt.stopPropagation();
+                render();
+                return;
+            }
+        }
+
+        if (state.mode !== 'view' && resizeHandle) {
+            const resizeType = resizeHandle.dataset.resizeType;
+            const id = resizeHandle.dataset.id;
+            const obj = findEntity(resizeType, id);
+
+            if (obj) {
+                if (tool === 'pan') {
+                    deactivateToolWithoutRender();
+                }
+
+                selected = {type: resizeType, id};
+                drag = {
+                    mode: 'resize',
+                    type: resizeType,
+                    id,
+                    start: p,
+                    original: structuredClone(obj),
+                    wallEnd: resizeType === 'wall' ? (resizeHandle.dataset.wallEnd || 'end') : null
+                };
+                svg.setPointerCapture(evt.pointerId);
+                evt.preventDefault();
+                evt.stopPropagation();
+                render();
+                return;
+            }
+        }
+
+        if (state.mode === 'view') {
+            if (target && target.dataset.type === 'item') {
+                const item = floor.items.find(i => i.id === target.dataset.id);
+
+                if (
+                    item?._objectKind === 'stream' &&
+                    Number(item?._mediaType) === 3 &&
+                    Number(item?.variableID) > 0
+                ) {
+                    openStreamControl(item, evt.clientX, evt.clientY);
+                    return;
+                }
+
+                if (!item || item._canAction !== true) {
+                    // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
+                    return;
+                }
+
+                const variableType = Number(item._variableType);
+                if (variableType === 1 || variableType === 2) {
+                    // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
+                    openItemControl(item, evt.clientX, evt.clientY);
+                } else if (variableType === 0) {
+                    if (
+                        item.colorControlEnabled === true &&
+                        Number(item.colorVariableID || 0) > 0 &&
+                        Number(item._colorVariableType) === 1
+                    ) {
+                        // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
+                        // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
+                        openItemControl(item, evt.clientX, evt.clientY);
+                    } else {
+                        // Boolean ohne Farbsteuerung wie bisher direkt umschalten.
+                        requestAction('operate', JSON.stringify({
+                            floorId: state.activeFloor,
+                            itemId: target.dataset.id
+                        }));
+                    }
+                }
+            }
+            return;
+        }
+
+        // Auswahl braucht kein eigenes Werkzeug: vorhandene Elemente können
+        // im Editor jederzeit direkt angeklickt und verschoben werden.
+        if (state.mode !== 'view' && target &&
+            !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
+            // "Verschieben" gilt nur für freie Fläche. Sobald ein bestehendes
+            // Element bearbeitet wird, ist das Werkzeug wieder inaktiv.
+            if (tool === 'pan') {
+                deactivateToolWithoutRender();
+            }
+
+            releasePropertiesControl();
+            selected = {type: target.dataset.type, id: target.dataset.id};
+            const obj = findEntity(selected.type, selected.id);
+            if (obj) {
                 drag = {
                     mode: 'move',
                     type: selected.type,
                     id: selected.id,
                     start: p,
-                    original: obj ? structuredClone(obj) : null
+                    original: structuredClone(obj)
                 };
                 svg.setPointerCapture(evt.pointerId);
-            } else {
-                selected = null;
+                evt.preventDefault();
+                render();
+                return;
             }
+        }
+
+        if (tool === 'shape') {
+            const shape = {
+                id: uid('shape'),
+                kind: 'rect',
+                name: 'Form',
+                showName: false,
+                x1: p.x - 40,
+                y1: p.y - 30,
+                x2: p.x + 40,
+                y2: p.y + 30,
+                rotation: 0,
+                fillEnabled: false,
+                fillMode: 'light',
+                fillRotation: 0
+            };
+            floor.shapes = Array.isArray(floor.shapes) ? floor.shapes : [];
+            floor.shapes.push(shape);
+            releasePropertiesControl();
+            selected = {type: 'shape', id: shape.id};
+            pushHistory();
+            markDirty();
+            setTool('');
             render();
             return;
         }
@@ -1087,13 +6626,25 @@ class Foorplaner extends IPSModuleStrict
                 wallId: near.wall.id,
                 position: near.position,
                 length: tool === 'door' ? 80 : 120,
-                variableID: 0
+                variableID: 0,
+                secondaryVariableID: 0,
+                shutterVariableID: 0,
+                shutterSecondaryVariableID: 0,
+                shutterStyle: 'roll',
+                shutterInvert: false,
+                shutterSideInvert: false,
+                shutterValueMappingEnabled: false,
+                shutterValueMap: {},
+                invert: false,
+                doorSideInvert: false,
+                openStatusColor: '#4da3ff',
+                openStatusColorManual: false
             };
             floor.openings.push(o);
             selected = {type: 'opening', id: o.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('');
             render();
             return;
         }
@@ -1105,16 +6656,55 @@ class Foorplaner extends IPSModuleStrict
                 y: p.y,
                 name: 'Gerät',
                 variableID: 0,
-                icon: '●',
                 size: 18,
-                kind: 'generic'
+                angle: 0,
+                kind: 'generic', // nur noch für Migration älterer Projekte
+                icon: 'fa-light fa-circle',
+                iconManual: false,
+                iconSvg: '',
+                showName: false,
+                showValue: false,
+                showIcon: true,
+                showDirectSlider: false,
+                valueFrame: false,
+                showState: false,
+                statusColor: '#ffe66d',
+                displayMode: 'icon',
+                displayModeManual: false,
+                labelSize: 12,
+                valueSize: 12,
+                labelPosition: 'below',
+                valuePosition: 'below'
             };
             floor.items.push(item);
             selected = {type: 'item', id: item.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('');
             render();
+            return;
+        }
+
+        if (tool === 'furniture') {
+            const tpl = furnitureTemplates.sofa;
+            const furniture = {
+                id: uid('furniture'),
+                type: 'sofa',
+                name: tpl.name,
+                x: p.x,
+                y: p.y,
+                width: Number(tpl.size.w) * 0.5,
+                height: Number(tpl.size.h) * 0.5,
+                rotation: 0,
+                showName: false
+            };
+            floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
+            floor.furniture.push(furniture);
+            selected = {type: 'furniture', id: furniture.id};
+            pushHistory();
+            markDirty();
+            setTool('');
+            renderAll();
             return;
         }
 
@@ -1130,7 +6720,18 @@ class Foorplaner extends IPSModuleStrict
             selected = {type: 'text', id: t.id};
             pushHistory();
             markDirty();
-            setTool('select');
+            setTool('');
+            render();
+            return;
+        }
+
+        // Klick auf eine wirklich freie Fläche: aktuelle Auswahl aufheben.
+        // Dadurch zeigt die Eigenschaften-Seite wieder die Stockwerkeigenschaften.
+        if (!target && !rotateHandle && !resizeHandle && !tool) {
+            releasePropertiesControl();
+            selected = null;
+            wallStart = null;
+            preview = null;
             render();
         }
     });
@@ -1146,10 +6747,34 @@ class Foorplaner extends IPSModuleStrict
 
         if (!drag) return;
 
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (!item) return;
+
+            const value = directSliderValueFromPointer(item, evt.clientX, evt.clientY);
+            if (value !== null) {
+                item._rawValue = value;
+                drag.value = value;
+                render();
+            }
+            return;
+        }
+
         if (drag.mode === 'pan') {
             panX = drag.panX + (evt.clientX - drag.x);
             panY = drag.panY + (evt.clientY - drag.y);
+            rememberCurrentFloorView(false);
             setTransform();
+            render();
+            return;
+        }
+
+        if (drag.mode === 'draw-shape') {
+            const obj = findEntity('shape', drag.id);
+            if (!obj) return;
+            obj.x2 = p.x;
+            obj.y2 = p.y;
+            render();
             return;
         }
 
@@ -1165,43 +6790,248 @@ class Foorplaner extends IPSModuleStrict
                 obj.y1 = snapValue(drag.original.y1 + dy);
                 obj.x2 = snapValue(drag.original.x2 + dx);
                 obj.y2 = snapValue(drag.original.y2 + dy);
-            } else if (drag.type === 'item' || drag.type === 'text') {
+            } else if (drag.type === 'opening') {
+                const activeFloor = currentFloor();
+                const wall = activeFloor.walls.find(w => w.id === drag.original.wallId);
+                if (!wall) return;
+
+                const vx = Number(wall.x2) - Number(wall.x1);
+                const vy = Number(wall.y2) - Number(wall.y1);
+                const length2 = vx * vx + vy * vy;
+                if (length2 <= 0) return;
+
+                // Maus auf die zugehörige Wand projizieren. Es bewegt sich nur
+                // Tür/Fenster in der Wand; die Wand selbst bleibt unverändert.
+                let position =
+                    ((p.x - Number(wall.x1)) * vx + (p.y - Number(wall.y1)) * vy) /
+                    length2;
+
+                const wallLength = Math.sqrt(length2);
+                const halfOpening = Math.min(
+                    Math.max(10, Number(obj.length || 80) / 2),
+                    wallLength / 2
+                );
+                const edge = wallLength > 0 ? halfOpening / wallLength : 0;
+
+                position = Math.max(edge, Math.min(1 - edge, position));
+                obj.position = Math.round(position * 10000) / 10000;
+            } else if (drag.type === 'shape') {
+                obj.x1 = snapValue(drag.original.x1 + dx);
+                obj.y1 = snapValue(drag.original.y1 + dy);
+                obj.x2 = snapValue(drag.original.x2 + dx);
+                obj.y2 = snapValue(drag.original.y2 + dy);
+            } else if (drag.type === 'item' || drag.type === 'text' || drag.type === 'furniture') {
                 obj.x = snapValue(drag.original.x + dx);
                 obj.y = snapValue(drag.original.y + dy);
             }
             render();
+            return;
+        }
+
+        if (drag.mode === 'rotate' && drag.original) {
+            const obj = findEntity(drag.type, drag.id);
+            if (!obj) return;
+
+            const raw = svgPointRaw(evt);
+            const cx = Number(drag.centerX) || 0;
+            const cy = Number(drag.centerY) || 0;
+            const pointerAngle = Math.atan2(raw.y - cy, raw.x - cx) * 180 / Math.PI;
+            let rotation = pointerAngle + Number(drag.angleOffset || 0);
+
+            rotation = ((rotation + 180) % 360 + 360) % 360 - 180;
+            rotation = Math.round(rotation);
+
+            if (drag.type === 'furniture') {
+                obj.rotation = rotation;
+            } else if (drag.type === 'shape') {
+                if ((obj.kind || 'line') === 'line') {
+                    const original = drag.original;
+                    const ox1 = Number(original.x1) || 0;
+                    const oy1 = Number(original.y1) || 0;
+                    const ox2 = Number(original.x2) || 0;
+                    const oy2 = Number(original.y2) || 0;
+                    const length = Math.max(1, Math.hypot(ox2 - ox1, oy2 - oy1));
+                    const rad = rotation * Math.PI / 180;
+                    const half = length / 2;
+
+                    obj.x1 = cx - Math.cos(rad) * half;
+                    obj.y1 = cy - Math.sin(rad) * half;
+                    obj.x2 = cx + Math.cos(rad) * half;
+                    obj.y2 = cy + Math.sin(rad) * half;
+                } else {
+                    obj.rotation = rotation;
+                }
+            }
+
+            render();
+            return;
+        }
+
+        if (drag.mode === 'resize' && drag.original) {
+            const obj = findEntity(drag.type, drag.id);
+            if (!obj) return;
+
+            if (drag.type === 'wall') {
+                // Wand wie Möbel direkt per Griff bearbeiten:
+                // Start- oder Endpunkt folgt der Maus und rastet auf Snap ein.
+                if (drag.wallEnd === 'start') {
+                    obj.x1 = snapValue(p.x);
+                    obj.y1 = snapValue(p.y);
+                } else {
+                    obj.x2 = snapValue(p.x);
+                    obj.y2 = snapValue(p.y);
+                }
+            } else if (drag.type === 'shape') {
+                const kind = obj.kind || 'line';
+
+                if (kind === 'circle') {
+                    const cx = Number(drag.original.x1) || 0;
+                    const cy = Number(drag.original.y1) || 0;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                    obj.width = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    obj.height = Math.max(1, Math.round(Math.abs(localY) * 2));
+                } else if (kind === 'rect') {
+                    const x1 = Number(drag.original.x1) || 0;
+                    const y1 = Number(drag.original.y1) || 0;
+                    const x2 = Number(drag.original.x2) || 0;
+                    const y2 = Number(drag.original.y2) || 0;
+                    const cx = (Math.min(x1, x2) + Math.max(x1, x2)) / 2;
+                    const cy = (Math.min(y1, y2) + Math.max(y1, y2)) / 2;
+                    const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                    const dx = p.x - cx;
+                    const dy = p.y - cy;
+                    const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                    const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+                    const w = Math.max(1, Math.round(Math.abs(localX) * 2));
+                    const h = Math.max(1, Math.round(Math.abs(localY) * 2));
+
+                    obj.x1 = cx - w / 2;
+                    obj.y1 = cy - h / 2;
+                    obj.x2 = cx + w / 2;
+                    obj.y2 = cy + h / 2;
+                } else {
+                    obj.x2 = p.x;
+                    obj.y2 = p.y;
+                }
+            } else if (drag.type === 'furniture') {
+                const cx = Number(drag.original.x) || 0;
+                const cy = Number(drag.original.y) || 0;
+                const angle = -(Number(drag.original.rotation) || 0) * Math.PI / 180;
+                const dx = p.x - cx;
+                const dy = p.y - cy;
+
+                // Mausposition in das lokale, gedrehte Möbelsystem zurückrechnen.
+                const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                obj.width = Math.max(8, Math.round(Math.abs(localX) * 2));
+                obj.height = Math.max(8, Math.round(Math.abs(localY) * 2));
+            } else if (drag.type === 'item') {
+                const cx = Number(drag.original.x) || 0;
+                const cy = Number(drag.original.y) || 0;
+                const radius = Math.hypot(p.x - cx, p.y - cy);
+                obj.size = Math.max(8, Math.min(80, Math.round(radius)));
+            } else if (drag.type === 'text') {
+                const originX = Number(drag.original.x) || 0;
+                const textValue = String(drag.original.text || 'Text');
+                const chars = Math.max(1, textValue.length);
+                const width = Math.max(10, p.x - originX);
+
+                // Breite zurück in eine passende Schriftgröße umrechnen.
+                obj.size = Math.max(6, Math.min(120, Math.round(width / (chars * 0.65))));
+            } else if (drag.type === 'opening') {
+                const floor = currentFloor();
+                const wall = floor.walls.find(w => w.id === drag.original.wallId);
+                if (!wall) return;
+
+                const vx = Number(wall.x2) - Number(wall.x1);
+                const vy = Number(wall.y2) - Number(wall.y1);
+                const wallLength = Math.hypot(vx, vy);
+                if (wallLength <= 0) return;
+
+                const ux = vx / wallLength;
+                const uy = vy / wallLength;
+                const centerPos = Math.max(0, Math.min(1, Number(drag.original.position ?? .5)));
+                const cx = Number(wall.x1) + vx * centerPos;
+                const cy = Number(wall.y1) + vy * centerPos;
+                const raw = svgPointRaw(evt);
+
+                // Wie beim Fenster: Griff entlang der Wand ziehen. Für die
+                // Länge bewusst OHNE Raster-Snap rechnen, damit auch Türen
+                // bei kleinen Mausbewegungen sofort reagieren.
+                const projectedHalf = Math.abs((raw.x - cx) * ux + (raw.y - cy) * uy);
+                const maxHalf = Math.min(centerPos * wallLength, (1 - centerPos) * wallLength);
+                const maxLength = Math.max(20, maxHalf * 2);
+
+                obj.length = Math.max(
+                    20,
+                    Math.min(maxLength, Math.round(projectedHalf * 2))
+                );
+            }
+
+            render();
+            return;
         }
     });
 
     svg.addEventListener('pointerup', evt => {
         if (!drag) return;
 
-        if (drag.mode === 'move') {
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
+
+            try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+            drag = null;
+            return;
+        }
+
+        if (drag.mode === 'move' || drag.mode === 'resize' || drag.mode === 'rotate' || drag.mode === 'draw-shape') {
             pushHistory();
             markDirty();
+        }
+
+        const finishedShape = drag.mode === 'draw-shape';
+
+        try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
+        drag = null;
+
+        // Formen sind bewusst Einmal-Werkzeuge:
+        // Nach jeder gezeichneten Form zurück in den normalen Auswahl-/Verschiebemodus.
+        // Für eine weitere Form muss Linie/Rechteck/Kreis erneut gewählt werden.
+        if (finishedShape) {
+            setTool('');
+        }
+    });
+
+    svg.addEventListener('pointercancel', evt => {
+        if (!drag) return;
+
+        if (drag.mode === 'direct-slider') {
+            const item = findEntity('item', drag.id);
+            if (item && drag.value !== null && drag.value !== undefined) {
+                item._rawValue = drag.value;
+                sendItemValue(item, drag.value);
+                render();
+            }
         }
 
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
         drag = null;
     });
 
-    svg.addEventListener('wheel', evt => {
-        evt.preventDefault();
-
-        const rect = svg.getBoundingClientRect();
-        const sx = evt.clientX - rect.left;
-        const sy = evt.clientY - rect.top;
-        const oldZoom = zoom;
-        const factor = evt.deltaY < 0 ? 1.12 : 0.89;
-        zoom = Math.max(.15, Math.min(8, zoom * factor));
-
-        const wx = (sx - panX) / oldZoom;
-        const wy = (sy - panY) / oldZoom;
-
-        panX = sx - wx * zoom;
-        panY = sy - wy * zoom;
-        setTransform();
-    }, {passive: false});
+    // Absichtlich kein Mausrad-Zoom: Die Visualisierungskachel soll das
+    // normale Scrollen der Oberfläche nicht abfangen. Manuelles Zoomen
+    // erfolgt über die −/+ Schaltflächen; Einpassen bleibt zusätzlich erhalten.
 
     window.addEventListener('keydown', evt => {
         if (evt.target instanceof HTMLInputElement || evt.target instanceof HTMLSelectElement) {
@@ -1217,7 +7047,7 @@ class Foorplaner extends IPSModuleStrict
             wallStart = null;
             preview = null;
             selected = null;
-            setTool('select');
+            setTool('');
         }
 
         if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
@@ -1231,34 +7061,1613 @@ class Foorplaner extends IPSModuleStrict
         }
     });
 
+    function treeIcon(node) {
+        switch (Number(node.objectType)) {
+            case 0: return '▾';
+            case 1: return '◇';
+            case 2: return '●';
+            case 3: return '⌁';
+            case 4: return '▣';
+            case 5: return '▤';
+            case 6: return '↗';
+            default: return '•';
+        }
+    }
+
+    function nodeMatches(node, needle) {
+        if (!needle) return true;
+        const hay = [
+            node.id,
+            node.name,
+            node.path,
+            node.valueText,
+            node.variableTypeName,
+            node.profileName
+        ].join(' ').toLowerCase();
+        if (hay.includes(needle)) return true;
+        return Array.isArray(node.children) && node.children.some(child => nodeMatches(child, needle));
+    }
+
+    function currentPickerVariableID() {
+        if (!variablePickerTarget) return 0;
+        const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
+        if (!floor) return 0;
+
+        const entityType = variablePickerTarget.entityType || 'item';
+        const entityId = variablePickerTarget.entityId || variablePickerTarget.itemId || '';
+        const field = variablePickerTarget.field || 'variableID';
+
+        const entity = entityType === 'opening'
+            ? floor.openings?.find(o => o.id === entityId)
+            : floor.items?.find(i => i.id === entityId);
+
+        return Number(entity?.[field] || 0);
+    }
+
+    function renderTreeNode(node, depth, needle, currentVariableID) {
+        if (!nodeMatches(node, needle)) return '';
+
+        const children = Array.isArray(node.children) ? node.children : [];
+        const hasChildren = node.hasChildren === true || children.length > 0;
+        const isVariable = Number(node.objectType) === 2;
+        const isStream = node.isStream === true && Number(node.mediaType) === 3;
+        const streamSelectable =
+            isStream &&
+            (variablePickerTarget?.entityType || 'item') === 'item' &&
+            (variablePickerTarget?.field || 'variableID') === 'variableID';
+        const isSelectable = isVariable || streamSelectable;
+        const forceOpen = !!needle;
+        const isOpen = forceOpen || expandedObjectIDs.has(Number(node.id));
+        const selectedClass = isSelectable && Number(node.id) === Number(currentVariableID) ? ' selected-variable' : '';
+        const rowClass = isSelectable ? ' variable' : '';
+        const toggle = hasChildren ? (isOpen ? '▾' : '▸') : '';
+        const value = (isVariable || isStream) ? escapeHtml(node.valueText || '') : '';
+        const typeTitle = isVariable
+            ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
+            : escapeHtml(node.objectTypeName || '');
+
+        let html = `
+            <div class="tree-node">
+                <div class="tree-row${rowClass}${selectedClass}" style="--depth:${depth}" data-object-id="${node.id}" data-object-type="${node.objectType}" title="${escapeHtml(node.path || node.name || '')}">
+                    <div class="tree-toggle" data-tree-toggle="${node.id}">${toggle}</div>
+                    <div class="tree-icon">${treeIcon(node)}</div>
+                    <div class="tree-name">${escapeHtml(node.name || ('Objekt ' + node.id))}</div>
+                    <div class="tree-id">#${node.id}</div>
+                    <div class="tree-value" title="${typeTitle}">${value || typeTitle}</div>
+                </div>`;
+
+        if (hasChildren) {
+            const childHtml = children.map(child => renderTreeNode(child, depth + 1, needle, currentVariableID)).join('');
+            html += `<div class="tree-children${isOpen ? '' : ' collapsed'}">${childHtml}</div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderObjectTree(filter = '') {
+        const needle = String(filter || '').trim().toLowerCase();
+        const currentVariableID = currentPickerVariableID();
+
+        const html = objectTree
+            .map(node => renderTreeNode(node, 0, needle, currentVariableID))
+            .join('');
+
+        variableList.innerHTML = `<div class="object-tree">${html || '<div class="tree-empty">Keine passenden Objekte gefunden.</div>'}</div>`;
+
+        const toggleTreeNode = (id) => {
+            const node = findTreeNode(objectTree, id);
+            if (!node) return;
+
+            if (expandedObjectIDs.has(id)) {
+                expandedObjectIDs.delete(id);
+                renderObjectTree(variableSearch.value);
+                return;
+            }
+
+            expandedObjectIDs.add(id);
+
+            // Kinder nur beim ersten Aufklappen vom Modul anfordern.
+            if (node.hasChildren === true && node.childrenLoaded !== true) {
+                statusEl.textContent = 'Unterobjekte werden geladen …';
+                requestAction('getObjectTreeChildren', JSON.stringify({
+                    parentID: id,
+                    parentPath: node.path || ''
+                }));
+                renderObjectTree(variableSearch.value);
+                return;
+            }
+
+            renderObjectTree(variableSearch.value);
+        };
+
+        variableList.querySelectorAll('[data-tree-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', evt => {
+                evt.stopPropagation();
+                toggleTreeNode(Number(toggle.dataset.treeToggle));
+            });
+        });
+
+        variableList.querySelectorAll('.tree-row.variable').forEach(row => {
+            row.addEventListener('click', () => assignVariable(Number(row.dataset.objectId)));
+        });
+
+        variableList.querySelectorAll('.tree-row:not(.variable)').forEach(row => {
+            row.addEventListener('dblclick', () => {
+                toggleTreeNode(Number(row.dataset.objectId));
+            });
+        });
+    }
+
+    function findTreeNode(nodes, id) {
+        for (const node of nodes) {
+            if (Number(node.id) === Number(id)) return node;
+            if (Array.isArray(node.children)) {
+                const found = findTreeNode(node.children, id);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function inferSensorKindFromVariableNode(node) {
+        if (!node) return '';
+
+        const profile = node.profile || {};
+        const suffix = String(profile.suffix || '').trim().toLowerCase();
+        const profileName = String(node.profileName || '').toLowerCase();
+        const path = String(node.path || '').toLowerCase();
+        const valueText = String(node.valueText || '').toLowerCase();
+        const haystack = `${profileName} ${path} ${valueText}`;
+
+        // Feuchte zuerst prüfen: Prozentprofile werden sehr häufig dafür benutzt.
+        // Der Name/Pfad verhindert, dass jeder beliebige Prozentwert als Feuchte gilt.
+        if (
+            /\b(feuchte|luftfeuchte|humidity|humid)\b/i.test(haystack) ||
+            (suffix.includes('%') && /\b(feuchte|humidity|humid)\b/i.test(haystack))
+        ) {
+            return 'humidity';
+        }
+
+        if (
+            suffix.includes('°c') ||
+            suffix.includes('°f') ||
+            /\b(temperatur|temperature|temp)\b/i.test(haystack)
+        ) {
+            return 'temperature';
+        }
+
+        return '';
+    }
+
+    const fallbackSymconIcons = [
+        'fa-light fa-circle','fa-light fa-house','fa-light fa-lightbulb','fa-light fa-lamp','fa-light fa-plug',
+        'fa-light fa-power-off','fa-light fa-toggle-on','fa-light fa-bolt','fa-light fa-gauge','fa-light fa-temperature-half',
+        'fa-light fa-droplet','fa-light fa-droplet-percent','fa-light fa-fan','fa-light fa-radiator','fa-light fa-fire',
+        'fa-light fa-snowflake','fa-light fa-sun','fa-light fa-cloud','fa-light fa-wind','fa-light fa-window-frame',
+        'fa-light fa-door-open','fa-light fa-lock','fa-light fa-unlock','fa-light fa-blinds','fa-light fa-camera',
+        'fa-light fa-bell','fa-light fa-person','fa-light fa-person-walking','fa-light fa-eye','fa-light fa-tv',
+        'fa-light fa-speaker','fa-light fa-music','fa-light fa-washing-machine','fa-light fa-dishwasher','fa-light fa-water',
+        'fa-light fa-car','fa-light fa-bicycle','fa-light fa-battery-half','fa-light fa-clock','fa-light fa-calendar',
+        'fa-light fa-circle-info','fa-light fa-triangle-exclamation','fa-light fa-gear','fa-light fa-wifi','fa-light fa-network-wired'
+    ];
+
+    function availableSymconIcons() {
+        const result = new Set(fallbackSymconIcons);
+        const addDefinitions = (defs) => {
+            if (!defs || typeof defs !== 'object') return;
+            const prefixClass = {
+                fal: 'fa-light', fab: 'fa-brands', fak: 'fa-kit',
+                fas: 'fa-solid', far: 'fa-regular', fat: 'fa-thin', fad: 'fa-duotone'
+            };
+            for (const [prefix, icons] of Object.entries(defs)) {
+                if (!icons || typeof icons !== 'object') continue;
+                const style = prefixClass[prefix] || (prefix.startsWith('fa-') ? prefix : '');
+                if (!style) continue;
+                for (const name of Object.keys(icons)) {
+                    if (/^[a-z0-9-]+$/i.test(name)) result.add(`${style} fa-${name}`);
+                }
+            }
+        };
+
+        try { addDefinitions(window.FontAwesome?.library?.definitions); } catch (e) {}
+        try { addDefinitions(window.___FONT_AWESOME___?.styles); } catch (e) {}
+        return Array.from(result).sort((a, b) => a.localeCompare(b));
+    }
+
+    function iconSearchText(iconClass) {
+        return String(iconClass || '')
+            .replace(/fa-(light|brands|kit|solid|regular|thin|duotone)\s*/g, '')
+            .replace(/\bfa-/g, '')
+            .replace(/-/g, ' ')
+            .trim();
+    }
+
+    function renderSymconIconPicker(filter = '') {
+        if (!iconList) return;
+        const query = String(filter || '').trim().toLowerCase();
+        const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+        const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+        const slot = iconPickerTarget?.slot || 'single';
+        const currentRaw = slot === 'off'
+            ? effectiveItemIcon(item, false)
+            : (slot === 'on' ? effectiveItemIcon(item, true) : (item?.icon || 'fa-light fa-circle'));
+        const current = normalizeSymconIcon(currentRaw);
+        const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
+        // Ohne Suche bewusst kompakt; bei Suche stehen weiterhin alle Treffer zur Verfügung.
+        const shown = icons.slice(0, query ? 500 : 80);
+        iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
+            const cls = icon === current ? ' current' : '';
+            const preview = fontAwesomeSvgHtml(icon) || `<i class="${escapeHtml(icon)}"></i>`;
+            return `<button type="button" class="${cls.trim()}" data-symcon-icon="${escapeHtml(icon)}" title="${escapeHtml(iconSearchText(icon))}">${preview}</button>`;
+        }).join('') + `</div>` + (icons.length > shown.length ? `<div class="profile-hint" style="padding:8px 14px">${icons.length - shown.length} weitere Treffer – Suche bitte genauer.</div>` : '');
+
+        iconList.querySelectorAll('[data-symcon-icon]').forEach(button => {
+            button.addEventListener('click', () => {
+                const targetFloor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+                const targetItem = targetFloor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+                if (!targetItem) return;
+                const chosen = String(button.dataset.symconIcon || 'fa-light fa-circle');
+                const slot = iconPickerTarget?.slot || 'single';
+
+                // Das tatsächlich von /icons.js gerenderte SVG mit dem gewählten
+                // Icon speichern. So muss das Icon später weder im Editor noch
+                // in Live erneut anhand des Namens aufgelöst werden.
+                const renderedSvg = button.querySelector('svg');
+                const persistedSvg = renderedSvg
+                    ? renderedSvg.outerHTML
+                    : (fontAwesomeSvgHtml(chosen) || '');
+
+                if (slot === 'off') {
+                    targetItem.iconOff = chosen;
+                    targetItem.iconOffManual = true;
+                    targetItem.iconOffSvg = persistedSvg;
+                } else if (slot === 'on') {
+                    targetItem.iconOn = chosen;
+                    targetItem.iconOnManual = true;
+                    targetItem.iconOnSvg = persistedSvg;
+                } else {
+                    targetItem.icon = chosen;
+                    targetItem.iconManual = true;
+                    targetItem.iconSvg = persistedSvg;
+                }
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+            });
+        });
+    }
+
+    function openSymconIconPicker() {
+        if (!iconModal || !iconList || !iconSearch) return;
+        iconSearch.value = '';
+        iconModal.classList.add('open');
+        iconModal.setAttribute('aria-hidden', 'false');
+        // icons.js initialisiert die Font-Awesome-Bibliothek synchron bzw. sehr früh.
+        // Ein kurzer Microtask erlaubt dem Register, vollständig verfügbar zu sein.
+        Promise.resolve().then(() => renderSymconIconPicker(''));
+        setTimeout(() => iconSearch.focus(), 0);
+    }
+
+    if (iconModal && iconSearch && iconList) {
+        iconSearch.addEventListener('input', () => renderSymconIconPicker(iconSearch.value));
+        document.getElementById('iconCloseBtn')?.addEventListener('click', () => {
+            iconModal.classList.remove('open');
+            iconModal.setAttribute('aria-hidden', 'true');
+        });
+        document.getElementById('iconAutoBtn')?.addEventListener('click', () => {
+            const floor = state.floors.find(f => f.id === iconPickerTarget?.floorId);
+            const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
+            if (!item || Number(item.variableID || 0) <= 0) return;
+
+            // Nicht mit eventuell veralteten Browserdaten arbeiten:
+            // das aktuell in Symcon hinterlegte Icon nochmals frisch abfragen.
+            requestAction('refreshItemIcon', JSON.stringify({
+                floorId: state.activeFloor,
+                itemId: item.id,
+                variableID: Number(item.variableID),
+                slot: iconPickerTarget?.slot || 'single'
+            }));
+        });
+        iconModal.addEventListener('click', evt => {
+            if (evt.target === iconModal) {
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+            }
+        });
+    }
+
+    function assignVariable(variableID) {
+        if (!variablePickerTarget) return;
+
+        const floor = state.floors.find(f => f.id === variablePickerTarget.floorId);
+        if (!floor) return;
+
+        const entityType = variablePickerTarget.entityType || 'item';
+        const entityId = variablePickerTarget.entityId || variablePickerTarget.itemId || '';
+        const field = variablePickerTarget.field || 'variableID';
+
+        let entity = null;
+        if (entityType === 'opening') {
+            entity = floor.openings?.find(o => o.id === entityId) || null;
+        } else {
+            entity = floor.items?.find(i => i.id === entityId) || null;
+        }
+        if (!entity) return;
+
+        const selectedVariableID = Number(variableID) || 0;
+        const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
+
+        // Der Objektbaum enthält absichtlich nur leichte Daten. Erst für die
+        // tatsächlich gewählte Variable die vollständigen Symcon-Metadaten laden.
+        if (
+            selectedVariableID > 0 &&
+            Number(selectedNode?.objectType) === 2 &&
+            selectedNode?.runtimeMetaLoaded !== true
+        ) {
+            statusEl.textContent = 'Variablendaten werden geladen …';
+            requestAction('getVariableMetaForAssignment', JSON.stringify({
+                variableID: selectedVariableID
+            }));
+            return;
+        }
+
+        if (
+            entityType === 'item' &&
+            field === 'colorVariableID' &&
+            selectedVariableID > 0 &&
+            Number(selectedNode?.variableType) !== 1
+        ) {
+            statusEl.textContent = 'Farbvariable muss eine Integer-Variable sein';
+            return;
+        }
+
+        entity[field] = selectedVariableID;
+        const node = selectedNode;
+
+        // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
+        // ein Symcon-Stream-Medienobjekt gewählt werden.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            node?.isStream === true &&
+            Number(node?.mediaType) === 3
+        ) {
+            entity._objectKind = 'stream';
+            entity._mediaType = 3;
+            entity._canAction = true;
+            entity._variableType = -1;
+            entity._variablePath = node.path || '';
+            entity._valueText = 'Stream';
+            entity._rawValue = '';
+            entity._profileName = '';
+            entity._profileSummary = '';
+            entity._profile = null;
+            entity._hasLegacyProfile = false;
+            entity._hasNewPresentation = false;
+            entity._objectIcon = node.objectIcon || '';
+
+            entity.showDirectSlider = false;
+            entity.showValue = false;
+
+            // Genau wie bei Variablen das am Symcon-Objekt konfigurierte Icon
+            // übernehmen. Kein Kamera-Icon erzwingen.
+            entity.iconManual = false;
+            entity.iconOffManual = false;
+            entity.iconOnManual = false;
+            entity.iconSvg = '';
+            entity.iconOffSvg = '';
+            entity.iconOnSvg = '';
+            entity.icon = node.objectIcon || 'fa-light fa-circle';
+
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+            pushHistory();
+            markDirty();
+            render();
+            refreshPropertiesAfterStructuralChange();
+            return;
+        }
+
+        const map = {
+            variableID: '',
+            secondaryVariableID: 'secondaryVariable',
+            shutterVariableID: 'shutterVariable',
+            shutterSecondaryVariableID: 'shutterSecondaryVariable',
+            colorVariableID: 'colorVariable'
+        };
+        const prefix = map[field] ?? field.replace(/ID$/, '');
+
+        const key = suffix => prefix ? `_${prefix}${suffix}` : `_${suffix.charAt(0).toLowerCase()}${suffix.slice(1)}`;
+        const pathKey = prefix ? `_${prefix}Path` : '_variablePath';
+        const valueKey = prefix ? `_${prefix}ValueText` : '_valueText';
+        const rawKey = prefix ? `_${prefix}RawValue` : '_rawValue';
+        const typeKey = prefix ? `_${prefix}Type` : '_variableType';
+        const profileNameKey = prefix ? `_${prefix}ProfileName` : '_profileName';
+        const profileSummaryKey = prefix ? `_${prefix}ProfileSummary` : '_profileSummary';
+        const profileKey = prefix ? `_${prefix}Profile` : '_profile';
+        const canActionKey = prefix ? `_${prefix}CanAction` : '_canAction';
+        const objectIconKey = prefix ? `_${prefix}ObjectIcon` : '_objectIcon';
+        const legacyKey = prefix ? `_${prefix}HasLegacyProfile` : '_hasLegacyProfile';
+        const newPresentationKey = prefix ? `_${prefix}HasNewPresentation` : '_hasNewPresentation';
+        const presentationOffKey = prefix ? `_${prefix}PresentationIconOff` : '_presentationIconOff';
+        const presentationOnKey = prefix ? `_${prefix}PresentationIconOn` : '_presentationIconOn';
+        const presentationSingleKey = prefix ? `_${prefix}PresentationIcon` : '_presentationIcon';
+        const glowColorKey = prefix ? `_${prefix}GlowColor` : '_glowColor';
+        const glowIntensityKey = prefix ? `_${prefix}GlowIntensity` : '_glowIntensity';
+        const legacyColorOnKey = prefix ? `_${prefix}LegacyColorOn` : '_legacyColorOn';
+        const legacyCurrentColorKey = prefix ? `_${prefix}LegacyCurrentColor` : '_legacyCurrentColor';
+        const newIntegerStatusColorKey = prefix ? `_${prefix}NewIntegerStatusColor` : '_newIntegerStatusColor';
+
+        entity[pathKey] = node?.path || '';
+        entity[valueKey] = node?.valueText || '';
+        entity[rawKey] = node?.rawValue ?? '';
+        entity[typeKey] = Number.isFinite(Number(node?.variableType)) ? Number(node.variableType) : -1;
+        entity[profileNameKey] = node?.profileName || '';
+        entity[profileSummaryKey] = node?.profileSummary || '';
+        entity[profileKey] = node?.profile || null;
+        entity[canActionKey] = node?.canAction === true;
+        entity[objectIconKey] = node?.objectIcon || '';
+        entity[legacyKey] = node?.hasLegacyProfile === true;
+        entity[newPresentationKey] = node?.hasNewPresentation === true;
+        entity[presentationOffKey] = node?.presentationIconOff || '';
+        entity[presentationOnKey] = node?.presentationIconOn || '';
+        entity[presentationSingleKey] = node?.presentationIcon || '';
+        entity[glowColorKey] = node?.glowColor || '';
+        entity[glowIntensityKey] = Number(node?.glowIntensity || 0);
+        entity[legacyColorOnKey] = node?.legacyColorOn || '';
+        entity[legacyCurrentColorKey] = node?.legacyCurrentColor || '';
+        entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
+
+        // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
+        // Floorplan-Konfiguration "Statusfarbe EIN" übernehmen.
+        // AUS erhält bewusst keine eigene Farbe.
+        if (
+            entityType === 'item' &&
+            field === 'variableID' &&
+            Number(node?.variableType) === 0 &&
+            node?.hasLegacyProfile !== true &&
+            /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+        ) {
+            entity.statusColor = String(node.glowColor);
+        }
+
+        // Tür/Fenster: Beim bewussten Zuordnen der Kontakt-/Positionsvariable
+        // die Symcon-Farbe für den geöffneten Zustand übernehmen.
+        if (entityType === 'opening' && field === 'variableID') {
+            entity.openStatusColorManual = false;
+
+            if (
+                Number(node?.variableType) === 0 &&
+                node?.hasNewPresentation === true &&
+                /^#[0-9a-f]{6}$/i.test(String(node?.glowColor || ''))
+            ) {
+                entity.openStatusColor = String(node.glowColor);
+            } else if (Number(node?.variableType) === 0 && node?.hasLegacyProfile === true) {
+                const legacyOpeningColor =
+                    /^#[0-9a-f]{6}$/i.test(String(node?.legacyColorOn || ''))
+                        ? String(node.legacyColorOn)
+                        : legacyBoolOnColorFromProfile(node?.profile);
+
+                if (legacyOpeningColor) {
+                    entity.openStatusColor = legacyOpeningColor;
+                }
+            } else if (!node) {
+                entity.openStatusColor = '#4da3ff';
+            }
+        }
+
+        if (entityType === 'item' && field === 'variableID' && entity[canActionKey] !== true) {
+            entity.showDirectSlider = false;
+        }
+
+        // Beim bewussten Auswählen/Neuauswählen der Gerätevariable die
+        // aktuellen Symcon-Vorgaben vollständig übernehmen.
+        if (entityType === 'item' && field === 'variableID') {
+            if (node) {
+                entity.statusColorManual = false;
+                entity.iconManual = false;
+                entity.iconOffManual = false;
+                entity.iconOnManual = false;
+                entity.iconSvg = '';
+                entity.iconOffSvg = '';
+                entity.iconOnSvg = '';
+
+                if (node.hasNewPresentation === true) {
+                    if (Number(node.variableType) === 0) {
+                        const offIcon = node.presentationIconOff || node.presentationIconOn || node.objectIcon || 'fa-light fa-circle';
+                        const onIcon = node.presentationIconOn || node.presentationIconOff || node.objectIcon || 'fa-light fa-circle';
+                        entity.iconOff = offIcon;
+                        entity.iconOn = onIcon;
+                        entity.icon = node.objectIcon || offIcon;
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(node.glowColor || ''))) {
+                            entity.statusColor = String(node.glowColor);
+                        }
+                    } else {
+                        entity.icon = node.presentationIcon || node.objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (node.hasLegacyProfile === true) {
+                    if (Number(node.variableType) === 0) {
+                        const legacyOnColor = legacyBoolOnColorFromProfile(node.profile);
+                        if (legacyOnColor) {
+                            entity.statusColor = legacyOnColor;
+                        }
+                    }
+
+                    if (entity.iconManual !== true) {
+                        entity.icon = Number(node.variableType) === 1
+                            ? (node.presentationIcon || node.objectIcon || 'fa-light fa-circle')
+                            : (node.objectIcon || 'fa-light fa-circle');
+                        entity.iconSvg = '';
+                    }
+                    // Für Bool immer zwei wählbare Zustände anbieten, ohne den
+                    // funktionierenden Legacy-Autoweg zu verändern.
+                    if (Number(node.variableType) === 0) {
+                        if (entity.iconOffManual !== true) {
+                            entity.iconOffSvg = '';
+                            entity.iconOff = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
+                        if (entity.iconOnManual !== true) {
+                            entity.iconOnSvg = '';
+                            entity.iconOn = node.objectIcon || entity.icon || 'fa-light fa-circle';
+                        }
+                    }
+                } else {
+                    entity.icon = node.objectIcon || 'fa-light fa-circle';
+                    if (Number(node.variableType) === 0) {
+                        entity.iconOff = entity.icon;
+                        entity.iconOn = entity.icon;
+                    }
+                }
+            } else if (entity.iconManual !== true) {
+                entity.icon = 'fa-light fa-circle';
+                entity.iconSvg = '';
+            }
+        }
+
+        variableModal.classList.remove('open');
+        variableModal.setAttribute('aria-hidden', 'true');
+        pushHistory();
+        markDirty();
+
+        render();
+        refreshPropertiesAfterStructuralChange();
+    }
+
+    if (!variableModal || !variableList || !variableSearch) {
+        throw new Error('Floorplan: Variablen-Auswahldialog fehlt im HTML.');
+    }
+
+    variableSearch.addEventListener('input', () => {
+        const query = String(variableSearch.value || '').trim();
+
+        if (objectTreeSearchTimer !== null) {
+            clearTimeout(objectTreeSearchTimer);
+            objectTreeSearchTimer = null;
+        }
+
+        if (query === '') {
+            requestAction('getObjectTreeChildren', JSON.stringify({
+                parentID: 0,
+                parentPath: ''
+            }));
+            return;
+        }
+
+        objectTreeSearchTimer = setTimeout(() => {
+            const requestID = ++objectTreeSearchRequest;
+            statusEl.textContent = 'Objektbaum wird durchsucht …';
+            requestAction('searchObjectTree', JSON.stringify({
+                query,
+                requestID
+            }));
+        }, 220);
+    });
+    document.getElementById('variableCloseBtn').addEventListener('click', () => {
+        variableModal.classList.remove('open');
+        variableModal.setAttribute('aria-hidden', 'true');
+    });
+    document.getElementById('variableClearBtn').addEventListener('click', () => assignVariable(0));
+    variableModal.addEventListener('click', evt => {
+        if (evt.target === variableModal) {
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+        }
+    });
+
+    function sendItemValue(item, value) {
+        if (!item || item._canAction !== true) {
+            return;
+        }
+
+        requestAction('operateValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            value
+        }));
+    }
+
+    function sendItemColorValue(item, value) {
+        if (
+            !item ||
+            item.colorControlEnabled !== true ||
+            Number(item.colorVariableID || 0) <= 0 ||
+            item._colorVariableCanAction !== true
+        ) {
+            return;
+        }
+
+        requestAction('operateColorValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            value
+        }));
+    }
+
+    function openStreamControl(item, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || !item) return;
+
+        const mediaID = Number(item.variableID) || 0;
+        if (mediaID <= 0) return;
+
+        controlModal.classList.remove('stream-expanded');
+        controlTitle.textContent = item.name || 'Kamera';
+
+        const streamUrl = `/proxy/${mediaID}`;
+        controlBody.innerHTML = `
+            <div class="stream-popup-body">
+                <div class="stream-view">
+                    <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
+                </div>
+                <div class="stream-popup-actions">
+                    <button type="button" data-stream-expand>Vergrößern</button>
+                </div>
+            </div>
+        `;
+
+        let streamSmallPosition = null;
+
+        const fitStreamDialogIntoViewport = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = rect.left;
+                let top = rect.top;
+
+                if (rect.right > window.innerWidth - margin) {
+                    left -= rect.right - (window.innerWidth - margin);
+                }
+                if (rect.bottom > window.innerHeight - margin) {
+                    top -= rect.bottom - (window.innerHeight - margin);
+                }
+
+                left = Math.max(margin, left);
+                top = Math.max(margin, top);
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
+        const restoreSmallStreamPosition = () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            if (!dialog || !streamSmallPosition) return;
+
+            requestAnimationFrame(() => {
+                const margin = 8;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = streamSmallPosition.left;
+                let top = streamSmallPosition.top;
+
+                // Nur falls sich die Kachel/Viewport-Größe inzwischen geändert hat,
+                // die ursprüngliche Position so weit wie nötig innerhalb halten.
+                left = Math.max(
+                    margin,
+                    Math.min(left, window.innerWidth - rect.width - margin)
+                );
+                top = Math.max(
+                    margin,
+                    Math.min(top, window.innerHeight - rect.height - margin)
+                );
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+                dialog.style.right = '';
+                dialog.style.bottom = '';
+            });
+        };
+
+        const expandBtn = controlBody.querySelector('[data-stream-expand]');
+        expandBtn?.addEventListener('click', () => {
+            const dialog = controlModal.querySelector('.control-modal');
+            const wasExpanded = controlModal.classList.contains('stream-expanded');
+
+            if (!wasExpanded && dialog) {
+                const rect = dialog.getBoundingClientRect();
+                streamSmallPosition = {
+                    left: rect.left,
+                    top: rect.top
+                };
+            }
+
+            const expanded = controlModal.classList.toggle('stream-expanded');
+            expandBtn.textContent = expanded ? 'Verkleinern' : 'Vergrößern';
+
+            if (expanded) {
+                fitStreamDialogIntoViewport();
+            } else {
+                restoreSmallStreamPosition();
+            }
+        });
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = x + offset;
+                let top = y + offset;
+
+                if (left + rect.width > window.innerWidth - margin) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
+    }
+
+    function openItemControl(item, clientX = null, clientY = null) {
+        if (!controlModal || !controlBody || item?._canAction !== true) return;
+
+        const profile = item._profile || {};
+        const associations = Array.isArray(profile.associations) ? profile.associations : [];
+        const raw = Number(item._rawValue);
+        controlTitle.textContent = item.name || 'Gerät bedienen';
+
+        let html = '';
+
+        const colorControlledBool = (
+            Number(item._variableType) === 0 &&
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        );
+
+        // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
+        // ausschließlich rechts neben dem Farbkreis dargestellt.
+        if (associations.length && !colorControlledBool) {
+            html += '<div class="control-associations">';
+            for (const association of associations) {
+                const value = Number(association.value);
+                const current = Number.isFinite(raw) && raw === value ? ' current' : '';
+                const associationStyle = associationButtonStyle(association.color);
+                html += `<button type="button" class="${current.trim()}" data-control-value="${value}"${associationStyle ? ` style="${associationStyle}"` : ''}>${escapeHtml(association.name || String(value))}</button>`;
+            }
+            html += '</div>';
+        }
+
+        const min = Number(profile.min);
+        const max = Number(profile.max);
+        const configuredStep = Number(profile.step);
+        const hasRange = Number.isFinite(min) && Number.isFinite(max) && max > min;
+
+        if (!colorControlledBool && !associations.length && hasRange) {
+            const step = Number.isFinite(configuredStep) && configuredStep > 0 ? configuredStep : 1;
+            const current = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+            const prefix = String(profile.prefix || '');
+            const suffix = String(profile.suffix || '');
+            html = `
+                <div class="control-slider">
+                    <div class="control-slider-value" data-slider-value>${escapeHtml(prefix)}${escapeHtml(String(current))}${escapeHtml(suffix)}</div>
+                    <div class="control-slider-row">
+                        <button type="button" data-control-step="-1" title="Einen Schritt kleiner">−</button>
+                        <input type="range" data-control-slider min="${min}" max="${max}" step="${step}" value="${current}">
+                        <button type="button" data-control-step="1" title="Einen Schritt größer">+</button>
+                    </div>
+                    <div class="profile-hint">${escapeHtml(String(min))}${escapeHtml(suffix)} – ${escapeHtml(String(max))}${escapeHtml(suffix)} · Schritt ${escapeHtml(String(step))}${escapeHtml(suffix)}</div>
+                </div>
+            `;
+        }
+
+        if (!html && Number(item._variableType) !== 0) {
+            html = '<div class="profile-hint">Für diese Variable sind im Profil weder bedienbare Werte noch ein Zahlenbereich hinterlegt.</div>';
+        }
+
+        if (
+            item.colorControlEnabled === true &&
+            Number(item.colorVariableID || 0) > 0 &&
+            Number(item._colorVariableType) === 1
+        ) {
+            // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
+            // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
+            // Die Plan-Darstellung bleibt davon vollständig getrennt.
+            const currentColor = integerColorToCss(item?._colorVariableRawValue) || '#FFFFFF';
+            const disabled = item._colorVariableCanAction === true ? '' : ' disabled';
+            html += `
+                <div class="field" style="margin-top:10px">
+                    <label>Farbe</label>
+                    <div class="device-color-wheel-wrap">
+                        <div class="device-color-wheel${item._colorVariableCanAction === true ? '' : ' disabled'}"
+                            data-control-color-wheel data-color="${currentColor}">
+                            <span class="device-color-wheel-marker" data-control-color-marker></span>
+                        </div>
+                        <div class="device-color-side">
+                            ${Number(item._variableType) === 0 ? (() => {
+                                const boolAssociations = Array.isArray(item?._profile?.associations)
+                                    ? item._profile.associations
+                                    : [];
+
+                                if (boolAssociations.length) {
+                                    return `<div class="device-color-bool-actions">` +
+                                        boolAssociations.map(association => {
+                                            const associationValue = Boolean(Number(association?.value));
+                                            const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
+                                            const active = truthyVariableValue(item._rawValue) === associationValue;
+                                            return `<button type="button"
+                                                class="device-color-power${active ? ' is-active' : ''}"
+                                                data-control-bool="${associationValue ? '1' : '0'}">${escapeHtml(caption)}</button>`;
+                                        }).join('') +
+                                        `</div>`;
+                                }
+
+                                // Bool ohne Profil-Assoziationen: beide Zustände anbieten.
+                                return `<div class="device-color-bool-actions">
+                                    <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
+                                    <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
+                                </div>`;
+                            })() : ''}
+                            <div class="device-color-preview" data-control-color-preview style="background:${currentColor}"></div>
+                            <div class="profile-hint device-color-hex" data-control-color-text>${escapeHtml(currentColor)}</div>
+                        </div>
+                    </div>
+                    ${item._colorVariableCanAction === true
+                        ? '<div class="profile-hint">Im Farbkreis direkt die gewünschte Leuchtfarbe auswählen.</div>'
+                        : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
+                </div>
+            `;
+        }
+
+        controlBody.innerHTML = html;
+
+        controlBody.querySelectorAll('[data-control-bool]').forEach(button => {
+            button.addEventListener('click', btnEvent => {
+                const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
+                sendItemValue(item, value);
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const colorWheel = controlBody.querySelector('[data-control-color-wheel]');
+        if (colorWheel) {
+            const marker = colorWheel.querySelector('[data-control-color-marker]');
+            const preview = controlBody.querySelector('[data-control-color-preview]');
+            const colorText = controlBody.querySelector('[data-control-color-text]');
+            const initial = rgbHexToHsv(colorWheel.dataset.color || '#FFFFFF');
+
+            const placeMarker = (h, saturation) => {
+                if (!marker) return;
+                const rect = colorWheel.getBoundingClientRect();
+                const radius = Math.min(rect.width, rect.height) / 2;
+                if (radius <= 0) return;
+                const usableRadius = Math.max(0, radius - 7);
+                const angle = (Number(h) - 90) * Math.PI / 180;
+                const distance = Math.max(0, Math.min(1, Number(saturation))) * usableRadius;
+                marker.style.left = `${radius + Math.cos(angle) * distance}px`;
+                marker.style.top = `${radius + Math.sin(angle) * distance}px`;
+            };
+
+            const placeInitialMarker = () => {
+                const rect = colorWheel.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                placeMarker(initial.h, initial.s);
+            };
+
+            // Das Popup ist beim Aufbau noch nicht vollständig positioniert.
+            // Marker erst nach dem Browser-Layout in den Farbkreis setzen.
+            requestAnimationFrame(() => {
+                placeInitialMarker();
+                requestAnimationFrame(placeInitialMarker);
+            });
+
+            if (item._colorVariableCanAction === true) {
+                let draggingColor = false;
+
+                const updateFromPointer = event => {
+                    const rect = colorWheel.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                    const dx = event.clientX - cx;
+                    const dy = event.clientY - cy;
+                    const radius = Math.max(1, rect.width / 2 - 7);
+                    const saturation = Math.max(0, Math.min(1, Math.hypot(dx, dy) / radius));
+                    let hue = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+                    if (hue < 0) hue += 360;
+
+                    // Der Farbkreis entspricht dem bekannten Hue/Sättigungs-Kreis:
+                    // Zentrum = Weiß, Außenrand = volle Farbe.
+                    const color = hsvToRgbHex(hue, saturation, 1);
+                    placeMarker(hue, saturation);
+                    if (preview) preview.style.background = color;
+                    if (colorText) colorText.textContent = color;
+
+                    const value = cssColorToInteger(color);
+                    if (value !== null) sendItemColorValue(item, value);
+                };
+
+                colorWheel.addEventListener('pointerdown', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    draggingColor = true;
+                    try { colorWheel.setPointerCapture(event.pointerId); } catch (_) {}
+                    updateFromPointer(event);
+                });
+
+                colorWheel.addEventListener('pointermove', event => {
+                    if (!draggingColor) return;
+                    event.preventDefault();
+                    updateFromPointer(event);
+                });
+
+                const finishColor = event => {
+                    if (!draggingColor) return;
+                    draggingColor = false;
+                    try { colorWheel.releasePointerCapture(event.pointerId); } catch (_) {}
+                };
+
+                colorWheel.addEventListener('pointerup', finishColor);
+                colorWheel.addEventListener('pointercancel', finishColor);
+            }
+        }
+
+        controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                sendItemValue(item, Number(btn.dataset.controlValue));
+                controlModal.classList.remove('open');
+                controlModal.setAttribute('aria-hidden', 'true');
+            });
+        });
+
+        const slider = controlBody.querySelector('[data-control-slider]');
+        const sliderValue = controlBody.querySelector('[data-slider-value]');
+        controlBody.querySelectorAll('[data-control-step]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!slider) return;
+                const direction = Number(btn.dataset.controlStep) || 0;
+                const next = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + direction * Number(slider.step || 1)));
+                slider.value = String(next);
+                const prefix = String(profile.prefix || '');
+                const suffix = String(profile.suffix || '');
+                if (sliderValue) sliderValue.textContent = `${prefix}${slider.value}${suffix}`;
+                sendItemValue(item, Number(slider.value));
+            });
+        });
+        if (slider) {
+            const prefix = String(profile.prefix || '');
+            const suffix = String(profile.suffix || '');
+            slider.addEventListener('input', () => {
+                if (sliderValue) sliderValue.textContent = `${prefix}${slider.value}${suffix}`;
+            });
+            slider.addEventListener('change', () => {
+                sendItemValue(item, Number(slider.value));
+            });
+        }
+
+        controlModal.classList.add('open');
+        controlModal.setAttribute('aria-hidden', 'false');
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog) {
+            dialog.style.left = '';
+            dialog.style.top = '';
+            dialog.style.right = '';
+            dialog.style.bottom = '';
+
+            requestAnimationFrame(() => {
+                const x = Number(clientX);
+                const y = Number(clientY);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+                const margin = 8;
+                const offset = 10;
+                const rect = dialog.getBoundingClientRect();
+
+                let left = x + offset;
+                let top = y + offset;
+
+                if (left + rect.width > window.innerWidth - margin) {
+                    left = x - rect.width - offset;
+                }
+                if (top + rect.height > window.innerHeight - margin) {
+                    top = y - rect.height - offset;
+                }
+
+                left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+                top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+                dialog.style.left = `${left}px`;
+                dialog.style.top = `${top}px`;
+            });
+        }
+    }
+
+    controlCloseBtn?.addEventListener('click', () => {
+        controlModal.classList.remove('open', 'stream-expanded');
+        controlModal.setAttribute('aria-hidden', 'true');
+    });
+    controlModal?.addEventListener('click', evt => {
+        if (evt.target === controlModal) {
+            controlModal.classList.remove('open');
+            controlModal.setAttribute('aria-hidden', 'true');
+        }
+    });
+
+    // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
+    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplan absichtlich
+    // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
+    document.addEventListener('pointerdown', evt => {
+        if (!controlModal?.classList.contains('open')) return;
+
+        const dialog = controlModal.querySelector('.control-modal');
+        if (dialog && dialog.contains(evt.target)) return;
+
+        controlModal.classList.remove('open', 'stream-expanded');
+        controlModal.setAttribute('aria-hidden', 'true');
+    }, true);
+
     window.handleMessage = message => {
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
+            if (data?.command === 'reloadHtml') {
+                // Genau wie bei allen anderen Projektfeldern zuerst einen eventuell
+                // noch offenen normalen Autosave abschließen, dann HTML neu laden.
+                if (dirty) {
+                    saveProject();
+                }
+                window.location.reload();
+                return;
+            }
+            if (data?.type === 'refreshedItemIcon' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+                Object.assign(item, meta);
+
+                const slot = data.slot || 'single';
+
+                if (slot === 'off') {
+                    item.iconOffManual = false;
+                    item.iconOffSvg = '';
+                    item.iconOff = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else if (slot === 'on') {
+                    item.iconOnManual = false;
+                    item.iconOnSvg = '';
+                    item.iconOn = meta._hasLegacyProfile === true
+                        ? (meta._objectIcon || item.icon || 'fa-light fa-circle')
+                        : (meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || item.icon || 'fa-light fa-circle');
+                } else {
+                    item.iconManual = false;
+                    item.iconSvg = '';
+                    item.icon = meta._hasLegacyProfile === true
+                        ? (
+                            Number(meta._variableType) === 1
+                                ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                                : (meta._objectIcon || 'fa-light fa-circle')
+                        )
+                        : (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle');
+                }
+
+                iconModal.classList.remove('open');
+                iconModal.setAttribute('aria-hidden', 'true');
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                return;
+            }
+            if (
+                data?.type === 'refreshedVariableSettings' &&
+                data.entityType === 'opening' &&
+                data.openingId &&
+                data.meta
+            ) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const opening = floor?.openings?.find(o => o.id === data.openingId);
+                if (!opening) return;
+
+                const meta = data.meta || {};
+
+                // Explizites Aktualisieren: manuelle Farbübersteuerung bewusst
+                // aufheben und die aktuelle Symcon-Darstellung neu übernehmen.
+                opening.openStatusColorManual = false;
+
+                for (const [key, value] of Object.entries(meta)) {
+                    if (!key.startsWith('_')) continue;
+                    opening[key] = value;
+                }
+
+                opening.openStatusColor = automaticOpeningStatusColor(opening);
+
+                pushHistory();
+                markDirty();
+                render();
+
+                // Den bereits sichtbaren Farbwähler sofort auf die neu aus Symcon
+                // geladene Farbe setzen. Manche Browser/WebViews behalten den
+                // bestehenden <input type="color">-DOM-Wert trotz Neuaufbau kurz fest.
+                const refreshedOpeningColor = effectiveOpeningStatusColor(opening);
+                const openingColorInput = properties.querySelector(
+                    'input[data-field="openStatusColor"]'
+                );
+                if (openingColorInput instanceof HTMLInputElement) {
+                    openingColorInput.value = refreshedOpeningColor;
+                }
+
+                // Danach die Eigenschaftenleiste zusätzlich sauber neu aufbauen.
+                propertiesControlActive = false;
+                propertiesSelectOpen = false;
+                setTimeout(() => {
+                    renderProperties();
+
+                    // Zweite Absicherung nach dem Neuaufbau des DOM.
+                    const rebuiltOpeningColorInput = properties.querySelector(
+                        'input[data-field="openStatusColor"]'
+                    );
+                    if (rebuiltOpeningColorInput instanceof HTMLInputElement) {
+                        rebuiltOpeningColorInput.value = refreshedOpeningColor;
+                    }
+                }, 0);
+
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
+            if (data?.type === 'refreshedVariableSettings' && data.itemId && data.meta) {
+                const floor = state.floors.find(f => f.id === (data.floorId || state.activeFloor));
+                const item = floor?.items?.find(i => i.id === data.itemId);
+                if (!item) return;
+
+                const meta = data.meta || {};
+
+                // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
+                // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
+                item.statusColorManual = false;
+                item.iconManual = false;
+                item.iconOffManual = false;
+                item.iconOnManual = false;
+                item.iconSvg = '';
+                item.iconOffSvg = '';
+                item.iconOnSvg = '';
+
+                Object.assign(item, meta);
+
+                if (meta._hasNewPresentation === true) {
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                        item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+                        item.icon = meta._objectIcon || item.iconOff || 'fa-light fa-circle';
+
+                        if (/^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))) {
+                            item.statusColor = String(meta._glowColor);
+                        }
+                    } else {
+                        item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                    }
+                } else if (meta._hasLegacyProfile === true) {
+                    item.icon = Number(meta._variableType) === 1
+                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                        : (meta._objectIcon || 'fa-light fa-circle');
+
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                        item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                        const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                        if (legacyOnColor) {
+                            item.statusColor = legacyOnColor;
+                        }
+                    }
+                } else {
+                    item.icon = meta._objectIcon || 'fa-light fa-circle';
+                    if (Number(meta._variableType) === 0) {
+                        item.iconOff = item.icon;
+                        item.iconOn = item.icon;
+                    }
+                }
+
+                pushHistory();
+                markDirty();
+                render();
+                renderProperties();
+                statusEl.textContent = 'Variableneinstellungen aktualisiert';
+                return;
+            }
+
+            if (data?.type === 'variableUpdate' && data.variableID && data.meta) {
+                const variableID = Number(data.variableID);
+                const meta = data.meta || {};
+
+                for (const floor of state.floors || []) {
+                            for (const item of floor.items || []) {
+                        if (Number(item.variableID || 0) === variableID) {
+                            const manualIcon = item.iconManual === true;
+                            const manualStatusColor = item.statusColorManual === true;
+                            const preservedStatusColor = item.statusColor;
+                            Object.assign(item, meta);
+
+                            if (manualStatusColor) {
+                                item.statusColorManual = true;
+                                item.statusColor = preservedStatusColor;
+                            }
+
+                            if (meta._hasLegacyProfile === true) {
+                                // Funktionierenden Legacy-Weg nicht verändern.
+                                if (!manualIcon && meta._objectIcon !== undefined) {
+                                    item.icon = Number(meta._variableType) === 1
+                                        ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
+                                        : (meta._objectIcon || 'fa-light fa-circle');
+                                    item.iconSvg = '';
+                                }
+                                if (Number(meta._variableType) === 0) {
+                                    if (item.iconOffManual !== true) item.iconOff = meta._objectIcon || item.icon || 'fa-light fa-circle';
+                                    if (item.iconOnManual !== true) item.iconOn = meta._objectIcon || item.icon || 'fa-light fa-circle';
+
+                                    const legacyOnColor = legacyBoolOnColorFromProfile(meta._profile);
+                                    if (!manualStatusColor && legacyOnColor) {
+                                        item.statusColor = legacyOnColor;
+                                    }
+                                }
+                            } else if (Number(meta._variableType) === 0) {
+                                if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
+                                if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
+
+                                // GLOW_COLOR ist ausschließlich die EIN-Farbe.
+                                if (
+                                    !manualStatusColor &&
+                                    /^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))
+                                ) {
+                                    item.statusColor = String(meta._glowColor);
+                                }
+                            } else if (!manualIcon) {
+                                item.icon = meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle';
+                                item.iconSvg = '';
+                            }
+                        }
+                    }
+
+                    for (const item of floor.items || []) {
+                        if (Number(item.colorVariableID || 0) === variableID) {
+                            const colorRuntimeMap = {
+                                _variablePath: '_colorVariablePath',
+                                _valueText: '_colorVariableValueText',
+                                _rawValue: '_colorVariableRawValue',
+                                _variableType: '_colorVariableType',
+                                _profileName: '_colorVariableProfileName',
+                                _profileSummary: '_colorVariableProfileSummary',
+                                _profile: '_colorVariableProfile',
+                                _canAction: '_colorVariableCanAction',
+                                _objectIcon: '_colorVariableObjectIcon',
+                                _hasLegacyProfile: '_colorVariableHasLegacyProfile',
+                                _hasNewPresentation: '_colorVariableHasNewPresentation',
+                                _presentationIconOff: '_colorVariablePresentationIconOff',
+                                _presentationIconOn: '_colorVariablePresentationIconOn',
+                                _presentationIcon: '_colorVariablePresentationIcon',
+                                _glowColor: '_colorVariableGlowColor',
+                                _glowIntensity: '_colorVariableGlowIntensity',
+                                _legacyColorOn: '_colorVariableLegacyColorOn',
+                                _legacyCurrentColor: '_colorVariableLegacyCurrentColor',
+                                _newIntegerStatusColor: '_colorVariableNewIntegerStatusColor'
+                            };
+                            for (const [sourceKey, targetKey] of Object.entries(colorRuntimeMap)) {
+                                if (Object.prototype.hasOwnProperty.call(meta, sourceKey)) {
+                                    item[targetKey] = meta[sourceKey];
+                                }
+                            }
+                        }
+                    }
+
+                    for (const opening of floor.openings || []) {
+                        const mappings = [
+                            ['variableID', ''],
+                            ['secondaryVariableID', 'secondaryVariable'],
+                            ['shutterVariableID', 'shutterVariable'],
+                            ['shutterSecondaryVariableID', 'shutterSecondaryVariable']
+                        ];
+
+                        for (const [field, prefix] of mappings) {
+                            if (Number(opening[field] || 0) !== variableID) continue;
+
+                            for (const [key, value] of Object.entries(meta)) {
+                                if (!key.startsWith('_')) continue;
+                                const suffix = key.slice(1);
+                                const targetKey = prefix
+                                    ? `_${prefix}${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`
+                                    : key;
+                                opening[targetKey] = value;
+                            }
+
+                            if (
+                                field === 'variableID' &&
+                                opening.openStatusColorManual !== true
+                            ) {
+                                opening.openStatusColor = automaticOpeningStatusColor(opening);
+                            }
+                        }
+                    }
+                }
+
+                // Nur neu zeichnen, kein normalizeProject(), kein fit(), kein Etagenwechsel.
+                render();
+                return;
+            }
+
             if (data?.type === 'project' && data.project) {
+                // Runtime-Updates dürfen die im Live-Modus gewählte Etage
+                // nicht auf die im gespeicherten Projekt hinterlegte Etage zurücksetzen.
+                const currentFloorID = state?.activeFloor || '';
+                const currentMode = state?.mode || 'view';
+
                 state = normalizeProject(data.project);
+
+                if (currentFloorID && state.floors.some(f => f.id === currentFloorID)) {
+                    state.activeFloor = currentFloorID;
+                }
+
+                // Auch ein reines Variablen-Update darf den aktuellen Live/Edit-Modus
+                // des geöffneten Clients nicht verändern.
+                state.mode = currentMode;
+
                 selected = null;
                 wallStart = null;
                 history = [];
                 historyIndex = -1;
                 pushHistory();
+                updateModeUI();
                 renderAll();
                 fit();
+            } else if (
+                data?.type === 'variableMetaForAssignment' &&
+                Number(data.variableID) > 0 &&
+                data.meta
+            ) {
+                const node = findTreeNode(objectTree, Number(data.variableID));
+                if (!node) return;
+
+                const meta = data.meta || {};
+                node.variableType = Number(meta._variableType ?? node.variableType ?? -1);
+                node.variableTypeName = ['Boolean', 'Integer', 'Float', 'String'][node.variableType] || ('Typ ' + node.variableType);
+                node.valueText = meta._valueText ?? node.valueText ?? '';
+                node.rawValue = meta._rawValue ?? '';
+                node.profileName = meta._profileName ?? node.profileName ?? '';
+                node.profileSummary = meta._profileSummary ?? '';
+                node.profile = meta._profile ?? null;
+                node.canAction = meta._canAction === true;
+                node.hasLegacyProfile = meta._hasLegacyProfile === true;
+                node.hasNewPresentation = meta._hasNewPresentation === true;
+                node.presentationIcon = meta._presentationIcon ?? '';
+                node.presentationIconOff = meta._presentationIconOff ?? '';
+                node.presentationIconOn = meta._presentationIconOn ?? '';
+                node.glowColor = meta._glowColor ?? '';
+                node.glowIntensity = Number(meta._glowIntensity || 0);
+                node.legacyColorOn = meta._legacyColorOn ?? '';
+                node.legacyCurrentColor = meta._legacyCurrentColor ?? '';
+                node.newIntegerStatusColor = meta._newIntegerStatusColor ?? '';
+                node.objectIcon = meta._objectIcon ?? node.objectIcon ?? '';
+                node.runtimeMetaLoaded = true;
+
+                // Jetzt läuft exakt die bisherige Zuordnungslogik weiter.
+                assignVariable(Number(data.variableID));
+            } else if (data?.type === 'objectTreeChildren' && Array.isArray(data.objects)) {
+                const parentID = Number(data.parentID || 0);
+
+                if (parentID === 0) {
+                    // Root neu laden; Suchtext nur beim erstmaligen Öffnen leeren.
+                    objectTree = data.objects;
+                    if (!variableModal.classList.contains('open')) {
+                        variableSearch.value = '';
+                    }
+                } else {
+                    const parent = findTreeNode(objectTree, parentID);
+                    if (parent) {
+                        parent.children = data.objects;
+                        parent.childrenLoaded = true;
+                    }
+                }
+
+                renderObjectTree('');
+                variableModal.classList.add('open');
+                variableModal.setAttribute('aria-hidden', 'false');
+                if (parentID === 0) variableSearch.focus();
+                statusEl.textContent = 'Objektbaum – Variable auswählen';
+            } else if (data?.type === 'objectTreeSearchResults' && Array.isArray(data.objects)) {
+                const requestID = Number(data.requestID || 0);
+                if (requestID < objectTreeSearchRequest) return;
+
+                objectTree = data.objects;
+                expandedObjectIDs.clear();
+                renderObjectTree('');
+                statusEl.textContent = data.truncated === true
+                    ? 'Suche – erste 200 Treffer'
+                    : 'Suche – Variable auswählen';
+            } else if (data?.type === 'runtimeValue') {
+                const floor = state.floors.find(f => f.id === data.floorId);
+                const item = floor?.items.find(i => i.id === data.itemId);
+                if (item) {
+                    item._valueText = data.valueText || '';
+                    if ('rawValue' in data) item._rawValue = data.rawValue;
+                    render();
+                }
             }
         } catch (e) {
             console.error('handleMessage', e);
         }
     };
 
+    restoreLastViewFloor();
     pushHistory();
+    updateModeUI();
+    detectTheme();
     renderAll();
     requestAnimationFrame(fit);
-})();
-</script>
-</body>
-</html>
-HTML;
+    detectTheme();
+    window.addEventListener('load', detectTheme);
 
-        return str_replace('__INITIAL_PROJECT__', $initial, $html);
+    const mediaTheme = window.matchMedia
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+
+    if (mediaTheme) {
+        if (typeof mediaTheme.addEventListener === 'function') {
+            mediaTheme.addEventListener('change', () => {
+                detectTheme();
+                render();
+            });
+        } else if (typeof mediaTheme.addListener === 'function') {
+            mediaTheme.addListener(() => {
+                detectTheme();
+                render();
+            });
+        }
+    }
+
+    // Symcon kann die injizierte --content-color während eines Themewechsels ändern.
+    setInterval(() => {
+        const before = document.documentElement.getAttribute('data-theme');
+        detectTheme();
+        if (before !== document.documentElement.getAttribute('data-theme')) {
+            render();
+        }
+    }, 1000);
+
+})().catch(error => {
+    console.error('Floorplan konnte nicht initialisiert werden:', error);
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = 'Floorplan konnte nicht geladen werden';
+    }
+});
+
+JAVASCRIPT;
+    }
+
+    private function GetVisualizationWebHookAssets(): array
+    {
+        return [
+            'easy-floorplan.js'
+        ];
+    }
+
+    private function GetVisualizationWebHookBaseAddress(): string
+    {
+        return 'floorplaner-assets-' . $this->InstanceID;
+    }
+
+    private function GetVisualizationModuleWebHookUrl(string $asset): string
+    {
+        if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+            throw new InvalidArgumentException('Unbekanntes Visualisierungs-Asset: ' . $asset);
+        }
+
+        return '/hook/'
+            . $this->GetVisualizationWebHookBaseAddress()
+            . '?asset='
+            . rawurlencode($asset);
+    }
+
+    protected function ProcessHookData(): void
+    {
+        try {
+            $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+            $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '');
+            $hookPath = '/hook/' . $this->GetVisualizationWebHookBaseAddress();
+
+            // Nur exakt den WebHook dieser Instanz bedienen.
+            if ($requestPath !== $hookPath) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            $asset = isset($_GET['asset']) ? (string) $_GET['asset'] : '';
+            if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Not found';
+                return;
+            }
+
+            /*
+             * Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
+             */
+            $path = __DIR__
+                . DIRECTORY_SEPARATOR
+                . 'assets'
+                . DIRECTORY_SEPARATOR
+                . 'vendor'
+                . DIRECTORY_SEPARATOR
+                . 'easy-floorplan.js';
+
+            if (!is_file($path)) {
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Asset not found';
+                return;
+            }
+
+            $source = file_get_contents($path);
+            if ($source === false) {
+                throw new RuntimeException('Visualisierungsdatei konnte nicht gelesen werden: ' . $asset);
+            }
+
+            header('Content-Type: text/javascript; charset=utf-8');
+            header('X-Content-Type-Options: nosniff');
+            header('Cache-Control: no-cache');
+            header('Content-Length: ' . strlen($source));
+            echo $source;
+        } catch (Throwable $e) {
+            $this->LogMessage('ProcessHookData: ' . $e->getMessage(), KL_ERROR);
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Internal server error';
+        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
@@ -1280,7 +8689,228 @@ HTML;
                 }
 
                 $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+
+                /*
+                 * Die Variablenzuordnung kann direkt im HTML-Editor geändert werden.
+                 * ApplyChanges() läuft dabei nicht erneut. Deshalb müssen neu
+                 * zugeordnete Variablen unmittelbar nach dem Speichern für VM_UPDATE
+                 * registriert werden, damit externe Änderungen sofort im Floorplan erscheinen.
+                 */
+                $this->RegisterRuntimeVariableMessages();
+
                 $this->ReloadForm();
+                break;
+
+            case 'getObjectTreeChildren':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+
+                $parentID = max(0, (int) ($request['parentID'] ?? 0));
+                $parentPath = (string) ($request['parentPath'] ?? '');
+
+                if ($parentID !== 0 && !IPS_ObjectExists($parentID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'     => 'objectTreeChildren',
+                        'parentID' => $parentID,
+                        'objects'  => $this->BuildObjectChildrenLazy($parentID, $parentPath)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'searchObjectTree':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Suche.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Suche.');
+                }
+
+                $query = trim((string) ($request['query'] ?? ''));
+                $requestID = (int) ($request['requestID'] ?? 0);
+                $search = $this->SearchObjectTree($query, 200);
+
+                $message = json_encode(
+                    [
+                        'type'      => 'objectTreeSearchResults',
+                        'requestID' => $requestID,
+                        'objects'   => $search['objects'],
+                        'truncated' => $search['truncated']
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'getVariableMetaForAssignment':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Variablenauswahl.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Variablenauswahl.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'       => 'variableMetaForAssignment',
+                        'variableID' => $variableID,
+                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshVariableSettings':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Variablen-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'       => 'refreshedVariableSettings',
+                        'floorId'    => (string) ($request['floorId'] ?? ''),
+                        'itemId'     => (string) ($request['itemId'] ?? ''),
+                        'openingId'  => (string) ($request['openingId'] ?? ''),
+                        'entityType' => (string) ($request['entityType'] ?? 'item'),
+                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'refreshItemIcon':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Icon-Aktualisierung.');
+                }
+
+                $variableID = (int) ($request['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    break;
+                }
+
+                $message = json_encode(
+                    [
+                        'type'    => 'refreshedItemIcon',
+                        'floorId' => (string) ($request['floorId'] ?? ''),
+                        'itemId'  => (string) ($request['itemId'] ?? ''),
+                        'slot'    => (string) ($request['slot'] ?? 'single'),
+                        'meta'    => $this->GetVariableRuntimeMeta($variableID)
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'operate':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Bedienanforderung.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Bedienanforderung.');
+                }
+                $this->OperateItem(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? '')
+                );
+                break;
+
+            case 'operateValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Bedienwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Bedienwert.');
+                }
+                $this->OperateItemValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
+            case 'operateColorValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Farbwert.');
+                }
+                $this->OperateItemColorValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
+                );
+                break;
+
+            case 'operateOpeningValue':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültiger Öffnungs-Bedienwert.');
+                }
+                $this->OperateOpeningValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['openingId'] ?? ''),
+                    (string) ($request['field'] ?? ''),
+                    $request['value'] ?? null
+                );
                 break;
 
             default:
@@ -1327,6 +8957,17 @@ HTML;
         $this->ReloadForm();
     }
 
+    public function RestoreFloorplanBackup(string $Base64Data): void
+    {
+        $json = base64_decode($Base64Data, true);
+        if ($json === false || trim($json) === '') {
+            throw new InvalidArgumentException('Die ausgewählte Sicherungsdatei ist ungültig.');
+        }
+
+        $this->SetFloorplanJSON($json);
+        $this->RegisterRuntimeVariableMessages();
+    }
+
     public function ResetFloorplan(): void
     {
         $project = $this->CreateDefaultProject();
@@ -1358,8 +8999,6 @@ HTML;
     {
         $project = $this->GetProject();
 
-        $project['width'] = max(300, $this->ReadPropertyInteger('CanvasWidth'));
-        $project['height'] = max(200, $this->ReadPropertyInteger('CanvasHeight'));
         $project['grid'] = max(5, $this->ReadPropertyInteger('GridSize'));
         $project['snap'] = max(0, $this->ReadPropertyInteger('SnapSize'));
         $project['background'] = $this->ReadPropertyString('BackgroundColor');
@@ -1416,12 +9055,14 @@ HTML;
             throw new InvalidArgumentException('Floorplan muss ein JSON-Objekt sein.');
         }
 
-        $data['width'] = max(300, (int) ($data['width'] ?? 1000));
-        $data['height'] = max(200, (int) ($data['height'] ?? 650));
+        // Alte Projekte dürfen width/height enthalten. Diese Werte werden
+        // ab dieser Version bewusst ignoriert, da die Zeichenfläche dynamisch ist.
+        unset($data['width'], $data['height']);
         $data['grid'] = max(5, (int) ($data['grid'] ?? 20));
         $data['snap'] = max(0, (int) ($data['snap'] ?? $data['grid']));
         $data['background'] = (string) ($data['background'] ?? '#303030');
         $data['showGrid'] = (bool) ($data['showGrid'] ?? true);
+        $data['mode'] = (($data['mode'] ?? 'edit') === 'view') ? 'view' : 'edit';
 
         if (!isset($data['floors']) || !is_array($data['floors']) || count($data['floors']) === 0) {
             $data['floors'] = [$this->CreateDefaultFloor()];
@@ -1434,11 +9075,24 @@ HTML;
 
             $floor['id'] = (string) ($floor['id'] ?? ('floor_' . ($index + 1)));
             $floor['name'] = (string) ($floor['name'] ?? ('Etage ' . ($index + 1)));
+            $floor['wallThickness'] = max(1, min(60, (int) ($floor['wallThickness'] ?? 12)));
 
-            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'trackers'] as $key) {
+            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'shapes', 'trackers'] as $key) {
                 if (!isset($floor[$key]) || !is_array($floor[$key])) {
                     $floor[$key] = [];
                 }
+            }
+
+            foreach ($floor['items'] as $itemIndex => $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                foreach (array_keys($item) as $itemKey) {
+                    if (str_starts_with((string) $itemKey, '_')) {
+                        unset($item[$itemKey]);
+                    }
+                }
+                $floor['items'][$itemIndex] = $item;
             }
 
             $data['floors'][$index] = $floor;
@@ -1467,12 +9121,11 @@ HTML;
         return [
             'type'         => 'easy-floorplan-compatible',
             'version'      => 1,
-            'width'        => max(300, $this->ReadPropertyInteger('CanvasWidth')),
-            'height'       => max(200, $this->ReadPropertyInteger('CanvasHeight')),
             'grid'         => max(5, $this->ReadPropertyInteger('GridSize')),
             'snap'         => max(0, $this->ReadPropertyInteger('SnapSize')),
             'background'   => $this->ReadPropertyString('BackgroundColor'),
             'showGrid'     => $this->ReadPropertyBoolean('ShowGrid'),
+            'mode'         => 'edit',
             'defaultFloor' => 'floor_1',
             'activeFloor'  => 'floor_1',
             'floors'       => [
@@ -1484,26 +9137,1426 @@ HTML;
     private function CreateDefaultFloor(): array
     {
         return [
-            'id'        => 'floor_1',
-            'name'      => 'Erdgeschoss',
-            'walls'     => [],
+            'id'            => 'floor_1',
+            'name'          => 'Erdgeschoss',
+            'wallThickness' => 12,
+            'walls'         => [],
             'openings'  => [],
             'items'     => [],
             'texts'     => [],
             'furniture' => [],
             'areas'     => [],
+            'shapes'    => [],
             'trackers'  => []
         ];
+    }
+
+    private function RegisterRuntimeVariableMessages(): void
+    {
+        $project = $this->GetProject();
+        $ids = [];
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            foreach (($floor['items'] ?? []) as $item) {
+                $id = (int) ($item['variableID'] ?? 0);
+                if ($id > 0 && IPS_VariableExists($id)) {
+                    $ids[$id] = true;
+                }
+
+                $colorID = (int) ($item['colorVariableID'] ?? 0);
+                if ($colorID > 0 && IPS_VariableExists($colorID)) {
+                    $ids[$colorID] = true;
+                }
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                foreach ([
+                    'variableID',
+                    'secondaryVariableID',
+                    'shutterVariableID',
+                    'shutterSecondaryVariableID'
+                ] as $field) {
+                    $id = (int) ($opening[$field] ?? 0);
+                    if ($id > 0 && IPS_VariableExists($id)) {
+                        $ids[$id] = true;
+                    }
+                }
+            }
+        }
+
+        foreach (array_keys($ids) as $id) {
+            $this->RegisterMessage((int) $id, VM_UPDATE);
+        }
+    }
+
+    private function AddRuntimeValues(array $Project): array
+    {
+        if (!isset($Project['floors']) || !is_array($Project['floors'])) {
+            return $Project;
+        }
+
+        foreach ($Project['floors'] as $floorIndex => $floor) {
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $objectID = (int) ($item['variableID'] ?? 0);
+                    if ($objectID <= 0) {
+                        continue;
+                    }
+
+                    if (IPS_VariableExists($objectID)) {
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($objectID);
+                            foreach ($meta as $key => $value) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$key] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeValue', $e->getMessage(), 0);
+                        }
+                        continue;
+                    }
+
+                    // Stream-Metadaten sind Laufzeitdaten und werden beim Speichern
+                    // entfernt. Deshalb aus dem Media-Objekt bei jedem Laden neu aufbauen.
+                    if (IPS_MediaExists($objectID)) {
+                        try {
+                            $media = IPS_GetMedia($objectID);
+                            if ((int) ($media['MediaType'] ?? -1) === 3) {
+                                $object = IPS_GetObject($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectKind'] = 'stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_mediaType'] = 3;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_canAction'] = true;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variableType'] = -1;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_variablePath'] = $this->GetObjectPath($objectID);
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_valueText'] = 'Stream';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_rawValue'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileName'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profileSummary'] = '';
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_profile'] = null;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasLegacyProfile'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_hasNewPresentation'] = false;
+                                $Project['floors'][$floorIndex]['items'][$itemIndex]['_objectIcon'] =
+                                    (string) ($object['ObjectIcon'] ?? '');
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeStream', $e->getMessage(), 0);
+                        }
+                    }
+                }
+            }
+
+            // Optionale zweite Farbvariable der Geräte ebenfalls als Runtime-Metadaten laden.
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $colorID = (int) ($item['colorVariableID'] ?? 0);
+                    if ($colorID <= 0 || !IPS_VariableExists($colorID)) {
+                        continue;
+                    }
+
+                    try {
+                        $meta = $this->GetVariableRuntimeMeta($colorID);
+
+                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
+                        // Variablen verwenden. Insbesondere wird aus _variableType
+                        // _colorVariableType (nicht _colorVariableVariableType).
+                        $runtimeMap = [
+                            '_variablePath'          => '_colorVariablePath',
+                            '_valueText'             => '_colorVariableValueText',
+                            '_rawValue'              => '_colorVariableRawValue',
+                            '_variableType'          => '_colorVariableType',
+                            '_profileName'           => '_colorVariableProfileName',
+                            '_profileSummary'        => '_colorVariableProfileSummary',
+                            '_profile'               => '_colorVariableProfile',
+                            '_canAction'             => '_colorVariableCanAction',
+                            '_objectIcon'            => '_colorVariableObjectIcon',
+                            '_hasLegacyProfile'      => '_colorVariableHasLegacyProfile',
+                            '_hasNewPresentation'    => '_colorVariableHasNewPresentation',
+                            '_presentationIconOff'   => '_colorVariablePresentationIconOff',
+                            '_presentationIconOn'    => '_colorVariablePresentationIconOn',
+                            '_presentationIcon'      => '_colorVariablePresentationIcon',
+                            '_glowColor'             => '_colorVariableGlowColor',
+                            '_glowIntensity'         => '_colorVariableGlowIntensity',
+                            '_legacyColorOn'         => '_colorVariableLegacyColorOn',
+                            '_legacyCurrentColor'    => '_colorVariableLegacyCurrentColor',
+                            '_newIntegerStatusColor' => '_colorVariableNewIntegerStatusColor'
+                        ];
+
+                        foreach ($runtimeMap as $sourceKey => $targetKey) {
+                            if (array_key_exists($sourceKey, $meta)) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $meta[$sourceKey];
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        $this->SendDebug('RuntimeColorValue', $e->getMessage(), 0);
+                    }
+                }
+            }
+
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $openingIndex => $opening) {
+                    $fieldMap = [
+                        'variableID'                 => '',
+                        'secondaryVariableID'        => 'secondaryVariable',
+                        'shutterVariableID'          => 'shutterVariable',
+                        'shutterSecondaryVariableID' => 'shutterSecondaryVariable'
+                    ];
+
+                    foreach ($fieldMap as $field => $prefix) {
+                        $variableID = (int) ($opening[$field] ?? 0);
+                        if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                            continue;
+                        }
+
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($variableID);
+                            foreach ($meta as $key => $value) {
+                                $suffix = ltrim($key, '_');
+
+                                if ($prefix === '') {
+                                    $targetKey = $key;
+                                } else {
+                                    $mapSuffix = [
+                                        'variableType'   => 'Type',
+                                        'variablePath'   => 'Path',
+                                        'rawValue'       => 'RawValue',
+                                        'valueText'      => 'ValueText',
+                                        'profileName'    => 'ProfileName',
+                                        'profileSummary' => 'ProfileSummary',
+                                        'profile'        => 'Profile'
+                                    ];
+                                    $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
+                                }
+                                $Project['floors'][$floorIndex]['openings'][$openingIndex][$targetKey] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeOpeningValue', $e->getMessage(), 0);
+                        }
+                    }
+                }
+            }
+        }
+
+        return $Project;
+    }
+
+    /**
+     * Liefert ausschließlich die DIREKTEN Kinder eines Objekts.
+     * Dadurch wächst ein Request nicht mehr mit dem gesamten Symcon-Objektbaum.
+     */
+    private function BuildObjectChildrenLazy(int $ParentID, string $ParentPath): array
+    {
+        $result = [];
+
+        foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
+            $node = $this->BuildObjectTreeNode($objectID, $ParentPath);
+            if ($node !== null) {
+                $result[] = $node;
+            }
+        }
+
+        $this->SortObjectTreeNodes($result);
+        return $result;
+    }
+
+    /**
+     * Baut nur den kleinen Datensatz auf, der im Picker sichtbar sein muss.
+     * Profil-/Presentation-/Icon-Metadaten werden weiterhin erst nach Auswahl
+     * einer konkreten Variable über GetVariableRuntimeMeta() geladen.
+     */
+    private function BuildObjectTreeNode(int $ObjectID, string $ParentPath): ?array
+    {
+        if (!IPS_ObjectExists($ObjectID)) {
+            return null;
+        }
+
+        $object = IPS_GetObject($ObjectID);
+        $objectType = (int) ($object['ObjectType'] ?? -1);
+        $name = IPS_GetName($ObjectID);
+        $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
+
+        $typeNames = [
+            0 => 'Kategorie',
+            1 => 'Instanz',
+            2 => 'Variable',
+            3 => 'Script',
+            4 => 'Ereignis',
+            5 => 'Medienobjekt',
+            6 => 'Link'
+        ];
+
+        $node = [
+            'id'             => $ObjectID,
+            'name'           => $name,
+            'path'           => $path,
+            'objectType'     => $objectType,
+            'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
+            'objectIcon'     => (string) ($object['ObjectIcon'] ?? ''),
+            'hasChildren'    => count(IPS_GetChildrenIDs($ObjectID)) > 0,
+            'childrenLoaded' => false,
+            'children'       => []
+        ];
+
+        if ($objectType === 2 && IPS_VariableExists($ObjectID)) {
+            try {
+                $variable = IPS_GetVariable($ObjectID);
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+                $variableTypeNames = [
+                    0 => 'Boolean',
+                    1 => 'Integer',
+                    2 => 'Float',
+                    3 => 'String'
+                ];
+
+                $profileName = (string) ($variable['VariableCustomProfile'] ?? '');
+                if ($profileName === '') {
+                    $profileName = (string) ($variable['VariableProfile'] ?? '');
+                }
+
+                $node['variableType'] = $variableType;
+                $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
+                $node['profileName'] = $profileName;
+                $node['valueText'] = $this->GetFormattedVariableValue(
+                    $ObjectID,
+                    $variableType,
+                    GetValue($ObjectID),
+                    $profileName
+                );
+                $node['runtimeMetaLoaded'] = false;
+            } catch (Throwable $e) {
+                $node['valueText'] = '';
+                $node['runtimeMetaLoaded'] = false;
+                $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
+            }
+        }
+
+        if ($objectType === 5 && IPS_MediaExists($ObjectID)) {
+            try {
+                $media = IPS_GetMedia($ObjectID);
+                if ((int) ($media['MediaType'] ?? -1) === 3) {
+                    $node['isStream'] = true;
+                    $node['mediaType'] = 3;
+                    $node['objectTypeName'] = 'Stream';
+                    $node['valueText'] = 'Stream';
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('ObjectTree.Stream', $e->getMessage(), 0);
+            }
+        }
+
+        return $node;
+    }
+
+    /**
+     * Server-seitige Suche für den Lazy-Objektbaum.
+     * Es wird nie ein kompletter Baum aufgebaut; gespeichert werden nur Treffer.
+     */
+    private function SearchObjectTree(string $Query, int $Limit = 200): array
+    {
+        $query = mb_strtolower(trim($Query));
+        if ($query === '') {
+            return ['objects' => [], 'truncated' => false];
+        }
+
+        $result = [];
+        $truncated = false;
+        $this->SearchObjectTreeChildren(0, '', $query, max(1, $Limit), $result, $truncated);
+        $this->SortObjectTreeNodes($result);
+
+        return [
+            'objects'   => $result,
+            'truncated' => $truncated
+        ];
+    }
+
+    private function SearchObjectTreeChildren(
+        int $ParentID,
+        string $ParentPath,
+        string $Query,
+        int $Limit,
+        array &$Result,
+        bool &$Truncated
+    ): void {
+        foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
+            if ($Truncated || !IPS_ObjectExists($objectID)) {
+                continue;
+            }
+
+            $object = IPS_GetObject($objectID);
+            $name = IPS_GetName($objectID);
+            $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
+            $objectType = (int) ($object['ObjectType'] ?? -1);
+
+            $isSelectable = $objectType === 2;
+            if ($objectType === 5 && IPS_MediaExists($objectID)) {
+                try {
+                    $media = IPS_GetMedia($objectID);
+                    $isSelectable = (int) ($media['MediaType'] ?? -1) === 3;
+                } catch (Throwable $e) {
+                    $isSelectable = false;
+                }
+            }
+
+            if ($isSelectable) {
+                $haystack = mb_strtolower(
+                    $objectID . ' ' . $name . ' ' . $path . ' ' . (string) ($object['ObjectIdent'] ?? '')
+                );
+
+                if (str_contains($haystack, $Query)) {
+                    $node = $this->BuildObjectTreeNode($objectID, $ParentPath);
+                    if ($node !== null) {
+                        // Suchtreffer werden flach dargestellt; Unterobjekte lädt
+                        // man anschließend wieder über den normalen Lazy-Baum.
+                        $node['hasChildren'] = false;
+                        $node['childrenLoaded'] = true;
+                        $node['children'] = [];
+                        $Result[] = $node;
+
+                        if (count($Result) >= $Limit) {
+                            $Truncated = true;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (count(IPS_GetChildrenIDs($objectID)) > 0) {
+                $this->SearchObjectTreeChildren(
+                    $objectID,
+                    $path,
+                    $Query,
+                    $Limit,
+                    $Result,
+                    $Truncated
+                );
+            }
+        }
+    }
+
+    private function SortObjectTreeNodes(array &$Nodes): void
+    {
+        usort(
+            $Nodes,
+            static function (array $a, array $b): int {
+                $typeOrder = [0 => 0, 1 => 1, 2 => 2, 6 => 3, 3 => 4, 5 => 5, 4 => 6];
+                $ao = $typeOrder[(int) $a['objectType']] ?? 99;
+                $bo = $typeOrder[(int) $b['objectType']] ?? 99;
+                if ($ao !== $bo) {
+                    return $ao <=> $bo;
+                }
+                return strnatcasecmp((string) $a['name'], (string) $b['name']);
+            }
+        );
+    }
+
+    private function FindPresentationValue(array $Data, string $WantedKey): mixed
+    {
+        foreach ($Data as $key => $value) {
+            if (strcasecmp((string) $key, $WantedKey) === 0) {
+                return $value;
+            }
+            if (is_array($value)) {
+                $found = $this->FindPresentationValue($value, $WantedKey);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private function GetVisualPresentationIcons(array $Presentation, int $VariableType): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+
+        if ($Presentation === []) {
+            return $result;
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($Presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($Presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+        } else {
+            $icon = trim((string) ($this->FindPresentationValue($Presentation, 'ICON') ?? ''));
+            if ($icon !== '') {
+                $result['icon'] = $icon;
+            }
+        }
+
+        $glowColorRaw = $this->FindPresentationValue($Presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($Presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
+        return $result;
+    }
+
+    private function GetNewPresentationIcons(int $VariableID, int $VariableType, mixed $RawValue, array $Variable): array
+    {
+        $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
+
+        // Neue Darstellung nur verwenden, wenn wirklich eine neue Darstellung
+        // an der Variable hinterlegt ist. Legacy-Profile werden hier bewusst ignoriert.
+        $hasNewPresentation =
+            !empty($Variable['VariableCustomPresentation'] ?? []) ||
+            !empty($Variable['VariablePresentation'] ?? []);
+
+        if (!$hasNewPresentation) {
+            return $result;
+        }
+
+        $presentation = [];
+        if (function_exists('IPS_GetVariablePresentation')) {
+            try {
+                $candidate = IPS_GetVariablePresentation($VariableID);
+                if (is_array($candidate)) {
+                    $presentation = $candidate;
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('VariablePresentation', $e->getMessage(), 0);
+            }
+        }
+
+        if ($presentation === []) {
+            $presentation = !empty($Variable['VariableCustomPresentation'] ?? [])
+                ? (array) $Variable['VariableCustomPresentation']
+                : (array) ($Variable['VariablePresentation'] ?? []);
+        }
+
+        $iconTrue = trim((string) ($this->FindPresentationValue($presentation, 'ICON_TRUE') ?? ''));
+        $iconFalse = trim((string) ($this->FindPresentationValue($presentation, 'ICON_FALSE') ?? ''));
+        $useIconFalseRaw = $this->FindPresentationValue($presentation, 'USE_ICON_FALSE');
+        $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
+
+        // Neue Bool-Schalterdarstellung:
+        // GLOW_COLOR ist ein Symcon-Farbwert als Integer (z. B. 4041727 = #3DABFF).
+        // GLOW_INTENSITY liegt als Prozentwert 0..100 vor.
+        $glowColorRaw = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
+        if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
+            $glowColor = (int) $glowColorRaw;
+            if ($glowColor >= 0) {
+                $result['glowColor'] = sprintf('#%06X', $glowColor & 0xFFFFFF);
+            }
+        }
+
+        $glowIntensityRaw = $this->FindPresentationValue($presentation, 'GLOW_INTENSITY');
+        if ($glowIntensityRaw !== null && is_numeric($glowIntensityRaw)) {
+            $result['glowIntensity'] = max(0, min(100, (int) $glowIntensityRaw));
+        }
+
+        if ($VariableType === 0 && $iconTrue !== '') {
+            $result['on'] = $iconTrue;
+            $result['off'] = ($useIconFalse && $iconFalse !== '') ? $iconFalse : $iconTrue;
+            return $result;
+        }
+
+        $icon = trim((string) ($this->FindPresentationValue($presentation, 'ICON') ?? ''));
+        if ($icon !== '') {
+            $result['icon'] = $icon;
+        }
+
+        return $result;
+    }
+
+    private function GetActiveVariablePresentationInfo(int $VariableID): array
+    {
+        $result = [
+            'parameters'      => [],
+            'presentationID'  => '',
+            'isLegacyProfile' => false,
+            'legacyProfile'   => ''
+        ];
+
+        if (!function_exists('IPS_GetVariablePresentation')) {
+            return $result;
+        }
+
+        try {
+            $parameters = IPS_GetVariablePresentation($VariableID);
+            if (!is_array($parameters)) {
+                return $result;
+            }
+
+            $result['parameters'] = $parameters;
+            $result['presentationID'] = (string) ($parameters['PRESENTATION'] ?? '');
+
+            /*
+             * Entscheidend ist die tatsächlich aktive Darstellung:
+             *
+             * Legacy Profile:
+             *   PROFILE      => ~Switch
+             *   PRESENTATION => {4153A8D4-...}
+             *
+             * Neue Darstellung:
+             *   ICON_TRUE / ICON_FALSE / GLOW_COLOR / ...
+             *   PRESENTATION => {...}
+             *
+             * Damit ist PROFILE das eindeutige Kennzeichen der aktuell
+             * wirksamen Legacy-Profil-Darstellung. Alte VariableProfile-
+             * Felder werden für diese Entscheidung bewusst ignoriert.
+             */
+            $legacyProfile = trim((string) ($parameters['PROFILE'] ?? ''));
+            $result['isLegacyProfile'] = $legacyProfile !== '';
+            $result['legacyProfile'] = $legacyProfile;
+        } catch (Throwable $e) {
+            $this->SendDebug('GetVariablePresentation', $e->getMessage(), 0);
+        }
+
+        return $result;
+    }
+
+    private function GetEffectiveVariableActionID(array $Variable): int
+    {
+        $customAction = (int) ($Variable['VariableCustomAction'] ?? 0);
+        $defaultAction = (int) ($Variable['VariableAction'] ?? 0);
+
+        /*
+         * IP-Symcon-Sonderfall:
+         * VariableCustomAction = 1 bedeutet NICHT "Action-ID 1",
+         * sondern dass eine vorhandene Standardaktion explizit deaktiviert wurde.
+         */
+        if ($customAction === 1) {
+            return 0;
+        }
+
+        if ($customAction > 1) {
+            return $customAction;
+        }
+
+        return $defaultAction > 0 ? $defaultAction : 0;
+    }
+
+    private function PresentationAllowsRequestAction(string $PresentationID): bool
+    {
+        if ($PresentationID === '' || !function_exists('IPS_GetPresentation')) {
+            return false;
+        }
+
+        try {
+            $presentation = IPS_GetPresentation($PresentationID);
+
+            // Je nach Symcon-Version kommt hier JSON als String oder bereits ein Array.
+            if (is_string($presentation)) {
+                $decoded = json_decode($presentation, true);
+                $presentation = is_array($decoded) ? $decoded : [];
+            }
+
+            if (!is_array($presentation)) {
+                return false;
+            }
+
+            $restrictions = $presentation['restrictions'] ?? [];
+            return is_array($restrictions) && (($restrictions['requestAction'] ?? false) === true);
+        } catch (Throwable $e) {
+            $this->SendDebug('PresentationAllowsRequestAction', $e->getMessage(), 0);
+            return false;
+        }
+    }
+
+    private function DecodePresentationArrayValue(mixed $Value): array
+    {
+        if (is_array($Value)) {
+            return $Value;
+        }
+
+        if (!is_string($Value) || trim($Value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($Value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function PresentationEntryValue(array $Entry, array $Keys, mixed $Default = null): mixed
+    {
+        foreach ($Keys as $key) {
+            if (array_key_exists($key, $Entry)) {
+                return $Entry[$key];
+            }
+        }
+
+        $lower = [];
+        foreach ($Entry as $key => $value) {
+            $lower[strtolower((string) $key)] = $value;
+        }
+
+        foreach ($Keys as $key) {
+            $normalized = strtolower($key);
+            if (array_key_exists($normalized, $lower)) {
+                return $lower[$normalized];
+            }
+        }
+
+        return $Default;
+    }
+
+    private function SymconColorToCss(mixed $Color): string
+    {
+        if (is_string($Color)) {
+            $color = trim($Color);
+            if (preg_match('/^#[0-9a-f]{6}$/i', $color) === 1) {
+                return strtoupper($color);
+            }
+            if ($color !== '' && is_numeric($color)) {
+                $Color = (int) $color;
+            }
+        }
+
+        if (is_int($Color) || is_float($Color)) {
+            $value = (int) $Color;
+
+            // IP-Symcon verwendet -1 als "keine/transparent"-Farbe.
+            if ($value < 0) {
+                return '';
+            }
+
+            return sprintf('#%06X', $value & 0xFFFFFF);
+        }
+
+        return '';
+    }
+
+    private function GetNewIntegerPresentationMeta(array $Presentation, mixed $RawValue): array
+    {
+        $result = [
+            'statusColor' => '',
+            'valueText'   => '',
+            'profile'     => null
+        ];
+
+        $rawNumeric = is_numeric($RawValue) ? (float) $RawValue : null;
+
+        // Enumeration / Value Presentation: OPTIONS enthält die einzelnen Werte.
+        $optionsRaw = $this->FindPresentationValue($Presentation, 'OPTIONS');
+        $options = $this->DecodePresentationArrayValue($optionsRaw);
+
+        if ($options !== []) {
+            $associations = [];
+
+            foreach ($options as $option) {
+                if (!is_array($option)) {
+                    continue;
+                }
+
+                $value = $this->PresentationEntryValue(
+                    $option,
+                    ['Value', 'value', 'OptionValue', 'ValueValue'],
+                    null
+                );
+                if (!is_numeric($value)) {
+                    continue;
+                }
+
+                $caption = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Caption', 'Name', 'Text', 'Label', 'caption', 'name'],
+                    ''
+                );
+                $icon = (string) $this->PresentationEntryValue(
+                    $option,
+                    ['Icon', 'ICON', 'icon'],
+                    ''
+                );
+
+                $colorActiveRaw = $this->PresentationEntryValue(
+                    $option,
+                    ['ColorActive', 'COLOR_ACTIVE', 'colorActive'],
+                    true
+                );
+                $colorActive = filter_var(
+                    $colorActiveRaw,
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                );
+                if ($colorActive === null) {
+                    $colorActive = true;
+                }
+
+                $color = $colorActive
+                    ? $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $option,
+                            // Enumeration verwendet offiziell "Color".
+                            // "ColorValue" zusätzlich für konvertierte/ältere
+                            // Darstellungsdaten akzeptieren.
+                            ['Color', 'COLOR', 'color', 'ColorValue'],
+                            null
+                        )
+                    )
+                    : '';
+
+                $associations[] = [
+                    'value' => (float) $value,
+                    'name'  => $caption,
+                    'icon'  => $icon,
+                    'color' => $color
+                ];
+
+                if (
+                    $rawNumeric !== null &&
+                    abs((float) $value - $rawNumeric) < 0.000001
+                ) {
+                    if ($caption !== '') {
+                        $result['valueText'] = $caption;
+                    }
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+            }
+
+            if ($associations !== []) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => null,
+                    'max'          => null,
+                    'step'         => null,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => $associations
+                ];
+            }
+        }
+
+        // Interval Presentation: Farbe anhand des aktuellen Wertebereichs.
+        $intervalsActive = filter_var(
+            $this->FindPresentationValue($Presentation, 'INTERVALS_ACTIVE'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $intervals = $this->DecodePresentationArrayValue(
+            $this->FindPresentationValue($Presentation, 'INTERVALS')
+        );
+
+        if ($intervalsActive && $rawNumeric !== null && $intervals !== []) {
+            foreach ($intervals as $interval) {
+                if (!is_array($interval)) {
+                    continue;
+                }
+
+                $min = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMinValue', 'MinValue', 'min'],
+                    null
+                );
+                $max = $this->PresentationEntryValue(
+                    $interval,
+                    ['IntervalMaxValue', 'MaxValue', 'max'],
+                    null
+                );
+
+                if (!is_numeric($min) || !is_numeric($max)) {
+                    continue;
+                }
+
+                if ($rawNumeric < (float) $min || $rawNumeric > (float) $max) {
+                    continue;
+                }
+
+                $active = $this->PresentationEntryValue(
+                    $interval,
+                    ['ColorActive', 'Active', 'active'],
+                    true
+                );
+
+                if (filter_var($active, FILTER_VALIDATE_BOOLEAN)) {
+                    $color = $this->SymconColorToCss(
+                        $this->PresentationEntryValue(
+                            $interval,
+                            // Für Wertanzeige-Intervalle zuerst ColorValue.
+                            // Color bleibt als Fallback für Symcon-Versionen/
+                            // Konfigurationen, die diesen Namen verwenden.
+                            ['ColorValue', 'Color', 'COLOR', 'color'],
+                            null
+                        )
+                    );
+                    if ($color !== '') {
+                        $result['statusColor'] = $color;
+                    }
+                }
+                break;
+            }
+        }
+
+        // Allgemeine Farbe der neuen Darstellung als letzter Fallback.
+        if ($result['statusColor'] === '') {
+            $result['statusColor'] = $this->SymconColorToCss(
+                $this->FindPresentationValue($Presentation, 'COLOR')
+            );
+        }
+
+        // Falls MIN/MAX/STEP in der neuen Darstellung vorhanden sind, daraus
+        // einen Wertebereich erzeugen. Das bestehende Bedienkonzept kann ihn
+        // verwenden, aber nur wenn _canAction=true ist.
+        if ($result['profile'] === null) {
+            $min = $this->FindPresentationValue($Presentation, 'MIN');
+            if ($min === null) {
+                $min = $this->FindPresentationValue($Presentation, 'MIN_VALUE');
+            }
+            $max = $this->FindPresentationValue($Presentation, 'MAX');
+            if ($max === null) {
+                $max = $this->FindPresentationValue($Presentation, 'MAX_VALUE');
+            }
+            $step = $this->FindPresentationValue($Presentation, 'STEP');
+            if ($step === null) {
+                $step = $this->FindPresentationValue($Presentation, 'STEP_SIZE');
+            }
+
+            if (is_numeric($min) && is_numeric($max) && (float) $max > (float) $min) {
+                $result['profile'] = [
+                    'name'         => '',
+                    'min'          => (float) $min,
+                    'max'          => (float) $max,
+                    'step'         => is_numeric($step) ? (float) $step : 1,
+                    'prefix'       => '',
+                    'suffix'       => '',
+                    'associations' => []
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    private function GetVariableRuntimeMeta(int $VariableID): array
+    {
+        $variable = IPS_GetVariable($VariableID);
+        $variableType = (int) ($variable['VariableType'] ?? -1);
+        $rawValue = GetValue($VariableID);
+
+        $activePresentation = $this->GetActiveVariablePresentationInfo($VariableID);
+
+        // Ab Symcon 8.1 ist IPS_GetVariablePresentation() die maßgebliche Quelle:
+        // Es liefert die Parameter der AKTUELL genutzten Darstellung.
+        $activePresentationID = (string) ($activePresentation['presentationID'] ?? '');
+        $activeIsLegacy = (bool) ($activePresentation['isLegacyProfile'] ?? false);
+
+        $legacyProfileFromPresentation = (string) ($activePresentation['legacyProfile'] ?? '');
+        $profileName = $legacyProfileFromPresentation !== ''
+            ? $legacyProfileFromPresentation
+            : (string) (($variable['VariableCustomProfile'] ?? '') ?: ($variable['VariableProfile'] ?? ''));
+
+        $hasLegacyProfile =
+            $activeIsLegacy &&
+            $profileName !== '' &&
+            IPS_VariableProfileExists($profileName);
+
+        $hasNewPresentation =
+            $activePresentationID !== '' &&
+            !$activeIsLegacy;
+
+        // Nur als Fallback für Systeme/Variablen, bei denen die aktive Darstellung
+        // nicht geliefert werden kann, verwenden wir die alten Felder.
+        if ($activePresentationID === '') {
+            $fallbackHasPresentation =
+                !empty($variable['VariableCustomPresentation'] ?? []) ||
+                !empty($variable['VariablePresentation'] ?? []);
+
+            $hasLegacyProfile =
+                !$fallbackHasPresentation &&
+                $profileName !== '' &&
+                IPS_VariableProfileExists($profileName);
+
+            $hasNewPresentation = $fallbackHasPresentation;
+        }
+
+        // ICON / ICON_TRUE / ICON_FALSE gehören zu den zusätzlichen visuellen
+        // Einstellungen der Variable. Diese Werte können auch vorhanden sein,
+        // wenn die eigentliche Darstellung weiterhin ein Legacy-Profil nutzt.
+        // Darum NICHT vom Legacy-Profil-Icon ableiten.
+        $presentationIcons = $this->GetVisualPresentationIcons(
+            (array) ($activePresentation['parameters'] ?? []),
+            $variableType
+        );
+
+        // Fallback für Systeme, bei denen IPS_GetVariablePresentation() keine
+        // vollständigen Parameter liefert, aber eine neue Darstellung aktiv ist.
+        if (
+            $hasNewPresentation &&
+            $presentationIcons['icon'] === '' &&
+            $presentationIcons['off'] === '' &&
+            $presentationIcons['on'] === ''
+        ) {
+            $presentationIcons = $this->GetNewPresentationIcons(
+                $VariableID,
+                $variableType,
+                $rawValue,
+                $variable
+            );
+        }
+        $profile = null;
+        $profileSummary = '';
+
+        // Den sichtbaren Wert grundsätzlich von IP-Symcon formatieren lassen.
+        // Damit werden Legacy-Profile (Digits, Prefix/Suffix, Assoziationen)
+        // genauso dargestellt wie die Variable selbst. Für neue Darstellungen
+        // wird weiter unten zusätzlich ein gezielter DIGITS-Fallback angewandt,
+        // falls GetValueFormatted() nur den Rohwert zurückliefert.
+        $referencedProfileExists =
+            $profileName === '' ||
+            IPS_VariableProfileExists($profileName);
+
+        $valueText = $this->GetFormattedVariableValue(
+            $VariableID,
+            $rawValue,
+            (array) ($activePresentation['parameters'] ?? []),
+            $hasNewPresentation,
+            $referencedProfileExists
+        );
+        $legacyColorOn = '';
+        $legacyCurrentColor = '';
+        $newIntegerStatusColor = '';
+
+        // Integer mit neuer Variablendarstellung:
+        // OPTIONS / INTERVALS / COLOR direkt aus der aktiven Präsentation lesen.
+        if ($variableType === 1 && $hasNewPresentation) {
+            $newIntegerMeta = $this->GetNewIntegerPresentationMeta(
+                (array) ($activePresentation['parameters'] ?? []),
+                $rawValue
+            );
+
+            $newIntegerStatusColor = (string) ($newIntegerMeta['statusColor'] ?? '');
+
+            if ((string) ($newIntegerMeta['valueText'] ?? '') !== '') {
+                $valueText = (string) $newIntegerMeta['valueText'];
+            }
+
+            if (is_array($newIntegerMeta['profile'] ?? null)) {
+                $profile = $newIntegerMeta['profile'];
+
+                $assocCount = count((array) ($profile['associations'] ?? []));
+                if ($assocCount > 0) {
+                    $profileSummary = $assocCount . ' Stellungen';
+                } elseif (
+                    is_numeric($profile['min'] ?? null) &&
+                    is_numeric($profile['max'] ?? null)
+                ) {
+                    $profileSummary = $profile['min'] . '…' . $profile['max'];
+                }
+            }
+        }
+
+        if ($profileName !== '' && IPS_VariableProfileExists($profileName)) {
+            try {
+                $p = IPS_GetVariableProfile($profileName);
+                $associations = [];
+
+                foreach (($p['Associations'] ?? []) as $association) {
+                    $associations[] = [
+                        'value' => $association['Value'] ?? 0,
+                        'name'  => (string) ($association['Name'] ?? ''),
+                        'icon'  => (string) ($association['Icon'] ?? ''),
+                        'color' => (int) ($association['Color'] ?? -1)
+                    ];
+                }
+
+                $profile = [
+                    'name'         => $profileName,
+                    'min'          => $p['MinValue'] ?? null,
+                    'max'          => $p['MaxValue'] ?? null,
+                    'step'         => $p['StepSize'] ?? null,
+                    'prefix'       => (string) ($p['Prefix'] ?? ''),
+                    'suffix'       => (string) ($p['Suffix'] ?? ''),
+                    'associations' => $associations
+                ];
+
+                if ($hasLegacyProfile && $variableType === 0) {
+                    foreach ($associations as $association) {
+                        if ((float) ($association['value'] ?? 0) !== 1.0) {
+                            continue;
+                        }
+                        $color = (int) ($association['color'] ?? -1);
+                        if ($color >= 0) {
+                            $legacyColorOn = sprintf('#%06X', $color & 0xFFFFFF);
+                        }
+                        break;
+                    }
+                }
+
+                $parts = [];
+                if ($associations !== []) {
+                    $parts[] = count($associations) . ' Stellungen';
+                }
+                if (isset($p['MinValue'], $p['MaxValue']) && (float) $p['MaxValue'] > (float) $p['MinValue']) {
+                    $parts[] = $p['MinValue'] . '…' . $p['MaxValue'] . (string) ($p['Suffix'] ?? '');
+                }
+                $profileSummary = implode(' · ', $parts);
+
+                foreach ($associations as $association) {
+                    // String-Variablen müssen gegen String-Assoziationen exakt
+                    // verglichen werden (z. B. NOT_CHARGING -> Lädt nicht).
+                    // Eine Umwandlung nach float würde beliebige Texte zu 0
+                    // machen und dadurch die falsche Assoziation treffen.
+                    $associationMatches = $variableType === 3
+                        ? (string) ($association['value'] ?? '') === (string) $rawValue
+                        : (float) ($association['value'] ?? 0) === (float) $rawValue;
+
+                    if (!$associationMatches) {
+                        continue;
+                    }
+
+                    if ($association['name'] !== '') {
+                        $valueText = $association['name'];
+                    }
+
+                    // Aktuelle Farbe der passenden Legacy-Assoziation.
+                    // Keine Änderung am Icon oder an der Variablenauswahl.
+                    $associationColor = (int) ($association['color'] ?? -1);
+                    if ($hasLegacyProfile && $associationColor >= 0) {
+                        $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
+                    }
+                    break;
+                }
+
+                // $valueText kommt bereits aus GetValueFormatted(). Dadurch
+                // werden insbesondere die im Legacy-Profil hinterlegten Digits
+                // sowie Prefix/Suffix exakt von Symcon übernommen.
+            } catch (Throwable $e) {
+                $this->SendDebug('VariableProfile', $profileName . ': ' . $e->getMessage(), 0);
+            }
+        }
+
+        $variableInfo = IPS_GetVariable($VariableID);
+        $actionID = $this->GetEffectiveVariableActionID($variableInfo);
+
+        // Für die Bedienbarkeit ist die an der Variable hinterlegte Aktion
+        // maßgeblich. Die Präsentation bestimmt Darstellung/Formatierung, darf
+        // die Bedienung in IPSView aber nicht zusätzlich sperren. Andernfalls
+        // wird das Gerät im Live-Modus als "status-only" markiert und durch
+        // pointer-events:none vollständig unklickbar.
+        $canAction = $actionID > 0;
+
+        $objectInfo = IPS_GetObject($VariableID);
+
+        return [
+            '_variableType'         => $variableType,
+            '_objectIcon'           => (string) ($objectInfo['ObjectIcon'] ?? ''),
+            '_hasLegacyProfile'     => $hasLegacyProfile,
+            '_hasNewPresentation'   => $hasNewPresentation,
+            '_activePresentationID' => $activePresentationID,
+            '_presentationIcon'     => (string) ($presentationIcons['icon'] ?? ''),
+            '_presentationIconOff'  => (string) ($presentationIcons['off'] ?? ''),
+            '_presentationIconOn'   => (string) ($presentationIcons['on'] ?? ''),
+            '_glowColor'            => (string) ($presentationIcons['glowColor'] ?? ''),
+            '_glowIntensity'        => (int) ($presentationIcons['glowIntensity'] ?? 0),
+            '_legacyColorOn'        => $legacyColorOn,
+            '_legacyCurrentColor'   => $legacyCurrentColor,
+            '_newIntegerStatusColor'=> $newIntegerStatusColor,
+            '_variablePath'         => $this->GetObjectPath($VariableID),
+            '_rawValue'       => $rawValue,
+            '_valueText'      => $valueText,
+            '_profileName'    => $profileName,
+            '_profileSummary' => $profileSummary,
+            '_profile'        => $profile,
+            '_canAction'      => $canAction
+        ];
+    }
+
+    private function GetFormattedVariableValue(
+        int $VariableID,
+        mixed $RawValue,
+        array $Presentation,
+        bool $HasNewPresentation,
+        bool $ReferencedProfileExists = true
+    ): string {
+        $rawText = $this->FormatRawValue($RawValue);
+        $formatted = '';
+
+        // Legacy-Profile und aktuelle Symcon-Versionen mit neuer Darstellung:
+        // Symcon selbst ist die erste Quelle für die sichtbare Formatierung.
+        //
+        // Wichtig: Variablen können noch auf ein inzwischen gelöschtes Profil
+        // verweisen. Das darf die Variablenauswahl im Floorplan nicht blockieren.
+        // In diesem Fall GetValueFormatted() gar nicht erst aufrufen, weil Symcon
+        // sonst eine sichtbare Warnung "Profil ... existiert nicht" erzeugt.
+        if ($ReferencedProfileExists) {
+            try {
+                $formatted = (string) @GetValueFormatted($VariableID);
+            } catch (Throwable $e) {
+                $this->SendDebug('GetValueFormatted', $VariableID . ': ' . $e->getMessage(), 0);
+            }
+        }
+
+        if (!$HasNewPresentation || !is_numeric($RawValue)) {
+            return $formatted !== '' ? $formatted : $rawText;
+        }
+
+        // Bei neuen Wertdarstellungen gab/gibt es Symcon-Versionen, in denen
+        // GetValueFormatted() bei numerischen Werten nur den Rohwert liefert.
+        // Wenn DIGITS explizit gesetzt ist und die Ausgabe offensichtlich noch
+        // unformatiert ist, übernehmen wir diese Darstellung selbst.
+        $digitsRaw = $this->FindPresentationValue($Presentation, 'DIGITS');
+        if (!is_numeric($digitsRaw)) {
+            return $formatted !== '' ? $formatted : $rawText;
+        }
+
+        $digits = max(0, min(12, (int) $digitsRaw));
+        $formattedLooksRaw =
+            $formatted === '' ||
+            trim($formatted) === trim($rawText) ||
+            (is_numeric(trim($formatted)) && (float) trim($formatted) === (float) $RawValue);
+
+        if (!$formattedLooksRaw) {
+            return $formatted;
+        }
+
+        $prefix = (string) ($this->FindPresentationValue($Presentation, 'PREFIX') ?? '');
+        $suffix = (string) ($this->FindPresentationValue($Presentation, 'SUFFIX') ?? '');
+
+        // Dezimal-/Tausender-Trenner nur dann fest übernehmen, wenn die
+        // Darstellung tatsächlich einen konkreten Trenner vorgibt. 'Client'
+        // bleibt Symcon/Client überlassen; als neutraler Fallback verwenden wir
+        // den Punkt und keinen Tausendertrenner.
+        $decimalRaw = $this->FindPresentationValue($Presentation, 'DECIMAL_SEPARATOR');
+        $thousandsRaw = $this->FindPresentationValue($Presentation, 'THOUSANDS_SEPARATOR');
+
+        $decimalSeparator = is_string($decimalRaw) && $decimalRaw !== '' && strcasecmp($decimalRaw, 'Client') !== 0
+            ? $decimalRaw
+            : '.';
+        $thousandsSeparator = is_string($thousandsRaw) && strcasecmp($thousandsRaw, 'Client') !== 0
+            ? $thousandsRaw
+            : '';
+
+        $number = number_format(
+            (float) $RawValue,
+            $digits,
+            $decimalSeparator,
+            $thousandsSeparator
+        );
+
+        return $prefix . $number . $suffix;
+    }
+
+    private function FormatRawValue(mixed $Value): string
+    {
+        if (is_bool($Value)) {
+            return $Value ? 'Ein' : 'Aus';
+        }
+        if (is_float($Value)) {
+            $formatted = rtrim(rtrim(number_format($Value, 3, '.', ''), '0'), '.');
+            return $formatted === '-0' ? '0' : $formatted;
+        }
+        if (is_int($Value) || is_string($Value)) {
+            return (string) $Value;
+        }
+        return '';
+    }
+
+    private function GetObjectPath(int $ObjectID): string
+    {
+        $parts = [];
+        $current = $ObjectID;
+
+        while ($current > 0 && IPS_ObjectExists($current)) {
+            array_unshift($parts, IPS_GetName($current));
+            $object = IPS_GetObject($current);
+            $current = (int) ($object['ParentID'] ?? 0);
+        }
+
+        return implode(' / ', $parts);
+    }
+
+    private function OperateItem(string $FloorID, string $ItemID): void
+    {
+        $this->OperateItemValueInternal($FloorID, $ItemID, null, true);
+    }
+
+    private function OperateItemValue(string $FloorID, string $ItemID, mixed $Value): void
+    {
+        $this->OperateItemValueInternal($FloorID, $ItemID, $Value, false);
+    }
+
+    private function OperateItemValueInternal(string $FloorID, string $ItemID, mixed $Value, bool $ToggleBoolean): void
+    {
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['items'] ?? []) as $item) {
+                if ((string) ($item['id'] ?? '') !== $ItemID) {
+                    continue;
+                }
+
+                $variableID = (int) ($item['variableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+
+                // Exakt dieselbe Bedienfreigabe wie im Live-Rendering verwenden.
+                // Reine Statusvariablen gelangen damit auch serverseitig niemals
+                // in RequestAction.
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    return;
+                }
+
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+
+                if ($ToggleBoolean) {
+                    if ($variableType !== 0) {
+                        return;
+                    }
+                    $targetValue = !GetValueBoolean($variableID);
+                } else {
+                    if ($variableType === 1) {
+                        $targetValue = (int) round((float) $Value);
+                    } elseif ($variableType === 2) {
+                        $targetValue = (float) $Value;
+                    } elseif ($variableType === 0) {
+                        $targetValue = (bool) $Value;
+                    } else {
+                        return;
+                    }
+                }
+
+                if (!$this->DispatchVariableAction($variableID, $targetValue)) {
+                    return;
+                }
+
+                // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
+                // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+                return;
+            }
+        }
+    }
+
+    private function OperateItemColorValue(string $FloorID, string $ItemID, mixed $Value): void
+    {
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['items'] ?? []) as $item) {
+                if ((string) ($item['id'] ?? '') !== $ItemID || ($item['colorControlEnabled'] ?? false) !== true) {
+                    continue;
+                }
+
+                $variableID = (int) ($item['colorVariableID'] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                if ((int) ($variable['VariableType'] ?? -1) !== 1) {
+                    return;
+                }
+
+                $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
+                if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    return;
+                }
+
+                $targetValue = max(0, min(0xFFFFFF, (int) round((float) $Value)));
+                $this->DispatchVariableAction($variableID, $targetValue);
+                return;
+            }
+        }
+    }
+
+    private function OperateOpeningValue(string $FloorID, string $OpeningID, string $Field, mixed $Value): void
+    {
+        if (!in_array($Field, ['variableID', 'secondaryVariableID', 'shutterVariableID', 'shutterSecondaryVariableID'], true)) {
+            return;
+        }
+
+        $project = $this->GetProject();
+
+        foreach (($project['floors'] ?? []) as $floor) {
+            if ((string) ($floor['id'] ?? '') !== $FloorID) {
+                continue;
+            }
+
+            foreach (($floor['openings'] ?? []) as $opening) {
+                if ((string) ($opening['id'] ?? '') !== $OpeningID) {
+                    continue;
+                }
+
+                $variableID = (int) ($opening[$Field] ?? 0);
+                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    return;
+                }
+
+                $variable = IPS_GetVariable($variableID);
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+
+                if ($variableType === 1) {
+                    $targetValue = (int) round((float) $Value);
+                } elseif ($variableType === 2) {
+                    $targetValue = (float) $Value;
+                } elseif ($variableType === 0) {
+                    $targetValue = (bool) $Value;
+                } else {
+                    return;
+                }
+
+                $this->DispatchVariableAction($variableID, $targetValue);
+                return;
+            }
+        }
+    }
+
+    private function DispatchVariableAction(int $VariableID, mixed $Value): bool
+    {
+        $variable = IPS_GetVariable($VariableID);
+        $actionID = $this->GetEffectiveVariableActionID($variable);
+
+        try {
+            if ($actionID > 0) {
+                \RequestAction($VariableID, $Value);
+                return true;
+            }
+
+            $object = IPS_GetObject($VariableID);
+            $parentID = (int) ($object['ParentID'] ?? 0);
+            $ident = (string) ($object['ObjectIdent'] ?? '');
+
+            if ($parentID > 0 && $ident !== '' && IPS_InstanceExists($parentID)) {
+                \IPS_RequestAction($parentID, $ident, $Value);
+                return true;
+            }
+
+            if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+                SetValue($VariableID, $Value);
+                return true;
+            }
+
+            $this->SendDebug('OperateItem', 'Variable #' . $VariableID . ' besitzt keine ausführbare Aktion.', 0);
+        } catch (Throwable $e) {
+            $this->SendDebug('OperateItem', 'Variable #' . $VariableID . ': ' . $e->getMessage(), 0);
+        }
+
+        return false;
     }
 
     private function CountElements(array $Project): array
     {
         $counts = [
-            'floors'   => 0,
-            'walls'    => 0,
-            'openings' => 0,
-            'items'    => 0,
-            'texts'    => 0
+            'floors'    => 0,
+            'walls'     => 0,
+            'doors'     => 0,
+            'windows'   => 0,
+            'items'     => 0,
+            'furniture' => 0,
+            'shapes'    => 0,
+            'texts'     => 0
         ];
 
         $floors = $Project['floors'] ?? [];
@@ -1518,9 +10571,23 @@ HTML;
                 continue;
             }
 
-            foreach (['walls', 'openings', 'items', 'texts'] as $key) {
+            foreach (['walls', 'items', 'furniture', 'shapes', 'texts'] as $key) {
                 if (isset($floor[$key]) && is_array($floor[$key])) {
                     $counts[$key] += count($floor[$key]);
+                }
+            }
+
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $opening) {
+                    if (!is_array($opening)) {
+                        continue;
+                    }
+
+                    if (($opening['type'] ?? '') === 'door') {
+                        $counts['doors']++;
+                    } elseif (($opening['type'] ?? '') === 'window') {
+                        $counts['windows']++;
+                    }
                 }
             }
         }
