@@ -143,7 +143,7 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ### 1.20
 
-- Der Variablen-Picker wurde überarbeit, so dass das Speicherlimit auch bei grossen Objektbäumen nicht mehr erreicht werden sollte.
+- Der Variablen-Picker wurde überarbeitet, so dass das Speicherlimit auch bei grossen Objektbäumen nicht mehr erreicht werden sollte.
 
 ### 1.19
 

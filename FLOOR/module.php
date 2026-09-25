@@ -2003,6 +2003,8 @@ HTML;
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
+    let objectTreeSearchTimer = null;
+    let objectTreeSearchRequest = 0;
     let tool = '';
     let selected = null;
     let wallStart = null;
@@ -5867,7 +5869,13 @@ HTML;
                     field: field.dataset.variableField || 'variableID'
                 };
                 statusEl.textContent = 'Objektbaum wird geladen …';
-                requestAction('getObjectTree', '');
+                objectTree = [];
+                expandedObjectIDs.clear();
+                expandedObjectIDs.add(0);
+                requestAction('getObjectTreeChildren', JSON.stringify({
+                    parentID: 0,
+                    parentPath: ''
+                }));
             });
         });
 
@@ -7100,7 +7108,7 @@ HTML;
         if (!nodeMatches(node, needle)) return '';
 
         const children = Array.isArray(node.children) ? node.children : [];
-        const hasChildren = children.length > 0;
+        const hasChildren = node.hasChildren === true || children.length > 0;
         const isVariable = Number(node.objectType) === 2;
         const isStream = node.isStream === true && Number(node.mediaType) === 3;
         const streamSelectable =
@@ -7147,13 +7155,36 @@ HTML;
 
         variableList.innerHTML = `<div class="object-tree">${html || '<div class="tree-empty">Keine passenden Objekte gefunden.</div>'}</div>`;
 
+        const toggleTreeNode = (id) => {
+            const node = findTreeNode(objectTree, id);
+            if (!node) return;
+
+            if (expandedObjectIDs.has(id)) {
+                expandedObjectIDs.delete(id);
+                renderObjectTree(variableSearch.value);
+                return;
+            }
+
+            expandedObjectIDs.add(id);
+
+            // Kinder nur beim ersten Aufklappen vom Modul anfordern.
+            if (node.hasChildren === true && node.childrenLoaded !== true) {
+                statusEl.textContent = 'Unterobjekte werden geladen …';
+                requestAction('getObjectTreeChildren', JSON.stringify({
+                    parentID: id,
+                    parentPath: node.path || ''
+                }));
+                renderObjectTree(variableSearch.value);
+                return;
+            }
+
+            renderObjectTree(variableSearch.value);
+        };
+
         variableList.querySelectorAll('[data-tree-toggle]').forEach(toggle => {
             toggle.addEventListener('click', evt => {
                 evt.stopPropagation();
-                const id = Number(toggle.dataset.treeToggle);
-                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
-                else expandedObjectIDs.add(id);
-                renderObjectTree(variableSearch.value);
+                toggleTreeNode(Number(toggle.dataset.treeToggle));
             });
         });
 
@@ -7163,10 +7194,7 @@ HTML;
 
         variableList.querySelectorAll('.tree-row:not(.variable)').forEach(row => {
             row.addEventListener('dblclick', () => {
-                const id = Number(row.dataset.objectId);
-                if (expandedObjectIDs.has(id)) expandedObjectIDs.delete(id);
-                else expandedObjectIDs.add(id);
-                renderObjectTree(variableSearch.value);
+                toggleTreeNode(Number(row.dataset.objectId));
             });
         });
     }
@@ -7614,7 +7642,31 @@ HTML;
         throw new Error('Floorplan: Variablen-Auswahldialog fehlt im HTML.');
     }
 
-    variableSearch.addEventListener('input', () => renderObjectTree(variableSearch.value));
+    variableSearch.addEventListener('input', () => {
+        const query = String(variableSearch.value || '').trim();
+
+        if (objectTreeSearchTimer !== null) {
+            clearTimeout(objectTreeSearchTimer);
+            objectTreeSearchTimer = null;
+        }
+
+        if (query === '') {
+            requestAction('getObjectTreeChildren', JSON.stringify({
+                parentID: 0,
+                parentPath: ''
+            }));
+            return;
+        }
+
+        objectTreeSearchTimer = setTimeout(() => {
+            const requestID = ++objectTreeSearchRequest;
+            statusEl.textContent = 'Objektbaum wird durchsucht …';
+            requestAction('searchObjectTree', JSON.stringify({
+                query,
+                requestID
+            }));
+        }, 220);
+    });
     document.getElementById('variableCloseBtn').addEventListener('click', () => {
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
@@ -8442,14 +8494,38 @@ HTML;
 
                 // Jetzt läuft exakt die bisherige Zuordnungslogik weiter.
                 assignVariable(Number(data.variableID));
-            } else if (data?.type === 'objectTree' && Array.isArray(data.objects)) {
-                objectTree = data.objects;
-                variableSearch.value = '';
+            } else if (data?.type === 'objectTreeChildren' && Array.isArray(data.objects)) {
+                const parentID = Number(data.parentID || 0);
+
+                if (parentID === 0) {
+                    // Root neu laden; Suchtext nur beim erstmaligen Öffnen leeren.
+                    objectTree = data.objects;
+                    if (!variableModal.classList.contains('open')) {
+                        variableSearch.value = '';
+                    }
+                } else {
+                    const parent = findTreeNode(objectTree, parentID);
+                    if (parent) {
+                        parent.children = data.objects;
+                        parent.childrenLoaded = true;
+                    }
+                }
+
                 renderObjectTree('');
                 variableModal.classList.add('open');
                 variableModal.setAttribute('aria-hidden', 'false');
-                variableSearch.focus();
+                if (parentID === 0) variableSearch.focus();
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
+            } else if (data?.type === 'objectTreeSearchResults' && Array.isArray(data.objects)) {
+                const requestID = Number(data.requestID || 0);
+                if (requestID < objectTreeSearchRequest) return;
+
+                objectTree = data.objects;
+                expandedObjectIDs.clear();
+                renderObjectTree('');
+                statusEl.textContent = data.truncated === true
+                    ? 'Suche – erste 200 Treffer'
+                    : 'Suche – Variable auswählen';
             } else if (data?.type === 'runtimeValue') {
                 const floor = state.floors.find(f => f.id === data.floorId);
                 const item = floor?.items.find(i => i.id === data.itemId);
@@ -8625,14 +8701,61 @@ JAVASCRIPT;
                 $this->ReloadForm();
                 break;
 
-            case 'getObjectTree':
+            case 'getObjectTreeChildren':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+
+                $parentID = max(0, (int) ($request['parentID'] ?? 0));
+                $parentPath = (string) ($request['parentPath'] ?? '');
+
+                if ($parentID !== 0 && !IPS_ObjectExists($parentID)) {
+                    break;
+                }
+
                 $message = json_encode(
                     [
-                        'type'    => 'objectTree',
-                        'objects' => $this->BuildObjectTree()
+                        'type'     => 'objectTreeChildren',
+                        'parentID' => $parentID,
+                        'objects'  => $this->BuildObjectChildrenLazy($parentID, $parentPath)
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
+
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'searchObjectTree':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Suche.');
+                }
+
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Suche.');
+                }
+
+                $query = trim((string) ($request['query'] ?? ''));
+                $requestID = (int) ($request['requestID'] ?? 0);
+                $search = $this->SearchObjectTree($query, 200);
+
+                $message = json_encode(
+                    [
+                        'type'      => 'objectTreeSearchResults',
+                        'requestID' => $requestID,
+                        'objects'   => $search['objects'],
+                        'truncated' => $search['truncated']
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
+
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
@@ -9215,115 +9338,203 @@ JAVASCRIPT;
         return $Project;
     }
 
-    private function BuildObjectTree(): array
-    {
-        return $this->BuildObjectChildren(0, '');
-    }
-
-    private function BuildObjectChildren(int $ParentID, string $ParentPath): array
+    /**
+     * Liefert ausschließlich die DIREKTEN Kinder eines Objekts.
+     * Dadurch wächst ein Request nicht mehr mit dem gesamten Symcon-Objektbaum.
+     */
+    private function BuildObjectChildrenLazy(int $ParentID, string $ParentPath): array
     {
         $result = [];
 
         foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
-            if (!IPS_ObjectExists($objectID)) {
+            $node = $this->BuildObjectTreeNode($objectID, $ParentPath);
+            if ($node !== null) {
+                $result[] = $node;
+            }
+        }
+
+        $this->SortObjectTreeNodes($result);
+        return $result;
+    }
+
+    /**
+     * Baut nur den kleinen Datensatz auf, der im Picker sichtbar sein muss.
+     * Profil-/Presentation-/Icon-Metadaten werden weiterhin erst nach Auswahl
+     * einer konkreten Variable über GetVariableRuntimeMeta() geladen.
+     */
+    private function BuildObjectTreeNode(int $ObjectID, string $ParentPath): ?array
+    {
+        if (!IPS_ObjectExists($ObjectID)) {
+            return null;
+        }
+
+        $object = IPS_GetObject($ObjectID);
+        $objectType = (int) ($object['ObjectType'] ?? -1);
+        $name = IPS_GetName($ObjectID);
+        $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
+
+        $typeNames = [
+            0 => 'Kategorie',
+            1 => 'Instanz',
+            2 => 'Variable',
+            3 => 'Script',
+            4 => 'Ereignis',
+            5 => 'Medienobjekt',
+            6 => 'Link'
+        ];
+
+        $node = [
+            'id'             => $ObjectID,
+            'name'           => $name,
+            'path'           => $path,
+            'objectType'     => $objectType,
+            'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
+            'objectIcon'     => (string) ($object['ObjectIcon'] ?? ''),
+            'hasChildren'    => count(IPS_GetChildrenIDs($ObjectID)) > 0,
+            'childrenLoaded' => false,
+            'children'       => []
+        ];
+
+        if ($objectType === 2 && IPS_VariableExists($ObjectID)) {
+            try {
+                $variable = IPS_GetVariable($ObjectID);
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+                $variableTypeNames = [
+                    0 => 'Boolean',
+                    1 => 'Integer',
+                    2 => 'Float',
+                    3 => 'String'
+                ];
+
+                $profileName = (string) ($variable['VariableCustomProfile'] ?? '');
+                if ($profileName === '') {
+                    $profileName = (string) ($variable['VariableProfile'] ?? '');
+                }
+
+                $node['variableType'] = $variableType;
+                $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
+                $node['profileName'] = $profileName;
+                $node['valueText'] = $this->GetFormattedVariableValue(
+                    $ObjectID,
+                    $variableType,
+                    GetValue($ObjectID),
+                    $profileName
+                );
+                $node['runtimeMetaLoaded'] = false;
+            } catch (Throwable $e) {
+                $node['valueText'] = '';
+                $node['runtimeMetaLoaded'] = false;
+                $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
+            }
+        }
+
+        if ($objectType === 5 && IPS_MediaExists($ObjectID)) {
+            try {
+                $media = IPS_GetMedia($ObjectID);
+                if ((int) ($media['MediaType'] ?? -1) === 3) {
+                    $node['isStream'] = true;
+                    $node['mediaType'] = 3;
+                    $node['objectTypeName'] = 'Stream';
+                    $node['valueText'] = 'Stream';
+                }
+            } catch (Throwable $e) {
+                $this->SendDebug('ObjectTree.Stream', $e->getMessage(), 0);
+            }
+        }
+
+        return $node;
+    }
+
+    /**
+     * Server-seitige Suche für den Lazy-Objektbaum.
+     * Es wird nie ein kompletter Baum aufgebaut; gespeichert werden nur Treffer.
+     */
+    private function SearchObjectTree(string $Query, int $Limit = 200): array
+    {
+        $query = mb_strtolower(trim($Query));
+        if ($query === '') {
+            return ['objects' => [], 'truncated' => false];
+        }
+
+        $result = [];
+        $truncated = false;
+        $this->SearchObjectTreeChildren(0, '', $query, max(1, $Limit), $result, $truncated);
+        $this->SortObjectTreeNodes($result);
+
+        return [
+            'objects'   => $result,
+            'truncated' => $truncated
+        ];
+    }
+
+    private function SearchObjectTreeChildren(
+        int $ParentID,
+        string $ParentPath,
+        string $Query,
+        int $Limit,
+        array &$Result,
+        bool &$Truncated
+    ): void {
+        foreach (IPS_GetChildrenIDs($ParentID) as $objectID) {
+            if ($Truncated || !IPS_ObjectExists($objectID)) {
                 continue;
             }
 
             $object = IPS_GetObject($objectID);
-            $objectType = (int) ($object['ObjectType'] ?? -1);
             $name = IPS_GetName($objectID);
             $path = ($ParentPath === '') ? $name : ($ParentPath . ' / ' . $name);
+            $objectType = (int) ($object['ObjectType'] ?? -1);
 
-            $typeNames = [
-                0 => 'Kategorie',
-                1 => 'Instanz',
-                2 => 'Variable',
-                3 => 'Script',
-                4 => 'Ereignis',
-                5 => 'Medienobjekt',
-                6 => 'Link'
-            ];
-
-            $node = [
-                'id'             => $objectID,
-                'name'           => $name,
-                'path'           => $path,
-                'objectType'     => $objectType,
-                'objectTypeName' => $typeNames[$objectType] ?? ('Objekttyp ' . $objectType),
-                'objectIcon'     => (string) ($object['ObjectIcon'] ?? ''),
-                'children'       => []
-            ];
-
-            if ($objectType === 2 && IPS_VariableExists($objectID)) {
-                try {
-                    /*
-                     * Objektbaum bewusst schlank halten:
-                     * GetVariableRuntimeMeta() lädt Profil-/Presentation-/Icon-Daten
-                     * und ist bei sehr großen Symcon-Installationen für tausende
-                     * Variablen unnötig teuer. Für die Baumdarstellung reichen Typ,
-                     * Profilname und der formatierte aktuelle Wert.
-                     *
-                     * Die vollständigen Runtime-Metadaten werden erst angefordert,
-                     * wenn der Benutzer diese konkrete Variable auswählt.
-                     */
-                    $variable = IPS_GetVariable($objectID);
-                    $variableType = (int) ($variable['VariableType'] ?? -1);
-                    $variableTypeNames = [
-                        0 => 'Boolean',
-                        1 => 'Integer',
-                        2 => 'Float',
-                        3 => 'String'
-                    ];
-
-                    $profileName = (string) ($variable['VariableCustomProfile'] ?? '');
-                    if ($profileName === '') {
-                        $profileName = (string) ($variable['VariableProfile'] ?? '');
-                    }
-
-                    $node['variableType'] = $variableType;
-                    $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
-                    $node['profileName'] = $profileName;
-                    $node['valueText'] = $this->GetFormattedVariableValue(
-                        $objectID,
-                        $variableType,
-                        GetValue($objectID),
-                        $profileName
-                    );
-                    $node['runtimeMetaLoaded'] = false;
-                } catch (Throwable $e) {
-                    $node['valueText'] = '';
-                    $node['runtimeMetaLoaded'] = false;
-                    $this->SendDebug('ObjectTree.Variable', $e->getMessage(), 0);
-                }
-            }
-
-            // Stream-Medienobjekte direkt im selben Objektbaum anbieten.
-            // MediaType 3 = Stream. Keine Hersteller-/Protokoll-Erkennung nötig.
+            $isSelectable = $objectType === 2;
             if ($objectType === 5 && IPS_MediaExists($objectID)) {
                 try {
                     $media = IPS_GetMedia($objectID);
-                    $mediaType = (int) ($media['MediaType'] ?? -1);
-                    if ($mediaType === 3) {
-                        $node['isStream'] = true;
-                        $node['mediaType'] = 3;
-                        $node['objectTypeName'] = 'Stream';
-                        $node['valueText'] = 'Stream';
-                    }
+                    $isSelectable = (int) ($media['MediaType'] ?? -1) === 3;
                 } catch (Throwable $e) {
-                    $this->SendDebug('ObjectTree.Stream', $e->getMessage(), 0);
+                    $isSelectable = false;
                 }
             }
 
-            $children = IPS_GetChildrenIDs($objectID);
-            if (count($children) > 0) {
-                $node['children'] = $this->BuildObjectChildren($objectID, $path);
+            if ($isSelectable) {
+                $haystack = mb_strtolower(
+                    $objectID . ' ' . $name . ' ' . $path . ' ' . (string) ($object['ObjectIdent'] ?? '')
+                );
+
+                if (str_contains($haystack, $Query)) {
+                    $node = $this->BuildObjectTreeNode($objectID, $ParentPath);
+                    if ($node !== null) {
+                        // Suchtreffer werden flach dargestellt; Unterobjekte lädt
+                        // man anschließend wieder über den normalen Lazy-Baum.
+                        $node['hasChildren'] = false;
+                        $node['childrenLoaded'] = true;
+                        $node['children'] = [];
+                        $Result[] = $node;
+
+                        if (count($Result) >= $Limit) {
+                            $Truncated = true;
+                            return;
+                        }
+                    }
+                }
             }
 
-            $result[] = $node;
+            if (count(IPS_GetChildrenIDs($objectID)) > 0) {
+                $this->SearchObjectTreeChildren(
+                    $objectID,
+                    $path,
+                    $Query,
+                    $Limit,
+                    $Result,
+                    $Truncated
+                );
+            }
         }
+    }
 
+    private function SortObjectTreeNodes(array &$Nodes): void
+    {
         usort(
-            $result,
+            $Nodes,
             static function (array $a, array $b): int {
                 $typeOrder = [0 => 0, 1 => 1, 2 => 2, 6 => 3, 3 => 4, 5 => 5, 4 => 6];
                 $ao = $typeOrder[(int) $a['objectType']] ?? 99;
@@ -9334,8 +9545,6 @@ JAVASCRIPT;
                 return strnatcasecmp((string) $a['name'], (string) $b['name']);
             }
         );
-
-        return $result;
     }
 
     private function FindPresentationValue(array $Data, string $WantedKey): mixed
