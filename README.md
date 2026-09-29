@@ -4,6 +4,12 @@ Floorplan ist ein interaktiver Grundriss-Editor für **IP-Symcon**. Räume, Wän
 
 Floorplan arbeitet vollständig innerhalb von IP-Symcon und benötigt keine externe Cloud.
 
+### Ursprung
+
+Dieses Projekt basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller**. Easy Floorplan wurde unter der **MIT-Lizenz** veröffentlicht. Der heutige Floorplan wurde für IP-Symcon umfassend weiterentwickelt und arbeitet inzwischen eigenständig.
+
+Die ursprüngliche MIT-Lizenz und der Copyright-Hinweis bleiben im Repository erhalten.
+
 ## ✨ Funktionen
 
 - Grundrisse direkt im Browser zeichnen und bearbeiten
