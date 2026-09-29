@@ -147,6 +147,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.21
+
+- Der Modulcode wurde überarbeitet und auf Store-Kompatibilität geprüft.
+
 ### 1.20
 
 - Der Variablen-Picker wurde überarbeitet, so dass das Speicherlimit auch bei grossen Objektbäumen nicht mehr erreicht werden sollte.
