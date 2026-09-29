@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Floorplan
  * Prefix in module.json: FLOOR
  *
- * Basis / Zielprojekt:
+ * Ursprüngliche Basis / MIT-Hinweis:
  * Easy Floorplan by Nicolas Sandller
  * https://github.com/nicosandller/easy-floorplan
  * License: MIT
@@ -20,11 +20,6 @@ class Floorplan extends IPSModuleStrict
     public function Create(): void
     {
         parent::Create();
-
-        // Easy-Floorplan bleibt als eigene Originaldatei im Modulbaum und wird
-        // wie beim Energiefluss-Modul über einen instanzspezifischen WebHook
-        // ausgeliefert. Dadurch muss die große JS-Datei nicht in die HTML-Ausgabe.
-        $this->RegisterHook($this->GetVisualizationWebHookBaseAddress());
 
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
@@ -122,10 +117,6 @@ class Floorplan extends IPSModuleStrict
                 'caption' => 'Floorplan'
             ],
             [
-                'type'    => 'Label',
-                'caption' => 'Basis: Easy Floorplan (MIT).'
-            ],
-            [
                 'type'     => 'ExpansionPanel',
                 'caption'  => 'Projektstatus',
                 'expanded' => true,
@@ -212,16 +203,10 @@ class Floorplan extends IPSModuleStrict
     public function GetVisualizationTile(): string
     {
         /*
-         * IPSView-kompatible Lade-Architektur:
-         * - easy-floorplan.js bleibt als einziges grosses externes Asset am WebHook.
-         * - Editor-JavaScript und Projekt-/Runtime-Daten werden wieder direkt in die
-         *   HTML-SDK-Kachel eingebettet.
-         * - Kein project.json-Fetch, kein nachgeladener Editor und kein Delay.
-         *
-         * Damit entspricht der Startablauf wieder der zuvor funktionierenden
-         * TileHTML/IPSView-Variante.
+         * Editor-JavaScript und Projekt-/Runtime-Daten werden direkt in die
+         * HTML-SDK-Kachel eingebettet. Es werden keine externen Floorplan-Assets
+         * nachgeladen.
          */
-        $easyFloorplanModuleUrl = $this->GetVisualizationModuleWebHookUrl('easy-floorplan.js');
 
         $project = $this->AddRuntimeValues($this->GetProject());
         $initial = json_encode(
@@ -249,7 +234,6 @@ class Floorplan extends IPSModuleStrict
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <script src="/icons.js"></script>
-    <script type="module" src="__EASY_FLOORPLAN_MODULE_URL__"></script>
     <style>
         :root {
             --fp-bg: transparent;
@@ -1955,14 +1939,8 @@ __FLOORPLAN_EDITOR_JAVASCRIPT__
 HTML;
 
         return str_replace(
-            [
-                '__EASY_FLOORPLAN_MODULE_URL__',
-                '__FLOORPLAN_EDITOR_JAVASCRIPT__'
-            ],
-            [
-                htmlspecialchars($easyFloorplanModuleUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-                $editorJavaScript
-            ],
+            '__FLOORPLAN_EDITOR_JAVASCRIPT__',
+            $editorJavaScript,
             $html
         );
     }
@@ -8585,89 +8563,6 @@ HTML;
 });
 
 JAVASCRIPT;
-    }
-
-    private function GetVisualizationWebHookAssets(): array
-    {
-        return [
-            'easy-floorplan.js'
-        ];
-    }
-
-    private function GetVisualizationWebHookBaseAddress(): string
-    {
-        return 'floorplaner-assets-' . $this->InstanceID;
-    }
-
-    private function GetVisualizationModuleWebHookUrl(string $asset): string
-    {
-        if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
-            throw new InvalidArgumentException('Unbekanntes Visualisierungs-Asset: ' . $asset);
-        }
-
-        return '/hook/'
-            . $this->GetVisualizationWebHookBaseAddress()
-            . '?asset='
-            . rawurlencode($asset);
-    }
-
-    protected function ProcessHookData(): void
-    {
-        try {
-            $requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
-            $requestPath = (string) (parse_url($requestUri, PHP_URL_PATH) ?? '');
-            $hookPath = '/hook/' . $this->GetVisualizationWebHookBaseAddress();
-
-            // Nur exakt den WebHook dieser Instanz bedienen.
-            if ($requestPath !== $hookPath) {
-                http_response_code(404);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Not found';
-                return;
-            }
-
-            $asset = isset($_GET['asset']) ? (string) $_GET['asset'] : '';
-            if (!in_array($asset, $this->GetVisualizationWebHookAssets(), true)) {
-                http_response_code(404);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Not found';
-                return;
-            }
-
-            /*
-             * Easy-Floorplan bleibt unverändert als Originaldatei im Modulbaum.
-             */
-            $path = __DIR__
-                . DIRECTORY_SEPARATOR
-                . 'assets'
-                . DIRECTORY_SEPARATOR
-                . 'vendor'
-                . DIRECTORY_SEPARATOR
-                . 'easy-floorplan.js';
-
-            if (!is_file($path)) {
-                http_response_code(404);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Asset not found';
-                return;
-            }
-
-            $source = file_get_contents($path);
-            if ($source === false) {
-                throw new RuntimeException('Visualisierungsdatei konnte nicht gelesen werden: ' . $asset);
-            }
-
-            header('Content-Type: text/javascript; charset=utf-8');
-            header('X-Content-Type-Options: nosniff');
-            header('Cache-Control: no-cache');
-            header('Content-Length: ' . strlen($source));
-            echo $source;
-        } catch (Throwable $e) {
-            $this->LogMessage('ProcessHookData: ' . $e->getMessage(), KL_ERROR);
-            http_response_code(500);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Internal server error';
-        }
     }
 
     public function RequestAction(string $Ident, mixed $Value): void
