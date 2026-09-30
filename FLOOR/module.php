@@ -7686,6 +7686,33 @@ HTML;
         }));
     }
 
+    function stopActiveStream() {
+        const img = controlBody?.querySelector('.stream-view img');
+        if (!img) return;
+
+        // Die laufende Proxy-/MJPEG-Verbindung wirklich trennen.
+        img.removeAttribute('src');
+    }
+
+    function restartActiveStream() {
+        if (!controlModal?.classList.contains('open')) return;
+
+        const img = controlBody?.querySelector('.stream-view img');
+        if (!img) return;
+
+        const mediaID = Number(img.dataset.streamMediaId || 0);
+        if (mediaID <= 0) return;
+
+        // Neue URL erzwingt nach Pause/Tab-Wechsel eine frische Verbindung.
+        img.src = `/proxy/${mediaID}?_=${Date.now()}`;
+    }
+
+    function closeControlModal() {
+        stopActiveStream();
+        controlModal?.classList.remove('open', 'stream-expanded');
+        controlModal?.setAttribute('aria-hidden', 'true');
+    }
+
     function openStreamControl(item, clientX = null, clientY = null) {
         if (!controlModal || !controlBody || !item) return;
 
@@ -7699,7 +7726,7 @@ HTML;
         controlBody.innerHTML = `
             <div class="stream-popup-body">
                 <div class="stream-view">
-                    <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(item.name || 'Stream')}">
+                    <img src="${escapeHtml(streamUrl)}" data-stream-media-id="${mediaID}" alt="${escapeHtml(item.name || 'Stream')}">
                 </div>
                 <div class="stream-popup-actions">
                     <button type="button" data-stream-expand>Vergrößern</button>
@@ -8102,14 +8129,10 @@ HTML;
         }
     }
 
-    controlCloseBtn?.addEventListener('click', () => {
-        controlModal.classList.remove('open', 'stream-expanded');
-        controlModal.setAttribute('aria-hidden', 'true');
-    });
+    controlCloseBtn?.addEventListener('click', closeControlModal);
     controlModal?.addEventListener('click', evt => {
         if (evt.target === controlModal) {
-            controlModal.classList.remove('open');
-            controlModal.setAttribute('aria-hidden', 'true');
+            closeControlModal();
         }
     });
 
@@ -8122,9 +8145,16 @@ HTML;
         const dialog = controlModal.querySelector('.control-modal');
         if (dialog && dialog.contains(evt.target)) return;
 
-        controlModal.classList.remove('open', 'stream-expanded');
-        controlModal.setAttribute('aria-hidden', 'true');
+        closeControlModal();
     }, true);
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopActiveStream();
+        } else {
+            restartActiveStream();
+        }
+    });
 
     window.handleMessage = message => {
         try {
