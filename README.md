@@ -147,6 +147,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.22
+
+- Kameraverbindung überarbeitet, um ein Standbild nach Verbindungsabbrüchen zu verhindern.
+
 ### 1.21
 
 - Der Modulcode wurde überarbeitet und auf Store-Kompatibilität geprüft.
