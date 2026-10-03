@@ -1227,41 +1227,55 @@ class Floorplan extends IPSModuleStrict
     }
 
     .device-brightness-layout .control-slider-row {
-        position: relative;
+        width: 100%;
     }
 
     .device-brightness-layout .control-slider-row input[type="range"] {
         flex: 1 1 auto;
         min-width: 140px;
-        box-sizing: border-box;
-        position: relative;
-        z-index: 1;
-    }
-
-    /* Die Browser-Range hat konstruktionsbedingt an beiden Enden etwa einen
-       halben Thumb-Durchmesser, den der Thumb-Mittelpunkt nicht erreicht.
-       Deshalb zeichnen wir die sichtbare Schiene selbst exakt zwischen diesen
-       beiden erreichbaren Endpunkten. */
-    .device-brightness-layout .control-slider-row::before {
-        content: "";
-        position: absolute;
-        left: 57px;
-        right: 57px;
-        top: 50%;
-        height: 4px;
-        border-radius: 2px;
-        transform: translateY(-50%);
-        background: var(--fp-border);
-        pointer-events: none;
-        z-index: 0;
-    }
-
-    .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 38px;
+        margin: 0;
+        padding: 0;
         background: transparent;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    /* Exakte Slider-Geometrie: Track und Thumb stammen aus derselben Range.
+       Dadurch entsprechen die sichtbaren Track-Enden exakt 0 % und 100 %. */
+    .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-runnable-track {
+        height: 5px;
+        border: 0;
+        border-radius: 3px;
+        background: #e8e8e8;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        margin-top: -5.5px;
+        border: 0;
+        border-radius: 50%;
+        background: #1689e8;
     }
 
     .device-brightness-layout .control-slider-row input[type="range"]::-moz-range-track {
-        background: transparent;
+        height: 5px;
+        border: 0;
+        border-radius: 3px;
+        background: #e8e8e8;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border: 0;
+        border-radius: 50%;
+        background: #1689e8;
     }
 
     .device-color-wheel {
@@ -4062,7 +4076,7 @@ HTML;
 
             variableTopParts.push(
                 `<g class="device${sel}${numericClass}${brightnessClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * 14).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * boolGlowPx).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
