@@ -7905,12 +7905,12 @@ HTML;
         const colorBrightnessKind = colorBrightnessControlKind(item);
         const colorControlledBool = (
             Number(item._variableType) === 0 &&
-            colorBrightnessKind === 'color' &&
+            (colorBrightnessKind === 'color' || colorBrightnessKind === 'brightness') &&
             item.showColorBrightnessControl !== false
         );
 
-        // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
-        // ausschließlich rechts neben dem Farbkreis dargestellt.
+        // Bei einer Bool-Lampe mit Farb- oder Helligkeitssteuerung werden die
+        // Bool-Assoziationen innerhalb der jeweiligen Zusatzbedienung dargestellt.
         if (associations.length && !colorControlledBool) {
             html += '<div class="control-associations">';
             for (const association of associations) {
@@ -8011,6 +8011,31 @@ HTML;
                 const bcurrent = Number.isFinite(braw) ? Math.max(bmin, Math.min(bmax, braw)) : bmin;
                 const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
                 const bdisabled = item._colorVariableCanAction === true ? '' : ' disabled';
+
+                if (Number(item._variableType) === 0) {
+                    const boolAssociations = Array.isArray(item?._profile?.associations)
+                        ? item._profile.associations
+                        : [];
+
+                    if (boolAssociations.length) {
+                        html += `<div class="device-color-bool-actions" style="margin-top:10px">` +
+                            boolAssociations.map(association => {
+                                const associationValue = Boolean(Number(association?.value));
+                                const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
+                                const active = truthyVariableValue(item._rawValue) === associationValue;
+                                return `<button type="button"
+                                    class="device-color-power${active ? ' is-active' : ''}"
+                                    data-control-bool="${associationValue ? '1' : '0'}">${escapeHtml(caption)}</button>`;
+                            }).join('') +
+                            `</div>`;
+                    } else {
+                        html += `<div class="device-color-bool-actions" style="margin-top:10px">
+                            <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
+                            <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
+                        </div>`;
+                    }
+                }
+
                 html += `<div class="field" style="margin-top:10px"><label>Helligkeit</label><div class="control-slider">
                     <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
                     <div class="control-slider-row"><button type="button" data-brightness-step="-1"${bdisabled}>−</button>
