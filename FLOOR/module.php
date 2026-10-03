@@ -5489,22 +5489,16 @@ HTML;
                 </div>
                 ${Number(obj._variableType) === 0 ? `
                     <div class="field">
-                        <label>Helligkeit</label>
+                        <label>Helligkeit (optional)</label>
                         <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Helligkeitsvariable auswählen"
-                            value="${(() => {
-                                const brightness = colorBrightnessControlForKind(obj, 'brightness');
-                                return brightness
-                                    ? '#' + brightness.variableID + (brightness.path ? ' – ' + escapeHtml(brightness.path) : '')
-                                    : 'nicht zugeordnet';
-                            })()}">
-                        <label style="margin-top:10px">Farbe</label>
+                            value="${Number(obj.colorVariableID || 0) > 0
+                                ? '#' + Number(obj.colorVariableID) + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '')
+                                : 'nicht zugeordnet'}">
+                        <label style="margin-top:10px">Farbe (optional)</label>
                         <input class="variable-select-field" data-variable-field="colorVariableID2" readonly title="Farbvariable auswählen"
-                            value="${(() => {
-                                const color = colorBrightnessControlForKind(obj, 'color');
-                                return color
-                                    ? '#' + color.variableID + (color.path ? ' – ' + escapeHtml(color.path) : '')
-                                    : 'nicht zugeordnet';
-                            })()}">
+                            value="${Number(obj.colorVariableID2 || 0) > 0
+                                ? '#' + Number(obj.colorVariableID2) + (obj._colorVariable2Path ? ' – ' + escapeHtml(obj._colorVariable2Path) : '')
+                                : 'nicht zugeordnet'}">
                         <label class="check" style="margin-top:10px">
                             <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
                             Farbe/Helligkeit im Bedienfenster anzeigen
@@ -7659,6 +7653,40 @@ HTML;
         ) {
             statusEl.textContent = 'Farb-/Helligkeitsvariable muss Integer oder Float sein';
             return;
+        }
+
+        if (entityType === 'item' && selectedVariableID > 0 && field === 'colorVariableID') {
+            const probe = {
+                colorControlEnabled: true,
+                colorVariableID: selectedVariableID,
+                _colorVariableType: Number(selectedNode?.variableType),
+                _colorVariableProfile: selectedNode?.profile || {},
+                _colorVariableProfileName: selectedNode?.profileName || '',
+                _colorVariablePath: selectedNode?.path || '',
+                _colorVariableValueText: selectedNode?.valueText || '',
+                _colorVariableRawValue: selectedNode?.rawValue
+            };
+            if (colorBrightnessControlKindForSlot(probe, 1) !== 'brightness') {
+                statusEl.textContent = 'Bitte eine Helligkeitsvariable auswählen';
+                return;
+            }
+        }
+
+        if (entityType === 'item' && selectedVariableID > 0 && field === 'colorVariableID2') {
+            const probe = {
+                colorControlEnabled: true,
+                colorVariableID2: selectedVariableID,
+                _colorVariable2Type: Number(selectedNode?.variableType),
+                _colorVariable2Profile: selectedNode?.profile || {},
+                _colorVariable2ProfileName: selectedNode?.profileName || '',
+                _colorVariable2Path: selectedNode?.path || '',
+                _colorVariable2ValueText: selectedNode?.valueText || '',
+                _colorVariable2RawValue: selectedNode?.rawValue
+            };
+            if (colorBrightnessControlKindForSlot(probe, 2) !== 'color') {
+                statusEl.textContent = 'Bitte eine Farbvariable auswählen';
+                return;
+            }
         }
 
         entity[field] = selectedVariableID;
