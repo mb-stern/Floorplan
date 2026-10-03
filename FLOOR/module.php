@@ -8259,7 +8259,7 @@ HTML;
                         </div>
                     </div>
                     ${colorControl.canAction
-                        ? '<div class="profile-hint">Im Farbkreis direkt die gewünschte Leuchtfarbe auswählen.</div>'
+                        ? ''
                         : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
                 </div>
             `;
