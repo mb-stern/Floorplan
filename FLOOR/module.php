@@ -5489,42 +5489,26 @@ HTML;
                 </div>
                 ${Number(obj._variableType) === 0 ? `
                     <div class="field">
-                        <label class="check">
-                            <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
-                            Farb-/Helligkeitssteuerung
+                        <label>Helligkeit</label>
+                        <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Helligkeitsvariable auswählen"
+                            value="${(() => {
+                                const brightness = colorBrightnessControlForKind(obj, 'brightness');
+                                return brightness
+                                    ? '#' + brightness.variableID + (brightness.path ? ' – ' + escapeHtml(brightness.path) : '')
+                                    : 'nicht zugeordnet';
+                            })()}">
+                        <label style="margin-top:10px">Farbe</label>
+                        <input class="variable-select-field" data-variable-field="colorVariableID2" readonly title="Farbvariable auswählen"
+                            value="${(() => {
+                                const color = colorBrightnessControlForKind(obj, 'color');
+                                return color
+                                    ? '#' + color.variableID + (color.path ? ' – ' + escapeHtml(color.path) : '')
+                                    : 'nicht zugeordnet';
+                            })()}">
+                        <label class="check" style="margin-top:10px">
+                            <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
+                            Farbe/Helligkeit im Bedienfenster anzeigen
                         </label>
-                        ${obj.colorControlEnabled === true ? `
-                            <label>Farb-/Helligkeitsvariable</label>
-                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farb- oder Helligkeitsvariable auswählen"
-                                value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
-                            ${(() => {
-                                const kind = colorBrightnessControlKind(obj);
-                                if (Number(obj.colorVariableID || 0) <= 0) return `<div class="profile-hint">Integer/Float auswählen. Farbe oder Helligkeit wird automatisch erkannt.</div>`;
-                                if (kind === 'color') return `<div class="profile-hint">Automatisch erkannt: Farbe (RGB/Hex).</div>`;
-                                if (kind === 'brightness') return `<div class="profile-hint">Automatisch erkannt: Helligkeit${obj._colorVariableProfileSummary ? ' · ' + escapeHtml(obj._colorVariableProfileSummary) : ''}.</div>`;
-                                return `<div class="profile-hint">Die Variable konnte nicht eindeutig als Farbe oder Helligkeit erkannt werden.</div>`;
-                            })()}
-                            <label class="check" style="margin-top:8px">
-                                <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
-                                Im Bedienfenster anzeigen
-                            </label>
-                            <div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
-                                <label>Weitere Farb-/Helligkeitsvariable (optional)</label>
-                                <input class="variable-select-field" data-variable-field="colorVariableID2" readonly title="Weitere Farb- oder Helligkeitsvariable auswählen"
-                                    value="${obj.colorVariableID2 ? '#' + obj.colorVariableID2 + (obj._colorVariable2Path ? ' – ' + escapeHtml(obj._colorVariable2Path) : '') : 'nicht zugeordnet'}">
-                                ${(() => {
-                                    const kind2 = colorBrightnessControlKindForSlot(obj, 2);
-                                    if (Number(obj.colorVariableID2 || 0) <= 0) return `<div class="profile-hint">Optional: zweite Variable auswählen, z. B. Farbe + Helligkeit.</div>`;
-                                    if (kind2 === 'color') return `<div class="profile-hint">Automatisch erkannt: Farbe (RGB/Hex).</div>`;
-                                    if (kind2 === 'brightness') return `<div class="profile-hint">Automatisch erkannt: Helligkeit${obj._colorVariable2ProfileSummary ? ' · ' + escapeHtml(obj._colorVariable2ProfileSummary) : ''}.</div>`;
-                                    return `<div class="profile-hint">Die Variable konnte nicht eindeutig als Farbe oder Helligkeit erkannt werden.</div>`;
-                                })()}
-                                <label class="check" style="margin-top:8px">
-                                    <input data-field="showColorBrightnessControl2" type="checkbox"${obj.showColorBrightnessControl2 !== false ? ' checked' : ''}>
-                                    Im Bedienfenster anzeigen
-                                </label>
-                            </div>
-                        ` : ''}
                     </div>
                 ` : ''}
                 ${canConfigureStatusColor(obj) ? `
