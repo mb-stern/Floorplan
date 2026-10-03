@@ -709,6 +709,11 @@ class Floorplan extends IPSModuleStrict
             filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
+        .device.brightness-controlled.boolean-active > circle:not(.device-status-ring) {
+            stroke: var(--line);
+            filter: none;
+        }
+
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
         .device.active-light.boolean-active circle {
             fill: #5b5422;
@@ -1224,6 +1229,9 @@ class Floorplan extends IPSModuleStrict
     .device-brightness-layout .control-slider-row input[type="range"] {
         flex: 1 1 auto;
         min-width: 140px;
+        box-sizing: border-box;
+        padding-left: 11px;
+        padding-right: 11px;
     }
 
     .device-color-wheel {
@@ -3922,6 +3930,11 @@ HTML;
             // sein Leuchten abgeschaltet; die normale Geräte-Kontur bleibt sichtbar.
             const numericRingVisible = effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
+            const brightnessClass = (
+                isBooleanDevice &&
+                item.colorControlEnabled === true &&
+                colorBrightnessControlKind(item) === 'brightness'
+            ) ? ' brightness-controlled' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
@@ -4018,7 +4031,7 @@ HTML;
             }
 
             variableTopParts.push(
-                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
+                `<g class="device${sel}${numericClass}${brightnessClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
