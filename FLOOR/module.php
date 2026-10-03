@@ -3882,7 +3882,37 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+
+            // Bei einer Boolean-Lampe mit separater Helligkeitsvariable folgt die
+            // Leuchtstärke des Statusrings der Helligkeitsvariable. Die Bool-
+            // Hauptvariable bestimmt weiterhin ausschließlich EIN/AUS.
+            let brightnessRingLevel = null;
+            if (
+                isBooleanDevice &&
+                boolActive &&
+                item.colorControlEnabled === true &&
+                colorBrightnessControlKind(item) === 'brightness'
+            ) {
+                const brightnessProfile = item._colorVariableProfile || {};
+                const brightnessMin = Number(brightnessProfile.min);
+                const brightnessMax = Number(brightnessProfile.max);
+                const brightnessRaw = Number(item._colorVariableRawValue);
+
+                if (
+                    Number.isFinite(brightnessRaw) &&
+                    Number.isFinite(brightnessMin) &&
+                    Number.isFinite(brightnessMax) &&
+                    brightnessMax > brightnessMin
+                ) {
+                    brightnessRingLevel = Math.max(
+                        0,
+                        Math.min(1, (brightnessRaw - brightnessMin) / (brightnessMax - brightnessMin))
+                    );
+                }
+            }
+
+            const effectiveRingLevel = brightnessRingLevel !== null ? brightnessRingLevel : numericLevel;
+            const numericRingVisible = effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -3981,7 +4011,7 @@ HTML;
 
             variableTopParts.push(
                 `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
