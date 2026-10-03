@@ -3912,7 +3912,14 @@ HTML;
             }
 
             const effectiveRingLevel = brightnessRingLevel !== null ? brightnessRingLevel : numericLevel;
-            const numericRingVisible = effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+
+            // 0 % Helligkeit bedeutet wirklich kein Leuchten. Bei einer separaten
+            // Helligkeitssteuerung darf der Ring dann nicht allein deshalb sichtbar
+            // bleiben, weil ein Level von 0 als gültiger numerischer Wert vorliegt.
+            const brightnessRingOff = brightnessRingLevel !== null && brightnessRingLevel <= 0;
+            const numericRingVisible = brightnessRingOff
+                ? false
+                : (effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '');
             const numericClass = numericRingVisible ? ' numeric-status' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
