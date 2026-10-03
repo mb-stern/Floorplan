@@ -150,7 +150,8 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 ### 1.23
 
 - Zur bool Variable kann nun auch eine Helligkeits-Variable definiert werden.
-- Der Dialog beim Schalten von bool mit Helligkeit oder Farbe kann deaktiviert werden, so dass sich das Gerät wie eine normale bool verhält
+- Der Dialog beim Schalten von bool mit Helligkeit oder Farbe kann deaktiviert werden, so dass sich das Gerät wie eine normale bool verhält.
+- Dialogfenster bleiben nun offen bis neben das Fenster geklickt wird für mehrere Einstellvorgänge.
 
 
 ### 1.22

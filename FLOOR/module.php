@@ -1171,6 +1171,29 @@ class Floorplan extends IPSModuleStrict
         font-size: 11px;
     }
 
+    .device-brightness-layout {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .device-brightness-layout .device-color-bool-actions {
+        width: auto;
+        min-width: 64px;
+        flex: 0 0 auto;
+    }
+
+    .device-brightness-layout .field {
+        flex: 1 1 190px;
+        min-width: 0;
+        margin-top: 0 !important;
+    }
+
+    .device-brightness-layout .control-slider {
+        margin-top: 0;
+    }
+
     .device-color-wheel {
         position: relative;
         width: 126px;
@@ -6325,8 +6348,6 @@ HTML;
         controlBody.querySelectorAll('[data-shutter-value]').forEach(btn => {
             btn.addEventListener('click', () => {
                 send(Number(btn.dataset.shutterValue));
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
@@ -8012,13 +8033,14 @@ HTML;
                 const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
                 const bdisabled = item._colorVariableCanAction === true ? '' : ' disabled';
 
+                let powerHtml = '';
                 if (Number(item._variableType) === 0) {
                     const boolAssociations = Array.isArray(item?._profile?.associations)
                         ? item._profile.associations
                         : [];
 
                     if (boolAssociations.length) {
-                        html += `<div class="device-color-bool-actions" style="margin-top:10px">` +
+                        powerHtml = `<div class="device-color-bool-actions">` +
                             boolAssociations.map(association => {
                                 const associationValue = Boolean(Number(association?.value));
                                 const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
@@ -8029,20 +8051,27 @@ HTML;
                             }).join('') +
                             `</div>`;
                     } else {
-                        html += `<div class="device-color-bool-actions" style="margin-top:10px">
+                        powerHtml = `<div class="device-color-bool-actions">
                             <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
                             <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
                         </div>`;
                     }
                 }
 
-                html += `<div class="field" style="margin-top:10px"><label>Helligkeit</label><div class="control-slider">
-                    <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
-                    <div class="control-slider-row"><button type="button" data-brightness-step="-1"${bdisabled}>−</button>
-                    <input type="range" data-brightness-slider min="${bmin}" max="${bmax}" step="${bstep}" value="${bcurrent}"${bdisabled}>
-                    <button type="button" data-brightness-step="1"${bdisabled}>+</button></div>
-                    <div class="profile-hint">${escapeHtml(String(bmin))}${escapeHtml(bsuffix)} – ${escapeHtml(String(bmax))}${escapeHtml(bsuffix)} · Schritt ${escapeHtml(String(bstep))}${escapeHtml(bsuffix)}</div>
-                </div></div>`;
+                html += `<div class="device-brightness-layout">
+                    ${powerHtml}
+                    <div class="field">
+                        <label>Helligkeit</label>
+                        <div class="control-slider">
+                            <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
+                            <div class="control-slider-row">
+                                <button type="button" data-brightness-step="-1"${bdisabled}>−</button>
+                                <input type="range" data-brightness-slider min="${bmin}" max="${bmax}" step="${bstep}" value="${bcurrent}"${bdisabled}>
+                                <button type="button" data-brightness-step="1"${bdisabled}>+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
             }
         }
 
@@ -8068,8 +8097,6 @@ HTML;
             button.addEventListener('click', btnEvent => {
                 const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
                 sendItemValue(item, value);
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
@@ -8158,8 +8185,6 @@ HTML;
         controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
             btn.addEventListener('click', () => {
                 sendItemValue(item, Number(btn.dataset.controlValue));
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
