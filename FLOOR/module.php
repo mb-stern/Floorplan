@@ -4305,7 +4305,7 @@ HTML;
                 slot,
                 kind,
                 variableID: Number(second ? item?.colorVariableID2 : item?.colorVariableID) || 0,
-                show: second ? item?.showColorBrightnessControl2 !== false : item?.showColorBrightnessControl !== false,
+                show: item?.showColorBrightnessControl !== false,
                 path: String(item?.[`${prefix}Path`] || ''),
                 rawValue: item?.[`${prefix}RawValue`],
                 variableType: Number(item?.[`${prefix}Type`]),
@@ -6720,7 +6720,7 @@ HTML;
                         item.colorControlEnabled === true &&
                         (
                             (Number(item.colorVariableID || 0) > 0 && colorBrightnessControlKindForSlot(item, 1) !== '' && item.showColorBrightnessControl !== false) ||
-                            (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl2 !== false)
+                            (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl !== false)
                         )
                     ) {
                         // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
@@ -7627,6 +7627,20 @@ HTML;
         }
 
         entity[field] = selectedVariableID;
+
+        if (entityType === 'item' && ['colorVariableID', 'colorVariableID2'].includes(field)) {
+            entity.colorControlEnabled =
+                Number(entity.colorVariableID || 0) > 0 ||
+                Number(entity.colorVariableID2 || 0) > 0;
+
+            // Seit der getrennten Auswahl "Helligkeit" / "Farbe" gibt es nur noch
+            // eine gemeinsame Anzeigeoption. Beide Slots müssen deshalb denselben
+            // Sichtbarkeitszustand verwenden.
+            const showAuxControls = entity.showColorBrightnessControl !== false;
+            entity.showColorBrightnessControl = showAuxControls;
+            entity.showColorBrightnessControl2 = showAuxControls;
+        }
+
         const node = selectedNode;
 
         // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
