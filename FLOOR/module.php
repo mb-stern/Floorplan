@@ -709,6 +709,23 @@ class Floorplan extends IPSModuleStrict
             filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
+
+
+        /* Helligkeitsgesteuerte Bool-Geräte: dieselbe Kontur/Glow-Geometrie wie
+           beim normalen Boolean. Nur Stärke/Opacity werden mit 0..100 % skaliert. */
+        .device.brightness-controlled.boolean-active > circle:not(.device-status-ring) {
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
+        .device.brightness-controlled.boolean-active .device-status-ring {
+            display: none;
+        }
+
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
         .device.active-light.boolean-active circle {
             fill: #5b5422;
@@ -1169,6 +1186,108 @@ class Floorplan extends IPSModuleStrict
     .device-color-hex {
         white-space: nowrap;
         font-size: 11px;
+    }
+
+    .device-brightness-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+        min-width: 260px;
+    }
+
+    .device-brightness-layout .device-color-bool-actions {
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
+        width: auto;
+    }
+
+    .device-brightness-layout .device-color-power {
+        min-width: 64px;
+    }
+
+    .device-brightness-field {
+        margin-top: 0 !important;
+        min-width: 0;
+    }
+
+    .device-brightness-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 4px;
+    }
+
+    .device-brightness-head label {
+        margin: 0;
+    }
+
+    .device-brightness-head .control-slider-value {
+        margin: 0;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .device-brightness-layout .control-slider {
+        margin-top: 0;
+    }
+
+    .device-brightness-layout .control-slider-row {
+        width: 100%;
+    }
+
+    .device-brightness-layout .control-slider-row {
+        width: 100%;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"] {
+        flex: 1 1 auto;
+        min-width: 140px;
+        width: 100%;
+        height: 38px;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    /* Exakte Slider-Geometrie: Track und Thumb stammen aus derselben Range.
+       Dadurch entsprechen die sichtbaren Track-Enden exakt 0 % und 100 %. */
+    .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-runnable-track {
+        height: 5px;
+        border: 0;
+        border-radius: 3px;
+        background: #e8e8e8;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        margin-top: -5.5px;
+        border: 0;
+        border-radius: 50%;
+        background: #1689e8;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"]::-moz-range-track {
+        height: 5px;
+        border: 0;
+        border-radius: 3px;
+        background: #e8e8e8;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border: 0;
+        border-radius: 50%;
+        background: #1689e8;
     }
 
     .device-color-wheel {
@@ -2193,6 +2312,7 @@ HTML;
                 if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
                 if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
                 item.colorVariableID = Number(item.colorVariableID) || 0;
+                if (typeof item.showColorBrightnessControl !== 'boolean') item.showColorBrightnessControl = true;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -3826,8 +3946,51 @@ HTML;
             const symconGlowEnabled = isBooleanDevice && symconGlowColor !== '' && symconGlowIntensity > 0;
 
             const numericLevel = numericStatusLevel(item);
-            const numericRingVisible = numericLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
+
+            // Bei einer Boolean-Lampe mit separater Helligkeitsvariable folgt die
+            // Leuchtstärke des Statusrings der Helligkeitsvariable. Die Bool-
+            // Hauptvariable bestimmt weiterhin ausschließlich EIN/AUS.
+            let brightnessRingLevel = null;
+            if (
+                isBooleanDevice &&
+                boolActive &&
+                item.colorControlEnabled === true &&
+                colorBrightnessControlKind(item) === 'brightness'
+            ) {
+                const brightnessProfile = item._colorVariableProfile || {};
+                const brightnessMin = Number(brightnessProfile.min);
+                const brightnessMax = Number(brightnessProfile.max);
+                const brightnessRaw = Number(item._colorVariableRawValue);
+
+                if (
+                    Number.isFinite(brightnessRaw) &&
+                    Number.isFinite(brightnessMin) &&
+                    Number.isFinite(brightnessMax) &&
+                    brightnessMax > brightnessMin
+                ) {
+                    brightnessRingLevel = Math.max(
+                        0,
+                        Math.min(1, (brightnessRaw - brightnessMin) / (brightnessMax - brightnessMin))
+                    );
+                }
+            }
+
+            const effectiveRingLevel = brightnessRingLevel !== null ? brightnessRingLevel : numericLevel;
+
+            // 0 % Helligkeit bedeutet wirklich kein Leuchten. Bei einer separaten
+            // Helligkeitssteuerung darf der Ring dann nicht allein deshalb sichtbar
+            // bleiben, weil ein Level von 0 als gültiger numerischer Wert vorliegt.
+            const brightnessRingOff = brightnessRingLevel !== null && brightnessRingLevel <= 0;
+
+            // Der Ring selbst bleibt immer vorhanden. Bei 0 % bzw. AUS wird nur
+            // sein Leuchten abgeschaltet; die normale Geräte-Kontur bleibt sichtbar.
+            const numericRingVisible = effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
+            const brightnessClass = (
+                isBooleanDevice &&
+                item.colorControlEnabled === true &&
+                colorBrightnessControlKind(item) === 'brightness'
+            ) ? ' brightness-controlled' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
@@ -3924,8 +4087,8 @@ HTML;
             }
 
             variableTopParts.push(
-                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
-                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${numericLevel !== null ? numericLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (numericLevel !== null ? (numericLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
+                `<g class="device${sel}${numericClass}${brightnessClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
+                `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * boolGlowPx).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
                       (numericRingVisible ? `<circle class="device-status-ring" r="${radius}"/>` : '') +
@@ -4092,10 +4255,44 @@ HTML;
         return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
     }
 
+    function colorBrightnessControlKind(item) {
+        if (item?.colorControlEnabled !== true || Number(item?.colorVariableID || 0) <= 0) return '';
+        const type = Number(item?._colorVariableType);
+        const profile = item?._colorVariableProfile || {};
+        const profileName = String(item?._colorVariableProfileName || '').toLowerCase();
+        const suffix = String(profile?.suffix || '').toLowerCase();
+        const min = Number(profile?.min);
+        const max = Number(profile?.max);
+        const raw = Number(item?._colorVariableRawValue);
+        const path = String(item?._colorVariablePath || '').toLowerCase();
+        const valueText = String(item?._colorVariableValueText || '').toLowerCase();
+        const text = `${profileName} ${suffix} ${path} ${valueText}`;
+
+        // Farbe hat immer Vorrang. Neben Profil-/Darstellungsnamen erkennen wir
+        // auch typische Bezeichnungen im Objektpfad. Ein grosser Integer-
+        // Wertebereich ist weiterhin ein Fallback fuer 24-Bit-RGB/HexColor.
+        if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(text) || (Number.isFinite(max) && max > 1000))) return 'color';
+
+        if (type === 1 || type === 2) {
+            // Eindeutige Helligkeits-/Dimmerbezeichnung oder Prozentdarstellung.
+            if (/(hell|brightness|intensity|dimm|dimmer|level|%)/.test(text)) return 'brightness';
+
+            // Klassischer Dimmerbereich. Das funktioniert auch dann, wenn eine
+            // neue Symcon-Darstellung keinen Legacy-Profilnamen liefert.
+            if (Number.isFinite(min) && Number.isFinite(max) && max > min && min >= 0 && max <= 100) return 'brightness';
+
+            // Letzter Fallback fuer numerische Zusatzvariablen ohne auswertbare
+            // Profilmetadaten: ein aktueller Wert von 0..100 ist fuer die hier
+            // explizit als Farb-/Helligkeitsvariable gewaehlte Variable ein
+            // plausibler Helligkeitswert. Farbe wurde oben bereits ausgeschlossen.
+            if ((!Number.isFinite(min) || !Number.isFinite(max) || max <= min) && Number.isFinite(raw) && raw >= 0 && raw <= 100) return 'brightness';
+        }
+        return '';
+    }
+
     function itemColorControlCss(item) {
         if (
-            item?.colorControlEnabled !== true ||
-            Number(item?.colorVariableID || 0) <= 0 ||
+            colorBrightnessControlKind(item) !== 'color' ||
             Number(item?._colorVariableType) !== 1
         ) {
             return '';
@@ -5279,15 +5476,23 @@ HTML;
                     <div class="field">
                         <label class="check">
                             <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
-                            Farbsteuerung
+                            Farb-/Helligkeitssteuerung
                         </label>
                         ${obj.colorControlEnabled === true ? `
-                            <label>Farbvariable (Integer / Hex Color)</label>
-                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                            <label>Farb-/Helligkeitsvariable</label>
+                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farb- oder Helligkeitsvariable auswählen"
                                 value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
-                            ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
-                                ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
-                                : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                            ${(() => {
+                                const kind = colorBrightnessControlKind(obj);
+                                if (Number(obj.colorVariableID || 0) <= 0) return `<div class="profile-hint">Integer/Float auswählen. Farbe oder Helligkeit wird automatisch erkannt.</div>`;
+                                if (kind === 'color') return `<div class="profile-hint">Automatisch erkannt: Farbe (RGB/Hex).</div>`;
+                                if (kind === 'brightness') return `<div class="profile-hint">Automatisch erkannt: Helligkeit${obj._colorVariableProfileSummary ? ' · ' + escapeHtml(obj._colorVariableProfileSummary) : ''}.</div>`;
+                                return `<div class="profile-hint">Die Variable konnte nicht eindeutig als Farbe oder Helligkeit erkannt werden.</div>`;
+                            })()}
+                            <label class="check" style="margin-top:8px">
+                                <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
+                                Im Bedienfenster anzeigen
+                            </label>
                         ` : ''}
                     </div>
                 ` : ''}
@@ -5295,8 +5500,7 @@ HTML;
                     <div class="field">
                         ${(() => {
                             const configuredLightColor = (
-                                obj.colorControlEnabled === true &&
-                                Number(obj.colorVariableID || 0) > 0 &&
+                                colorBrightnessControlKind(obj) === 'color' &&
                                 Number(obj._colorVariableType) === 1
                             ) ? integerColorToCss(obj._colorVariableRawValue) : '';
 
@@ -6270,6 +6474,7 @@ HTML;
             html = '<div class="profile-hint">Für die Rollladenvariable sind keine bedienbaren Profilwerte hinterlegt.</div>';
         }
 
+
         controlBody.innerHTML = html;
 
         const send = value => requestAction('operateOpeningValue', JSON.stringify({
@@ -6282,8 +6487,6 @@ HTML;
         controlBody.querySelectorAll('[data-shutter-value]').forEach(btn => {
             btn.addEventListener('click', () => {
                 send(Number(btn.dataset.shutterValue));
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
@@ -6501,7 +6704,8 @@ HTML;
                     if (
                         item.colorControlEnabled === true &&
                         Number(item.colorVariableID || 0) > 0 &&
-                        Number(item._colorVariableType) === 1
+                        colorBrightnessControlKind(item) !== '' &&
+                        item.showColorBrightnessControl !== false
                     ) {
                         // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
                         // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
@@ -6634,6 +6838,9 @@ HTML;
                 y: p.y,
                 name: 'Gerät',
                 variableID: 0,
+                colorControlEnabled: false,
+                colorVariableID: 0,
+                showColorBrightnessControl: true,
                 size: 18,
                 angle: 0,
                 kind: 'generic', // nur noch für Migration älterer Projekte
@@ -7394,12 +7601,10 @@ HTML;
         }
 
         if (
-            entityType === 'item' &&
-            field === 'colorVariableID' &&
-            selectedVariableID > 0 &&
-            Number(selectedNode?.variableType) !== 1
+            entityType === 'item' && field === 'colorVariableID' && selectedVariableID > 0 &&
+            ![1, 2].includes(Number(selectedNode?.variableType))
         ) {
-            statusEl.textContent = 'Farbvariable muss eine Integer-Variable sein';
+            statusEl.textContent = 'Farb-/Helligkeitsvariable muss Integer oder Float sein';
             return;
         }
 
@@ -7669,21 +7874,14 @@ HTML;
         }));
     }
 
-    function sendItemColorValue(item, value) {
-        if (
-            !item ||
-            item.colorControlEnabled !== true ||
-            Number(item.colorVariableID || 0) <= 0 ||
-            item._colorVariableCanAction !== true
-        ) {
-            return;
-        }
+    function sendItemColorBrightnessValue(item, value) {
+        if (!item || item.colorControlEnabled !== true || Number(item.colorVariableID || 0) <= 0 ||
+            item._colorVariableCanAction !== true || colorBrightnessControlKind(item) === '') return;
+        requestAction('operateColorBrightnessValue', JSON.stringify({floorId: state.activeFloor, itemId: item.id, value}));
+    }
 
-        requestAction('operateColorValue', JSON.stringify({
-            floorId: state.activeFloor,
-            itemId: item.id,
-            value
-        }));
+    function sendItemColorValue(item, value) {
+        sendItemColorBrightnessValue(item, value);
     }
 
     function stopActiveStream() {
@@ -7864,15 +8062,15 @@ HTML;
 
         let html = '';
 
+        const colorBrightnessKind = colorBrightnessControlKind(item);
         const colorControlledBool = (
             Number(item._variableType) === 0 &&
-            item.colorControlEnabled === true &&
-            Number(item.colorVariableID || 0) > 0 &&
-            Number(item._colorVariableType) === 1
+            (colorBrightnessKind === 'color' || colorBrightnessKind === 'brightness') &&
+            item.showColorBrightnessControl !== false
         );
 
-        // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
-        // ausschließlich rechts neben dem Farbkreis dargestellt.
+        // Bei einer Bool-Lampe mit Farb- oder Helligkeitssteuerung werden die
+        // Bool-Assoziationen innerhalb der jeweiligen Zusatzbedienung dargestellt.
         if (associations.length && !colorControlledBool) {
             html += '<div class="control-associations">';
             for (const association of associations) {
@@ -7912,9 +8110,8 @@ HTML;
         }
 
         if (
-            item.colorControlEnabled === true &&
-            Number(item.colorVariableID || 0) > 0 &&
-            Number(item._colorVariableType) === 1
+            colorBrightnessKind === 'color' &&
+            item.showColorBrightnessControl !== false
         ) {
             // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
             // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
@@ -7965,14 +8162,82 @@ HTML;
             `;
         }
 
+        if (colorBrightnessKind === 'brightness' && item.showColorBrightnessControl !== false) {
+            const bp = item._colorVariableProfile || {};
+            const bmin = Number(bp.min), bmax = Number(bp.max), bstepRaw = Number(bp.step);
+            if (Number.isFinite(bmin) && Number.isFinite(bmax) && bmax > bmin) {
+                const bstep = Number.isFinite(bstepRaw) && bstepRaw > 0 ? bstepRaw : 1;
+                const braw = Number(item._colorVariableRawValue);
+                const bcurrent = Number.isFinite(braw) ? Math.max(bmin, Math.min(bmax, braw)) : bmin;
+                const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
+                const bdisabled = item._colorVariableCanAction === true ? '' : ' disabled';
+
+                let powerHtml = '';
+                if (Number(item._variableType) === 0) {
+                    const boolAssociations = Array.isArray(item?._profile?.associations)
+                        ? item._profile.associations
+                        : [];
+
+                    if (boolAssociations.length) {
+                        powerHtml = `<div class="device-color-bool-actions">` +
+                            boolAssociations.map(association => {
+                                const associationValue = Boolean(Number(association?.value));
+                                const caption = String(association?.name || (associationValue ? 'Ein' : 'Aus'));
+                                const active = truthyVariableValue(item._rawValue) === associationValue;
+                                return `<button type="button"
+                                    class="device-color-power${active ? ' is-active' : ''}"
+                                    data-control-bool="${associationValue ? '1' : '0'}">${escapeHtml(caption)}</button>`;
+                            }).join('') +
+                            `</div>`;
+                    } else {
+                        powerHtml = `<div class="device-color-bool-actions">
+                            <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
+                            <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
+                        </div>`;
+                    }
+                }
+
+                html += `<div class="device-brightness-layout">
+                    ${powerHtml}
+                    <div class="field device-brightness-field">
+                        <div class="device-brightness-head">
+                            <label>Helligkeit</label>
+                            <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
+                        </div>
+                        <div class="control-slider">
+                            <div class="control-slider-row">
+                                <button type="button" data-brightness-step="-1"${bdisabled}>−</button>
+                                <input type="range" data-brightness-slider min="${bmin}" max="${bmax}" step="${bstep}" value="${bcurrent}"${bdisabled}>
+                                <button type="button" data-brightness-step="1"${bdisabled}>+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+        }
+
         controlBody.innerHTML = html;
+
+        const brightnessSlider = controlBody.querySelector('[data-brightness-slider]');
+        if (brightnessSlider) {
+            const brightnessValue = controlBody.querySelector('[data-brightness-value]');
+            const bp = item._colorVariableProfile || {};
+            const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
+            const updateBrightnessLabel = value => { if (brightnessValue) brightnessValue.textContent = `${bprefix}${value}${bsuffix}`; };
+            brightnessSlider.addEventListener('input', event => updateBrightnessLabel(event.currentTarget.value));
+            brightnessSlider.addEventListener('change', event => sendItemColorBrightnessValue(item, Number(event.currentTarget.value)));
+            controlBody.querySelectorAll('[data-brightness-step]').forEach(button => button.addEventListener('click', event => {
+                const direction = Number(event.currentTarget.dataset.brightnessStep || 0);
+                const step = Number(brightnessSlider.step) || 1, min = Number(brightnessSlider.min), max = Number(brightnessSlider.max);
+                const next = Math.max(min, Math.min(max, Number(brightnessSlider.value) + direction * step));
+                brightnessSlider.value = String(next); updateBrightnessLabel(next); sendItemColorBrightnessValue(item, next);
+            }));
+        }
 
         controlBody.querySelectorAll('[data-control-bool]').forEach(button => {
             button.addEventListener('click', btnEvent => {
                 const value = btnEvent.currentTarget?.dataset?.controlBool === '1';
                 sendItemValue(item, value);
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
@@ -8061,8 +8326,6 @@ HTML;
         controlBody.querySelectorAll('[data-control-value]').forEach(btn => {
             btn.addEventListener('click', () => {
                 sendItemValue(item, Number(btn.dataset.controlValue));
-                controlModal.classList.remove('open');
-                controlModal.setAttribute('aria-hidden', 'true');
             });
         });
 
@@ -8807,7 +9070,8 @@ JAVASCRIPT;
                 );
                 break;
 
-            case 'operateColorValue':
+            case 'operateColorValue': // Legacy-Alias
+            case 'operateColorBrightnessValue':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Ungültiger Farbwert.');
                 }
@@ -8815,7 +9079,7 @@ JAVASCRIPT;
                 if (!is_array($request)) {
                     throw new InvalidArgumentException('Ungültiger Farbwert.');
                 }
-                $this->OperateItemColorValue(
+                $this->OperateItemColorBrightnessValue(
                     (string) ($request['floorId'] ?? ''),
                     (string) ($request['itemId'] ?? ''),
                     $request['value'] ?? null
@@ -10360,7 +10624,7 @@ JAVASCRIPT;
         }
     }
 
-    private function OperateItemColorValue(string $FloorID, string $ItemID, mixed $Value): void
+    private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value): void
     {
         $project = $this->GetProject();
 
@@ -10380,16 +10644,18 @@ JAVASCRIPT;
                 }
 
                 $variable = IPS_GetVariable($variableID);
-                if ((int) ($variable['VariableType'] ?? -1) !== 1) {
-                    return;
-                }
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+                if (!in_array($variableType, [1, 2], true)) return;
 
                 $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
-                if (($runtimeMeta['_canAction'] ?? false) !== true) {
-                    return;
-                }
+                if (($runtimeMeta['_canAction'] ?? false) !== true) return;
 
-                $targetValue = max(0, min(0xFFFFFF, (int) round((float) $Value)));
+                $profile = is_array($runtimeMeta['_profile'] ?? null) ? $runtimeMeta['_profile'] : [];
+                $min = is_numeric($profile['min'] ?? null) ? (float) $profile['min'] : null;
+                $max = is_numeric($profile['max'] ?? null) ? (float) $profile['max'] : null;
+                $targetValue = (float) $Value;
+                if ($min !== null && $max !== null && $max > $min) $targetValue = max($min, min($max, $targetValue));
+                if ($variableType === 1) $targetValue = (int) round($targetValue);
                 $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
