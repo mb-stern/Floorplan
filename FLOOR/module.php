@@ -709,9 +709,21 @@ class Floorplan extends IPSModuleStrict
             filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
+
+
+        /* Helligkeitsgesteuerte Bool-Geräte: dieselbe Kontur/Glow-Geometrie wie
+           beim normalen Boolean. Nur Stärke/Opacity werden mit 0..100 % skaliert. */
         .device.brightness-controlled.boolean-active > circle:not(.device-status-ring) {
-            stroke: var(--line);
-            filter: none;
+            stroke: var(--device-status-color, #ffe66d);
+            stroke-opacity: var(--device-status-opacity, 1);
+            filter: drop-shadow(
+                0 0 var(--device-status-glow, 7px)
+                var(--device-status-color, #ffe66d)
+            );
+        }
+
+        .device.brightness-controlled.boolean-active .device-status-ring {
+            display: none;
         }
 
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
