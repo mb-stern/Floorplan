@@ -2193,6 +2193,7 @@ HTML;
                 if (typeof item.iconOnSvg !== 'string') item.iconOnSvg = '';
                 if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
                 item.colorVariableID = Number(item.colorVariableID) || 0;
+                if (typeof item.showColorBrightnessControl !== 'boolean') item.showColorBrightnessControl = true;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -4092,10 +4093,26 @@ HTML;
         return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
     }
 
+    function colorBrightnessControlKind(item) {
+        if (item?.colorControlEnabled !== true || Number(item?.colorVariableID || 0) <= 0) return '';
+        const type = Number(item?._colorVariableType);
+        const profile = item?._colorVariableProfile || {};
+        const profileName = String(item?._colorVariableProfileName || '').toLowerCase();
+        const suffix = String(profile?.suffix || '').toLowerCase();
+        const min = Number(profile?.min);
+        const max = Number(profile?.max);
+        const text = `${profileName} ${suffix}`;
+
+        if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(text) || (Number.isFinite(max) && max > 1000))) return 'color';
+        if ((type === 1 || type === 2) && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+            if (/(hell|brightness|intensity|dimm|level|%)/.test(text) || max <= 255) return 'brightness';
+        }
+        return '';
+    }
+
     function itemColorControlCss(item) {
         if (
-            item?.colorControlEnabled !== true ||
-            Number(item?.colorVariableID || 0) <= 0 ||
+            colorBrightnessControlKind(item) !== 'color' ||
             Number(item?._colorVariableType) !== 1
         ) {
             return '';
@@ -5279,15 +5296,23 @@ HTML;
                     <div class="field">
                         <label class="check">
                             <input data-field="colorControlEnabled" type="checkbox"${obj.colorControlEnabled === true ? ' checked' : ''}>
-                            Farbsteuerung
+                            Farb-/Helligkeitssteuerung
                         </label>
                         ${obj.colorControlEnabled === true ? `
-                            <label>Farbvariable (Integer / Hex Color)</label>
-                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farbvariable auswählen"
+                            <label>Farb-/Helligkeitsvariable</label>
+                            <input class="variable-select-field" data-variable-field="colorVariableID" readonly title="Farb- oder Helligkeitsvariable auswählen"
                                 value="${obj.colorVariableID ? '#' + obj.colorVariableID + (obj._colorVariablePath ? ' – ' + escapeHtml(obj._colorVariablePath) : '') : 'nicht zugeordnet'}">
-                            ${Number(obj.colorVariableID || 0) > 0 && Number(obj._colorVariableType) !== 1
-                                ? `<div class="profile-hint">Die Farbvariable muss vom Typ Integer sein.</div>`
-                                : `<div class="profile-hint">Integer-Farbwert 0xRRGGBB / #RRGGBB. Die aktuelle Farbe wird am Gerät angezeigt.</div>`}
+                            ${(() => {
+                                const kind = colorBrightnessControlKind(obj);
+                                if (Number(obj.colorVariableID || 0) <= 0) return `<div class="profile-hint">Integer/Float auswählen. Farbe oder Helligkeit wird automatisch erkannt.</div>`;
+                                if (kind === 'color') return `<div class="profile-hint">Automatisch erkannt: Farbe (RGB/Hex).</div>`;
+                                if (kind === 'brightness') return `<div class="profile-hint">Automatisch erkannt: Helligkeit${obj._colorVariableProfileSummary ? ' · ' + escapeHtml(obj._colorVariableProfileSummary) : ''}.</div>`;
+                                return `<div class="profile-hint">Die Variable konnte nicht eindeutig als Farbe oder Helligkeit erkannt werden.</div>`;
+                            })()}
+                            <label class="check" style="margin-top:8px">
+                                <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
+                                Im Bedienfenster anzeigen
+                            </label>
                         ` : ''}
                     </div>
                 ` : ''}
@@ -5295,8 +5320,7 @@ HTML;
                     <div class="field">
                         ${(() => {
                             const configuredLightColor = (
-                                obj.colorControlEnabled === true &&
-                                Number(obj.colorVariableID || 0) > 0 &&
+                                colorBrightnessControlKind(obj) === 'color' &&
                                 Number(obj._colorVariableType) === 1
                             ) ? integerColorToCss(obj._colorVariableRawValue) : '';
 
@@ -6270,6 +6294,7 @@ HTML;
             html = '<div class="profile-hint">Für die Rollladenvariable sind keine bedienbaren Profilwerte hinterlegt.</div>';
         }
 
+
         controlBody.innerHTML = html;
 
         const send = value => requestAction('operateOpeningValue', JSON.stringify({
@@ -6501,7 +6526,8 @@ HTML;
                     if (
                         item.colorControlEnabled === true &&
                         Number(item.colorVariableID || 0) > 0 &&
-                        Number(item._colorVariableType) === 1
+                        colorBrightnessControlKind(item) !== '' &&
+                        item.showColorBrightnessControl !== false
                     ) {
                         // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
                         // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
@@ -6634,6 +6660,9 @@ HTML;
                 y: p.y,
                 name: 'Gerät',
                 variableID: 0,
+                colorControlEnabled: false,
+                colorVariableID: 0,
+                showColorBrightnessControl: true,
                 size: 18,
                 angle: 0,
                 kind: 'generic', // nur noch für Migration älterer Projekte
@@ -7394,12 +7423,10 @@ HTML;
         }
 
         if (
-            entityType === 'item' &&
-            field === 'colorVariableID' &&
-            selectedVariableID > 0 &&
-            Number(selectedNode?.variableType) !== 1
+            entityType === 'item' && field === 'colorVariableID' && selectedVariableID > 0 &&
+            ![1, 2].includes(Number(selectedNode?.variableType))
         ) {
-            statusEl.textContent = 'Farbvariable muss eine Integer-Variable sein';
+            statusEl.textContent = 'Farb-/Helligkeitsvariable muss Integer oder Float sein';
             return;
         }
 
@@ -7669,21 +7696,14 @@ HTML;
         }));
     }
 
-    function sendItemColorValue(item, value) {
-        if (
-            !item ||
-            item.colorControlEnabled !== true ||
-            Number(item.colorVariableID || 0) <= 0 ||
-            item._colorVariableCanAction !== true
-        ) {
-            return;
-        }
+    function sendItemColorBrightnessValue(item, value) {
+        if (!item || item.colorControlEnabled !== true || Number(item.colorVariableID || 0) <= 0 ||
+            item._colorVariableCanAction !== true || colorBrightnessControlKind(item) === '') return;
+        requestAction('operateColorBrightnessValue', JSON.stringify({floorId: state.activeFloor, itemId: item.id, value}));
+    }
 
-        requestAction('operateColorValue', JSON.stringify({
-            floorId: state.activeFloor,
-            itemId: item.id,
-            value
-        }));
+    function sendItemColorValue(item, value) {
+        sendItemColorBrightnessValue(item, value);
     }
 
     function stopActiveStream() {
@@ -7864,11 +7884,11 @@ HTML;
 
         let html = '';
 
+        const colorBrightnessKind = colorBrightnessControlKind(item);
         const colorControlledBool = (
             Number(item._variableType) === 0 &&
-            item.colorControlEnabled === true &&
-            Number(item.colorVariableID || 0) > 0 &&
-            Number(item._colorVariableType) === 1
+            colorBrightnessKind === 'color' &&
+            item.showColorBrightnessControl !== false
         );
 
         // Bei einer farbgesteuerten Bool-Lampe werden die Bool-Assoziationen
@@ -7912,9 +7932,8 @@ HTML;
         }
 
         if (
-            item.colorControlEnabled === true &&
-            Number(item.colorVariableID || 0) > 0 &&
-            Number(item._colorVariableType) === 1
+            colorBrightnessKind === 'color' &&
+            item.showColorBrightnessControl !== false
         ) {
             // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
             // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
@@ -7965,7 +7984,42 @@ HTML;
             `;
         }
 
+        if (colorBrightnessKind === 'brightness' && item.showColorBrightnessControl !== false) {
+            const bp = item._colorVariableProfile || {};
+            const bmin = Number(bp.min), bmax = Number(bp.max), bstepRaw = Number(bp.step);
+            if (Number.isFinite(bmin) && Number.isFinite(bmax) && bmax > bmin) {
+                const bstep = Number.isFinite(bstepRaw) && bstepRaw > 0 ? bstepRaw : 1;
+                const braw = Number(item._colorVariableRawValue);
+                const bcurrent = Number.isFinite(braw) ? Math.max(bmin, Math.min(bmax, braw)) : bmin;
+                const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
+                const bdisabled = item._colorVariableCanAction === true ? '' : ' disabled';
+                html += `<div class="field" style="margin-top:10px"><label>Helligkeit</label><div class="control-slider">
+                    <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
+                    <div class="control-slider-row"><button type="button" data-brightness-step="-1"${bdisabled}>−</button>
+                    <input type="range" data-brightness-slider min="${bmin}" max="${bmax}" step="${bstep}" value="${bcurrent}"${bdisabled}>
+                    <button type="button" data-brightness-step="1"${bdisabled}>+</button></div>
+                    <div class="profile-hint">${escapeHtml(String(bmin))}${escapeHtml(bsuffix)} – ${escapeHtml(String(bmax))}${escapeHtml(bsuffix)} · Schritt ${escapeHtml(String(bstep))}${escapeHtml(bsuffix)}</div>
+                </div></div>`;
+            }
+        }
+
         controlBody.innerHTML = html;
+
+        const brightnessSlider = controlBody.querySelector('[data-brightness-slider]');
+        if (brightnessSlider) {
+            const brightnessValue = controlBody.querySelector('[data-brightness-value]');
+            const bp = item._colorVariableProfile || {};
+            const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
+            const updateBrightnessLabel = value => { if (brightnessValue) brightnessValue.textContent = `${bprefix}${value}${bsuffix}`; };
+            brightnessSlider.addEventListener('input', event => updateBrightnessLabel(event.currentTarget.value));
+            brightnessSlider.addEventListener('change', event => sendItemColorBrightnessValue(item, Number(event.currentTarget.value)));
+            controlBody.querySelectorAll('[data-brightness-step]').forEach(button => button.addEventListener('click', event => {
+                const direction = Number(event.currentTarget.dataset.brightnessStep || 0);
+                const step = Number(brightnessSlider.step) || 1, min = Number(brightnessSlider.min), max = Number(brightnessSlider.max);
+                const next = Math.max(min, Math.min(max, Number(brightnessSlider.value) + direction * step));
+                brightnessSlider.value = String(next); updateBrightnessLabel(next); sendItemColorBrightnessValue(item, next);
+            }));
+        }
 
         controlBody.querySelectorAll('[data-control-bool]').forEach(button => {
             button.addEventListener('click', btnEvent => {
@@ -8807,7 +8861,8 @@ JAVASCRIPT;
                 );
                 break;
 
-            case 'operateColorValue':
+            case 'operateColorValue': // Legacy-Alias
+            case 'operateColorBrightnessValue':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Ungültiger Farbwert.');
                 }
@@ -8815,7 +8870,7 @@ JAVASCRIPT;
                 if (!is_array($request)) {
                     throw new InvalidArgumentException('Ungültiger Farbwert.');
                 }
-                $this->OperateItemColorValue(
+                $this->OperateItemColorBrightnessValue(
                     (string) ($request['floorId'] ?? ''),
                     (string) ($request['itemId'] ?? ''),
                     $request['value'] ?? null
@@ -10360,7 +10415,7 @@ JAVASCRIPT;
         }
     }
 
-    private function OperateItemColorValue(string $FloorID, string $ItemID, mixed $Value): void
+    private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value): void
     {
         $project = $this->GetProject();
 
@@ -10380,16 +10435,18 @@ JAVASCRIPT;
                 }
 
                 $variable = IPS_GetVariable($variableID);
-                if ((int) ($variable['VariableType'] ?? -1) !== 1) {
-                    return;
-                }
+                $variableType = (int) ($variable['VariableType'] ?? -1);
+                if (!in_array($variableType, [1, 2], true)) return;
 
                 $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
-                if (($runtimeMeta['_canAction'] ?? false) !== true) {
-                    return;
-                }
+                if (($runtimeMeta['_canAction'] ?? false) !== true) return;
 
-                $targetValue = max(0, min(0xFFFFFF, (int) round((float) $Value)));
+                $profile = is_array($runtimeMeta['_profile'] ?? null) ? $runtimeMeta['_profile'] : [];
+                $min = is_numeric($profile['min'] ?? null) ? (float) $profile['min'] : null;
+                $max = is_numeric($profile['max'] ?? null) ? (float) $profile['max'] : null;
+                $targetValue = (float) $Value;
+                if ($min !== null && $max !== null && $max > $min) $targetValue = max($min, min($max, $targetValue));
+                if ($variableType === 1) $targetValue = (int) round($targetValue);
                 $this->DispatchVariableAction($variableID, $targetValue);
                 return;
             }
