@@ -2313,6 +2313,8 @@ HTML;
                 if (typeof item.colorControlEnabled !== 'boolean') item.colorControlEnabled = false;
                 item.colorVariableID = Number(item.colorVariableID) || 0;
                 if (typeof item.showColorBrightnessControl !== 'boolean') item.showColorBrightnessControl = true;
+                item.colorVariableID2 = Number(item.colorVariableID2) || 0;
+                if (typeof item.showColorBrightnessControl2 !== 'boolean') item.showColorBrightnessControl2 = true;
             }
             floor.furniture = Array.isArray(floor.furniture) ? floor.furniture : [];
             for (const furniture of floor.furniture) {
@@ -3955,12 +3957,13 @@ HTML;
                 isBooleanDevice &&
                 boolActive &&
                 item.colorControlEnabled === true &&
-                colorBrightnessControlKind(item) === 'brightness'
+                colorBrightnessControlForKind(item, 'brightness') !== null
             ) {
-                const brightnessProfile = item._colorVariableProfile || {};
+                const brightnessControl = colorBrightnessControlForKind(item, 'brightness');
+                const brightnessProfile = brightnessControl?.profile || {};
                 const brightnessMin = Number(brightnessProfile.min);
                 const brightnessMax = Number(brightnessProfile.max);
-                const brightnessRaw = Number(item._colorVariableRawValue);
+                const brightnessRaw = Number(brightnessControl?.rawValue);
 
                 if (
                     Number.isFinite(brightnessRaw) &&
@@ -3989,7 +3992,7 @@ HTML;
             const brightnessClass = (
                 isBooleanDevice &&
                 item.colorControlEnabled === true &&
-                colorBrightnessControlKind(item) === 'brightness'
+                colorBrightnessControlForKind(item, 'brightness') !== null
             ) ? ' brightness-controlled' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
@@ -4255,60 +4258,72 @@ HTML;
         return `#${toHex(rp)}${toHex(gp)}${toHex(bp)}`.toUpperCase();
     }
 
-    function colorBrightnessControlKind(item) {
-        if (item?.colorControlEnabled !== true || Number(item?.colorVariableID || 0) <= 0) return '';
-        const type = Number(item?._colorVariableType);
-        const profile = item?._colorVariableProfile || {};
-        const profileName = String(item?._colorVariableProfileName || '').toLowerCase();
+    function colorBrightnessControlKindForSlot(item, slot = 1) {
+        if (item?.colorControlEnabled !== true) return '';
+
+        const second = Number(slot) === 2;
+        const id = Number(second ? item?.colorVariableID2 : item?.colorVariableID) || 0;
+        if (id <= 0) return '';
+
+        const prefix = second ? '_colorVariable2' : '_colorVariable';
+        const type = Number(item?.[`${prefix}Type`]);
+        const profile = item?.[`${prefix}Profile`] || {};
+        const profileName = String(item?.[`${prefix}ProfileName`] || '').toLowerCase();
         const suffix = String(profile?.suffix || '').toLowerCase();
         const min = Number(profile?.min);
         const max = Number(profile?.max);
-        const raw = Number(item?._colorVariableRawValue);
-        const path = String(item?._colorVariablePath || '').toLowerCase();
-        const valueText = String(item?._colorVariableValueText || '').toLowerCase();
-        const text = `${profileName} ${suffix} ${path} ${valueText}`;
+        const raw = Number(item?.[`${prefix}RawValue`]);
+        const path = String(item?.[`${prefix}Path`] || '').toLowerCase();
+        const valueText = String(item?.[`${prefix}ValueText`] || '').toLowerCase();
+        const searchText = `${profileName} ${suffix} ${path} ${valueText}`;
 
-        // Farbe hat immer Vorrang. Neben Profil-/Darstellungsnamen erkennen wir
-        // auch typische Bezeichnungen im Objektpfad. Ein grosser Integer-
-        // Wertebereich ist weiterhin ein Fallback fuer 24-Bit-RGB/HexColor.
-        if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(text) || (Number.isFinite(max) && max > 1000))) return 'color';
+        // Farbe hat Vorrang vor Helligkeit.
+        if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(searchText) || (Number.isFinite(max) && max > 1000))) {
+            return 'color';
+        }
 
         if (type === 1 || type === 2) {
-            // Eindeutige Helligkeits-/Dimmerbezeichnung oder Prozentdarstellung.
-            if (/(hell|brightness|intensity|dimm|dimmer|level|%)/.test(text)) return 'brightness';
-
-            // Klassischer Dimmerbereich. Das funktioniert auch dann, wenn eine
-            // neue Symcon-Darstellung keinen Legacy-Profilnamen liefert.
+            if (/(hell|brightness|intensity|dimm|dimmer|level|%)/.test(searchText)) return 'brightness';
             if (Number.isFinite(min) && Number.isFinite(max) && max > min && min >= 0 && max <= 100) return 'brightness';
-
-            // Letzter Fallback fuer numerische Zusatzvariablen ohne auswertbare
-            // Profilmetadaten: ein aktueller Wert von 0..100 ist fuer die hier
-            // explizit als Farb-/Helligkeitsvariable gewaehlte Variable ein
-            // plausibler Helligkeitswert. Farbe wurde oben bereits ausgeschlossen.
-            if ((!Number.isFinite(min) || !Number.isFinite(max) || max <= min) && Number.isFinite(raw) && raw >= 0 && raw <= 100) return 'brightness';
+            if ((!Number.isFinite(min) || !Number.isFinite(max) || max <= min) && Number.isFinite(raw) && raw >= 0 && raw <= 100) {
+                return 'brightness';
+            }
         }
         return '';
     }
 
+    function colorBrightnessControlKind(item) {
+        return colorBrightnessControlKindForSlot(item, 1);
+    }
+
+    function colorBrightnessControlForKind(item, kind) {
+        for (const slot of [1, 2]) {
+            if (colorBrightnessControlKindForSlot(item, slot) !== kind) continue;
+            const second = slot === 2;
+            const prefix = second ? '_colorVariable2' : '_colorVariable';
+            return {
+                slot,
+                kind,
+                variableID: Number(second ? item?.colorVariableID2 : item?.colorVariableID) || 0,
+                show: second ? item?.showColorBrightnessControl2 !== false : item?.showColorBrightnessControl !== false,
+                path: String(item?.[`${prefix}Path`] || ''),
+                rawValue: item?.[`${prefix}RawValue`],
+                variableType: Number(item?.[`${prefix}Type`]),
+                profileName: String(item?.[`${prefix}ProfileName`] || ''),
+                profileSummary: String(item?.[`${prefix}ProfileSummary`] || ''),
+                profile: item?.[`${prefix}Profile`] || {},
+                canAction: item?.[`${prefix}CanAction`] === true
+            };
+        }
+        return null;
+    }
+
     function itemColorControlCss(item) {
-        if (
-            colorBrightnessControlKind(item) !== 'color' ||
-            Number(item?._colorVariableType) !== 1
-        ) {
-            return '';
-        }
+        const control = colorBrightnessControlForKind(item, 'color');
+        if (!control || control.variableType !== 1) return '';
 
-        // Bei Bool-Geräten darf die gespeicherte Leuchtfarbe nur sichtbar sein,
-        // wenn die Hauptvariable tatsächlich EIN ist. Der Farbwert selbst bleibt
-        // gespeichert und steht beim nächsten Einschalten wieder zur Verfügung.
-        if (
-            Number(item?._variableType) === 0 &&
-            !truthyVariableValue(item?._rawValue)
-        ) {
-            return '';
-        }
-
-        return integerColorToCss(item?._colorVariableRawValue);
+        if (Number(item?._variableType) === 0 && !truthyVariableValue(item?._rawValue)) return '';
+        return integerColorToCss(control.rawValue);
     }
 
     function associationButtonStyle(value) {
@@ -5493,6 +5508,22 @@ HTML;
                                 <input data-field="showColorBrightnessControl" type="checkbox"${obj.showColorBrightnessControl !== false ? ' checked' : ''}>
                                 Im Bedienfenster anzeigen
                             </label>
+                            <div style="margin-top:12px;border-top:1px solid var(--fp-border);padding-top:10px">
+                                <label>Weitere Farb-/Helligkeitsvariable (optional)</label>
+                                <input class="variable-select-field" data-variable-field="colorVariableID2" readonly title="Weitere Farb- oder Helligkeitsvariable auswählen"
+                                    value="${obj.colorVariableID2 ? '#' + obj.colorVariableID2 + (obj._colorVariable2Path ? ' – ' + escapeHtml(obj._colorVariable2Path) : '') : 'nicht zugeordnet'}">
+                                ${(() => {
+                                    const kind2 = colorBrightnessControlKindForSlot(obj, 2);
+                                    if (Number(obj.colorVariableID2 || 0) <= 0) return `<div class="profile-hint">Optional: zweite Variable auswählen, z. B. Farbe + Helligkeit.</div>`;
+                                    if (kind2 === 'color') return `<div class="profile-hint">Automatisch erkannt: Farbe (RGB/Hex).</div>`;
+                                    if (kind2 === 'brightness') return `<div class="profile-hint">Automatisch erkannt: Helligkeit${obj._colorVariable2ProfileSummary ? ' · ' + escapeHtml(obj._colorVariable2ProfileSummary) : ''}.</div>`;
+                                    return `<div class="profile-hint">Die Variable konnte nicht eindeutig als Farbe oder Helligkeit erkannt werden.</div>`;
+                                })()}
+                                <label class="check" style="margin-top:8px">
+                                    <input data-field="showColorBrightnessControl2" type="checkbox"${obj.showColorBrightnessControl2 !== false ? ' checked' : ''}>
+                                    Im Bedienfenster anzeigen
+                                </label>
+                            </div>
                         ` : ''}
                     </div>
                 ` : ''}
@@ -6703,9 +6734,10 @@ HTML;
                 } else if (variableType === 0) {
                     if (
                         item.colorControlEnabled === true &&
-                        Number(item.colorVariableID || 0) > 0 &&
-                        colorBrightnessControlKind(item) !== '' &&
-                        item.showColorBrightnessControl !== false
+                        (
+                            (Number(item.colorVariableID || 0) > 0 && colorBrightnessControlKindForSlot(item, 1) !== '' && item.showColorBrightnessControl !== false) ||
+                            (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl2 !== false)
+                        )
                     ) {
                         // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
                         // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
@@ -6841,6 +6873,8 @@ HTML;
                 colorControlEnabled: false,
                 colorVariableID: 0,
                 showColorBrightnessControl: true,
+                colorVariableID2: 0,
+                showColorBrightnessControl2: true,
                 size: 18,
                 angle: 0,
                 kind: 'generic', // nur noch für Migration älterer Projekte
@@ -7601,7 +7635,7 @@ HTML;
         }
 
         if (
-            entityType === 'item' && field === 'colorVariableID' && selectedVariableID > 0 &&
+            entityType === 'item' && ['colorVariableID', 'colorVariableID2'].includes(field) && selectedVariableID > 0 &&
             ![1, 2].includes(Number(selectedNode?.variableType))
         ) {
             statusEl.textContent = 'Farb-/Helligkeitsvariable muss Integer oder Float sein';
@@ -7660,7 +7694,8 @@ HTML;
             secondaryVariableID: 'secondaryVariable',
             shutterVariableID: 'shutterVariable',
             shutterSecondaryVariableID: 'shutterSecondaryVariable',
-            colorVariableID: 'colorVariable'
+            colorVariableID: 'colorVariable',
+            colorVariableID2: 'colorVariable2'
         };
         const prefix = map[field] ?? field.replace(/ID$/, '');
 
@@ -7874,14 +7909,21 @@ HTML;
         }));
     }
 
-    function sendItemColorBrightnessValue(item, value) {
-        if (!item || item.colorControlEnabled !== true || Number(item.colorVariableID || 0) <= 0 ||
-            item._colorVariableCanAction !== true || colorBrightnessControlKind(item) === '') return;
-        requestAction('operateColorBrightnessValue', JSON.stringify({floorId: state.activeFloor, itemId: item.id, value}));
+    function sendItemColorBrightnessValue(item, value, control = null) {
+        const selectedControl = control || colorBrightnessControlForKind(item, 'brightness') || colorBrightnessControlForKind(item, 'color');
+        if (!item || item.colorControlEnabled !== true || !selectedControl ||
+            Number(selectedControl.variableID || 0) <= 0 || selectedControl.canAction !== true) return;
+
+        requestAction('operateColorBrightnessValue', JSON.stringify({
+            floorId: state.activeFloor,
+            itemId: item.id,
+            variableID: Number(selectedControl.variableID),
+            value
+        }));
     }
 
     function sendItemColorValue(item, value) {
-        sendItemColorBrightnessValue(item, value);
+        sendItemColorBrightnessValue(item, value, colorBrightnessControlForKind(item, 'color'));
     }
 
     function stopActiveStream() {
@@ -8062,11 +8104,12 @@ HTML;
 
         let html = '';
 
-        const colorBrightnessKind = colorBrightnessControlKind(item);
+        const colorControl = colorBrightnessControlForKind(item, 'color');
+        const brightnessControl = colorBrightnessControlForKind(item, 'brightness');
+        const colorBrightnessKind = colorControl ? 'color' : (brightnessControl ? 'brightness' : '');
         const colorControlledBool = (
             Number(item._variableType) === 0 &&
-            (colorBrightnessKind === 'color' || colorBrightnessKind === 'brightness') &&
-            item.showColorBrightnessControl !== false
+            ((colorControl && colorControl.show) || (brightnessControl && brightnessControl.show))
         );
 
         // Bei einer Bool-Lampe mit Farb- oder Helligkeitssteuerung werden die
@@ -8110,19 +8153,18 @@ HTML;
         }
 
         if (
-            colorBrightnessKind === 'color' &&
-            item.showColorBrightnessControl !== false
+            colorControl && colorControl.show
         ) {
             // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
             // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
             // Die Plan-Darstellung bleibt davon vollständig getrennt.
-            const currentColor = integerColorToCss(item?._colorVariableRawValue) || '#FFFFFF';
-            const disabled = item._colorVariableCanAction === true ? '' : ' disabled';
+            const currentColor = integerColorToCss(colorControl.rawValue) || '#FFFFFF';
+            const disabled = colorControl.canAction ? '' : ' disabled';
             html += `
                 <div class="field" style="margin-top:10px">
                     <label>Farbe</label>
                     <div class="device-color-wheel-wrap">
-                        <div class="device-color-wheel${item._colorVariableCanAction === true ? '' : ' disabled'}"
+                        <div class="device-color-wheel${colorControl.canAction ? '' : ' disabled'}"
                             data-control-color-wheel data-color="${currentColor}">
                             <span class="device-color-wheel-marker" data-control-color-marker></span>
                         </div>
@@ -8155,25 +8197,25 @@ HTML;
                             <div class="profile-hint device-color-hex" data-control-color-text>${escapeHtml(currentColor)}</div>
                         </div>
                     </div>
-                    ${item._colorVariableCanAction === true
+                    ${colorControl.canAction
                         ? '<div class="profile-hint">Im Farbkreis direkt die gewünschte Leuchtfarbe auswählen.</div>'
                         : '<div class="profile-hint">Die Farbvariable besitzt keine Aktion und kann nur als Farbzustand angezeigt werden.</div>'}
                 </div>
             `;
         }
 
-        if (colorBrightnessKind === 'brightness' && item.showColorBrightnessControl !== false) {
-            const bp = item._colorVariableProfile || {};
+        if (brightnessControl && brightnessControl.show) {
+            const bp = brightnessControl.profile || {};
             const bmin = Number(bp.min), bmax = Number(bp.max), bstepRaw = Number(bp.step);
             if (Number.isFinite(bmin) && Number.isFinite(bmax) && bmax > bmin) {
                 const bstep = Number.isFinite(bstepRaw) && bstepRaw > 0 ? bstepRaw : 1;
-                const braw = Number(item._colorVariableRawValue);
+                const braw = Number(brightnessControl.rawValue);
                 const bcurrent = Number.isFinite(braw) ? Math.max(bmin, Math.min(bmax, braw)) : bmin;
                 const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
-                const bdisabled = item._colorVariableCanAction === true ? '' : ' disabled';
+                const bdisabled = brightnessControl.canAction ? '' : ' disabled';
 
                 let powerHtml = '';
-                if (Number(item._variableType) === 0) {
+                if (Number(item._variableType) === 0 && !(colorControl && colorControl.show)) {
                     const boolAssociations = Array.isArray(item?._profile?.associations)
                         ? item._profile.associations
                         : [];
@@ -8221,16 +8263,16 @@ HTML;
         const brightnessSlider = controlBody.querySelector('[data-brightness-slider]');
         if (brightnessSlider) {
             const brightnessValue = controlBody.querySelector('[data-brightness-value]');
-            const bp = item._colorVariableProfile || {};
+            const bp = brightnessControl?.profile || {};
             const bprefix = String(bp.prefix || ''), bsuffix = String(bp.suffix || '');
             const updateBrightnessLabel = value => { if (brightnessValue) brightnessValue.textContent = `${bprefix}${value}${bsuffix}`; };
             brightnessSlider.addEventListener('input', event => updateBrightnessLabel(event.currentTarget.value));
-            brightnessSlider.addEventListener('change', event => sendItemColorBrightnessValue(item, Number(event.currentTarget.value)));
+            brightnessSlider.addEventListener('change', event => sendItemColorBrightnessValue(item, Number(event.currentTarget.value), brightnessControl));
             controlBody.querySelectorAll('[data-brightness-step]').forEach(button => button.addEventListener('click', event => {
                 const direction = Number(event.currentTarget.dataset.brightnessStep || 0);
                 const step = Number(brightnessSlider.step) || 1, min = Number(brightnessSlider.min), max = Number(brightnessSlider.max);
                 const next = Math.max(min, Math.min(max, Number(brightnessSlider.value) + direction * step));
-                brightnessSlider.value = String(next); updateBrightnessLabel(next); sendItemColorBrightnessValue(item, next);
+                brightnessSlider.value = String(next); updateBrightnessLabel(next); sendItemColorBrightnessValue(item, next, brightnessControl);
             }));
         }
 
@@ -8273,7 +8315,7 @@ HTML;
                 requestAnimationFrame(placeInitialMarker);
             });
 
-            if (item._colorVariableCanAction === true) {
+            if (colorControl?.canAction === true) {
                 let draggingColor = false;
 
                 const updateFromPointer = event => {
@@ -8667,6 +8709,35 @@ HTML;
                                 _newIntegerStatusColor: '_colorVariableNewIntegerStatusColor'
                             };
                             for (const [sourceKey, targetKey] of Object.entries(colorRuntimeMap)) {
+                                if (Object.prototype.hasOwnProperty.call(meta, sourceKey)) {
+                                    item[targetKey] = meta[sourceKey];
+                                }
+                            }
+                        }
+
+                        if (Number(item.colorVariableID2 || 0) === variableID) {
+                            const colorRuntimeMap2 = {
+                                _variablePath: '_colorVariable2Path',
+                                _valueText: '_colorVariable2ValueText',
+                                _rawValue: '_colorVariable2RawValue',
+                                _variableType: '_colorVariable2Type',
+                                _profileName: '_colorVariable2ProfileName',
+                                _profileSummary: '_colorVariable2ProfileSummary',
+                                _profile: '_colorVariable2Profile',
+                                _canAction: '_colorVariable2CanAction',
+                                _objectIcon: '_colorVariable2ObjectIcon',
+                                _hasLegacyProfile: '_colorVariable2HasLegacyProfile',
+                                _hasNewPresentation: '_colorVariable2HasNewPresentation',
+                                _presentationIconOff: '_colorVariable2PresentationIconOff',
+                                _presentationIconOn: '_colorVariable2PresentationIconOn',
+                                _presentationIcon: '_colorVariable2PresentationIcon',
+                                _glowColor: '_colorVariable2GlowColor',
+                                _glowIntensity: '_colorVariable2GlowIntensity',
+                                _legacyColorOn: '_colorVariable2LegacyColorOn',
+                                _legacyCurrentColor: '_colorVariable2LegacyCurrentColor',
+                                _newIntegerStatusColor: '_colorVariable2NewIntegerStatusColor'
+                            };
+                            for (const [sourceKey, targetKey] of Object.entries(colorRuntimeMap2)) {
                                 if (Object.prototype.hasOwnProperty.call(meta, sourceKey)) {
                                     item[targetKey] = meta[sourceKey];
                                 }
@@ -9082,7 +9153,8 @@ JAVASCRIPT;
                 $this->OperateItemColorBrightnessValue(
                     (string) ($request['floorId'] ?? ''),
                     (string) ($request['itemId'] ?? ''),
-                    $request['value'] ?? null
+                    $request['value'] ?? null,
+                    (int) ($request['variableID'] ?? 0)
                 );
                 break;
 
@@ -9352,9 +9424,11 @@ JAVASCRIPT;
                     $ids[$id] = true;
                 }
 
-                $colorID = (int) ($item['colorVariableID'] ?? 0);
-                if ($colorID > 0 && IPS_VariableExists($colorID)) {
-                    $ids[$colorID] = true;
+                foreach (['colorVariableID', 'colorVariableID2'] as $colorField) {
+                    $colorID = (int) ($item[$colorField] ?? 0);
+                    if ($colorID > 0 && IPS_VariableExists($colorID)) {
+                        $ids[$colorID] = true;
+                    }
                 }
             }
 
@@ -9476,6 +9550,96 @@ JAVASCRIPT;
                         }
                     } catch (Throwable $e) {
                         $this->SendDebug('RuntimeColorValue', $e->getMessage(), 0);
+                    }
+                }
+            }
+
+            if (isset($floor['openings']) && is_array($floor['openings'])) {
+                foreach ($floor['openings'] as $openingIndex => $opening) {
+                    $fieldMap = [
+                        'variableID'                 => '',
+                        'secondaryVariableID'        => 'secondaryVariable',
+                        'shutterVariableID'          => 'shutterVariable',
+                        'shutterSecondaryVariableID' => 'shutterSecondaryVariable'
+                    ];
+
+                    foreach ($fieldMap as $field => $prefix) {
+                        $variableID = (int) ($opening[$field] ?? 0);
+                        if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                            continue;
+                        }
+
+                        try {
+                            $meta = $this->GetVariableRuntimeMeta($variableID);
+                            foreach ($meta as $key => $value) {
+                                $suffix = ltrim($key, '_');
+
+                                if ($prefix === '') {
+                                    $targetKey = $key;
+                                } else {
+                                    $mapSuffix = [
+                                        'variableType'   => 'Type',
+                                        'variablePath'   => 'Path',
+                                        'rawValue'       => 'RawValue',
+                                        'valueText'      => 'ValueText',
+                                        'profileName'    => 'ProfileName',
+                                        'profileSummary' => 'ProfileSummary',
+                                        'profile'        => 'Profile'
+                                    ];
+                                    $targetKey = '_' . $prefix . ($mapSuffix[$suffix] ?? ucfirst($suffix));
+                                }
+                                $Project['floors'][$floorIndex]['openings'][$openingIndex][$targetKey] = $value;
+                            }
+                        } catch (Throwable $e) {
+                            $this->SendDebug('RuntimeOpeningValue', $e->getMessage(), 0);
+                        }
+                    }
+                }
+            }
+
+            // Zweite optionale Farb-/Helligkeitsvariable laden.
+            if (isset($floor['items']) && is_array($floor['items'])) {
+                foreach ($floor['items'] as $itemIndex => $item) {
+                    $colorID = (int) ($item['colorVariableID2'] ?? 0);
+                    if ($colorID <= 0 || !IPS_VariableExists($colorID)) {
+                        continue;
+                    }
+
+                    try {
+                        $meta = $this->GetVariableRuntimeMeta($colorID);
+
+                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
+                        // Variablen verwenden. Insbesondere wird aus _variableType
+                        // _colorVariableType (nicht _colorVariableVariableType).
+                        $runtimeMap = [
+                            '_variablePath'          => '_colorVariable2Path',
+                            '_valueText'             => '_colorVariable2ValueText',
+                            '_rawValue'              => '_colorVariable2RawValue',
+                            '_variableType'          => '_colorVariable2Type',
+                            '_profileName'           => '_colorVariable2ProfileName',
+                            '_profileSummary'        => '_colorVariable2ProfileSummary',
+                            '_profile'               => '_colorVariable2Profile',
+                            '_canAction'             => '_colorVariable2CanAction',
+                            '_objectIcon'            => '_colorVariable2ObjectIcon',
+                            '_hasLegacyProfile'      => '_colorVariable2HasLegacyProfile',
+                            '_hasNewPresentation'    => '_colorVariable2HasNewPresentation',
+                            '_presentationIconOff'   => '_colorVariable2PresentationIconOff',
+                            '_presentationIconOn'    => '_colorVariable2PresentationIconOn',
+                            '_presentationIcon'      => '_colorVariable2PresentationIcon',
+                            '_glowColor'             => '_colorVariable2GlowColor',
+                            '_glowIntensity'         => '_colorVariable2GlowIntensity',
+                            '_legacyColorOn'         => '_colorVariable2LegacyColorOn',
+                            '_legacyCurrentColor'    => '_colorVariable2LegacyCurrentColor',
+                            '_newIntegerStatusColor' => '_colorVariable2NewIntegerStatusColor'
+                        ];
+
+                        foreach ($runtimeMap as $sourceKey => $targetKey) {
+                            if (array_key_exists($sourceKey, $meta)) {
+                                $Project['floors'][$floorIndex]['items'][$itemIndex][$targetKey] = $meta[$sourceKey];
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        $this->SendDebug('RuntimeColorValue2', $e->getMessage(), 0);
                     }
                 }
             }
@@ -10624,7 +10788,7 @@ JAVASCRIPT;
         }
     }
 
-    private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value): void
+    private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value, int $RequestedVariableID = 0): void
     {
         $project = $this->GetProject();
 
@@ -10638,8 +10802,13 @@ JAVASCRIPT;
                     continue;
                 }
 
-                $variableID = (int) ($item['colorVariableID'] ?? 0);
-                if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                $allowedVariableIDs = array_values(array_filter([
+                    (int) ($item['colorVariableID'] ?? 0),
+                    (int) ($item['colorVariableID2'] ?? 0)
+                ], static fn (int $id): bool => $id > 0));
+
+                $variableID = $RequestedVariableID > 0 ? $RequestedVariableID : ($allowedVariableIDs[0] ?? 0);
+                if (!in_array($variableID, $allowedVariableIDs, true) || !IPS_VariableExists($variableID)) {
                     return;
                 }
 
