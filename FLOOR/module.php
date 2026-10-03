@@ -7604,6 +7604,41 @@ HTML;
         const selectedVariableID = Number(variableID) || 0;
         const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
 
+        // Zusatzvariable wirklich vollständig entfernen. Nur die ID auf 0 zu
+        // setzen reicht nicht, weil sonst die Runtime-Metadaten erhalten bleiben
+        // und der Picker die alte Farbe/Helligkeit weiterhin erkennt/anzeigt.
+        if (
+            selectedVariableID === 0 &&
+            entityType === 'item' &&
+            ['colorVariableID', 'colorVariableID2'].includes(field)
+        ) {
+            const prefix = field === 'colorVariableID2' ? '_colorVariable2' : '_colorVariable';
+            entity[field] = 0;
+
+            [
+                'Path', 'ValueText', 'RawValue', 'Type', 'ProfileName',
+                'ProfileSummary', 'Profile', 'CanAction', 'ObjectIcon',
+                'HasLegacyProfile', 'HasNewPresentation',
+                'PresentationIconOff', 'PresentationIconOn', 'PresentationIcon',
+                'GlowColor', 'GlowIntensity', 'LegacyColorOn',
+                'LegacyCurrentColor', 'NewIntegerStatusColor'
+            ].forEach(suffix => {
+                delete entity[`${prefix}${suffix}`];
+            });
+
+            entity.colorControlEnabled =
+                Number(entity.colorVariableID || 0) > 0 ||
+                Number(entity.colorVariableID2 || 0) > 0;
+
+            variableModal.classList.remove('open');
+            variableModal.setAttribute('aria-hidden', 'true');
+            pushHistory();
+            markDirty();
+            render();
+            refreshPropertiesAfterStructuralChange();
+            return;
+        }
+
         // Der Objektbaum enthält absichtlich nur leichte Daten. Erst für die
         // tatsächlich gewählte Variable die vollständigen Symcon-Metadaten laden.
         if (
