@@ -1173,25 +1173,57 @@ class Floorplan extends IPSModuleStrict
 
     .device-brightness-layout {
         display: flex;
-        align-items: center;
-        gap: 10px;
+        flex-direction: column;
+        gap: 8px;
         margin-top: 8px;
+        min-width: 260px;
     }
 
     .device-brightness-layout .device-color-bool-actions {
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
         width: auto;
-        min-width: 64px;
-        flex: 0 0 auto;
     }
 
-    .device-brightness-layout .field {
-        flex: 1 1 190px;
-        min-width: 0;
+    .device-brightness-layout .device-color-power {
+        min-width: 64px;
+    }
+
+    .device-brightness-field {
         margin-top: 0 !important;
+        min-width: 0;
+    }
+
+    .device-brightness-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 4px;
+    }
+
+    .device-brightness-head label {
+        margin: 0;
+    }
+
+    .device-brightness-head .control-slider-value {
+        margin: 0;
+        font-weight: 600;
+        white-space: nowrap;
     }
 
     .device-brightness-layout .control-slider {
         margin-top: 0;
+    }
+
+    .device-brightness-layout .control-slider-row {
+        width: 100%;
+    }
+
+    .device-brightness-layout .control-slider-row input[type="range"] {
+        flex: 1 1 auto;
+        min-width: 140px;
     }
 
     .device-color-wheel {
@@ -8060,10 +8092,12 @@ HTML;
 
                 html += `<div class="device-brightness-layout">
                     ${powerHtml}
-                    <div class="field">
-                        <label>Helligkeit</label>
-                        <div class="control-slider">
+                    <div class="field device-brightness-field">
+                        <div class="device-brightness-head">
+                            <label>Helligkeit</label>
                             <div class="control-slider-value" data-brightness-value>${escapeHtml(bprefix)}${escapeHtml(String(bcurrent))}${escapeHtml(bsuffix)}</div>
+                        </div>
+                        <div class="control-slider">
                             <div class="control-slider-row">
                                 <button type="button" data-brightness-step="-1"${bdisabled}>−</button>
                                 <input type="range" data-brightness-slider min="${bmin}" max="${bmax}" step="${bstep}" value="${bcurrent}"${bdisabled}>
