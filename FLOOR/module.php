@@ -709,6 +709,13 @@ class Floorplan extends IPSModuleStrict
             filter: drop-shadow(0 0 var(--device-status-glow, 7px) var(--device-status-color, #ffe66d));
         }
 
+        /* Bei separater Helligkeitssteuerung bestimmt ausschließlich der
+           Helligkeitsring die Leuchtstärke. So ist 0 % wirklich dunkel. */
+        .device.brightness-controlled.boolean-active > circle:not(.device-status-ring) {
+            stroke: var(--line);
+            filter: none;
+        }
+
         /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
         .device.active-light.boolean-active circle {
             fill: #5b5422;
@@ -1224,6 +1231,48 @@ class Floorplan extends IPSModuleStrict
     .device-brightness-layout .control-slider-row input[type="range"] {
         flex: 1 1 auto;
         min-width: 140px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Eigene Range-Geometrie: Die Mitte des Reglers erreicht an beiden Enden
+       exakt Min/Max, statt optisch vorher stehen zu bleiben. */
+    .device-brightness-layout input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 38px;
+        background: transparent;
+    }
+
+    .device-brightness-layout input[type="range"]::-webkit-slider-runnable-track {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--line);
+    }
+
+    .device-brightness-layout input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        margin-top: -8px;
+        background: var(--accent);
+        border: 0;
+    }
+
+    .device-brightness-layout input[type="range"]::-moz-range-track {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--line);
+    }
+
+    .device-brightness-layout input[type="range"]::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 0;
     }
 
     .device-color-wheel {
@@ -3921,6 +3970,11 @@ HTML;
                 ? false
                 : (effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '');
             const numericClass = numericRingVisible ? ' numeric-status' : '';
+            const brightnessClass = (
+                isBooleanDevice &&
+                item.colorControlEnabled === true &&
+                colorBrightnessControlKind(item) === 'brightness'
+            ) ? ' brightness-controlled' : '';
 
             // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
             // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
@@ -4017,7 +4071,7 @@ HTML;
             }
 
             variableTopParts.push(
-                `<g class="device${sel}${numericClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
+                `<g class="device${sel}${numericClass}${brightnessClass}${boolClass}${lightClass}${statusOnlyClass}" data-type="item" data-id="${item.id}" ` +
                 `style="cursor:pointer;--device-status-color:${effectiveStatusColor};--device-status-opacity:${effectiveRingLevel !== null ? effectiveRingLevel.toFixed(3) : 1};--device-status-glow:${hasIntegerPresentationColor ? '7.00' : (effectiveRingLevel !== null ? (effectiveRingLevel * 8).toFixed(2) : boolGlowPx.toFixed(2))}px" transform="translate(${item.x} ${item.y})">` +
                 (showIcon
                     ? `<circle r="${radius}"/>` +
