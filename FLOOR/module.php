@@ -4101,11 +4101,29 @@ HTML;
         const suffix = String(profile?.suffix || '').toLowerCase();
         const min = Number(profile?.min);
         const max = Number(profile?.max);
-        const text = `${profileName} ${suffix}`;
+        const raw = Number(item?._colorVariableRawValue);
+        const path = String(item?._colorVariablePath || '').toLowerCase();
+        const valueText = String(item?._colorVariableValueText || '').toLowerCase();
+        const text = `${profileName} ${suffix} ${path} ${valueText}`;
 
+        // Farbe hat immer Vorrang. Neben Profil-/Darstellungsnamen erkennen wir
+        // auch typische Bezeichnungen im Objektpfad. Ein grosser Integer-
+        // Wertebereich ist weiterhin ein Fallback fuer 24-Bit-RGB/HexColor.
         if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(text) || (Number.isFinite(max) && max > 1000))) return 'color';
-        if ((type === 1 || type === 2) && Number.isFinite(min) && Number.isFinite(max) && max > min) {
-            if (/(hell|brightness|intensity|dimm|level|%)/.test(text) || max <= 255) return 'brightness';
+
+        if (type === 1 || type === 2) {
+            // Eindeutige Helligkeits-/Dimmerbezeichnung oder Prozentdarstellung.
+            if (/(hell|brightness|intensity|dimm|dimmer|level|%)/.test(text)) return 'brightness';
+
+            // Klassischer Dimmerbereich. Das funktioniert auch dann, wenn eine
+            // neue Symcon-Darstellung keinen Legacy-Profilnamen liefert.
+            if (Number.isFinite(min) && Number.isFinite(max) && max > min && min >= 0 && max <= 100) return 'brightness';
+
+            // Letzter Fallback fuer numerische Zusatzvariablen ohne auswertbare
+            // Profilmetadaten: ein aktueller Wert von 0..100 ist fuer die hier
+            // explizit als Farb-/Helligkeitsvariable gewaehlte Variable ein
+            // plausibler Helligkeitswert. Farbe wurde oben bereits ausgeschlossen.
+            if ((!Number.isFinite(min) || !Number.isFinite(max) || max <= min) && Number.isFinite(raw) && raw >= 0 && raw <= 100) return 'brightness';
         }
         return '';
     }
