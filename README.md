@@ -147,9 +147,13 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.24
+
+- Modulcode überarbeitet und kleinere Fehler behoben.
+
 ### 1.23
 
-- Zur bool Variable kann nun zusätzlich eine Farb- und eine Helligkeitsvaraible gewählt werden.
+- Zur bool Variable kann nun zusätzlich eine Farb- und eine Helligkeitsvariable gewählt werden.
 - Der Dialog beim Schalten von bool mit Helligkeit oder Farbe kann deaktiviert werden, so dass sich das Gerät wie eine normale bool verhält.
 - Dialogfenster bleiben nun offen bis neben das Fenster geklickt wird.
 
