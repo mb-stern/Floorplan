@@ -73,11 +73,11 @@ class Floorplan extends IPSModuleStrict
             );
 
             if ($payload !== false) {
-                // Während Modul-/Instanz-Updates können weiterhin VM_UPDATE-Meldungen
-                // eintreffen, obwohl die HTML-SDK-InstanceInterface intern noch nicht
-                // wieder verfügbar ist. In diesem kurzen Zustand keine Visualisierungs-
-                // Nachricht senden; der nächste reguläre Variablenwert wird wieder
-                // normal übertragen.
+
+
+
+
+
                 if (IPS_GetKernelRunlevel() !== KR_READY || !IPS_InstanceExists($this->InstanceID)) {
                     return;
                 }
@@ -87,8 +87,8 @@ class Floorplan extends IPSModuleStrict
                     return;
                 }
 
-                // Nur den Zustand der betroffenen Variable übertragen.
-                // KEIN komplettes Projekt neu laden -> Etage und Ansicht bleiben unverändert.
+
+
                 @$this->UpdateVisualizationValue($payload);
             }
         } catch (Throwable $e) {
@@ -202,11 +202,11 @@ class Floorplan extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        /*
-         * Editor-JavaScript und Projekt-/Runtime-Daten werden direkt in die
-         * HTML-SDK-Kachel eingebettet. Es werden keine externen Floorplan-Assets
-         * nachgeladen.
-         */
+
+
+
+
+
 
         $project = $this->AddRuntimeValues($this->GetProject());
         $initial = json_encode(
@@ -283,8 +283,8 @@ class Floorplan extends IPSModuleStrict
             position: relative;
         }
 
-        /* HTML-SDK: Bedienelemente bewusst UNTEN.
-           Im oberen Bereich können Symcon-Overlays Pointer-Ereignisse abfangen. */
+
+
         .toolbar {
             position: relative;
             display: flex;
@@ -309,14 +309,14 @@ class Floorplan extends IPSModuleStrict
             flex: 1 1 auto;
         }
 
-        /* Eine Gruppe bleibt in sich einzeilig. Reicht die Gesamtbreite nicht,
-           wechselt die komplette Gruppe in die zweite Fußleisten-Zeile. */
+
+
         .toolbar .group {
             flex-wrap: nowrap;
         }
 
-        /* Die Bedienelemente verteilen den verfügbaren Platz innerhalb ihrer
-           Gruppe. Bei schmaleren Kacheln bleiben die kompakten clamp-Werte aktiv. */
+
+
         .toolbar .group > button,
         .toolbar .group > select {
             flex: 1 1 auto;
@@ -344,18 +344,18 @@ class Floorplan extends IPSModuleStrict
             color: #ffd4d8;
         }
 
-        /* Kein künstlicher Leerraum am rechten Rand. */
+
         .toolbar .spacer { display: none; }
 
-        /* Der Statuspunkt bleibt auch ohne Statustext sichtbar. */
+
         .toolbar .status:empty {
             display: flex;
         }
 
         .status {
-            /* Speicherstatus fest oben rechts in der Fußleiste.
-               Er nimmt nicht am Flex-Umbruch teil und kann deshalb nie
-               alleine in eine zweite Zeile wandern. */
+
+
+
             position: absolute;
             top: 50%;
             right: 5px;
@@ -472,8 +472,8 @@ class Floorplan extends IPSModuleStrict
             cursor: move;
         }
 
-        /* Unsichtbare breitere Trefferfläche: optisch bleibt die Form gleich,
-           mit der Maus kann sie aber auch etwas neben der Linie markiert werden. */
+
+
         .drawing-shape-hit {
             fill: transparent;
             stroke: transparent;
@@ -531,8 +531,8 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer;
         }
 
-        /* Größere Trefferfläche nur für die Öffnung selbst.
-           Die sichtbaren Resize-Punkte bleiben exakt bei r=2.8. */
+
+
         .shutter-control {
             pointer-events: all;
             isolation: isolate;
@@ -662,8 +662,8 @@ class Floorplan extends IPSModuleStrict
             stroke-width: 3;
         }
 
-        /* Klima / Heizung: bewusst als kleines Wand-Bedienteil statt
-           als rundes Thermostat-/Messwertsymbol darstellen. */
+
+
         .device .climate-panel {
             fill: #404040;
             stroke: #dedede;
@@ -690,10 +690,10 @@ class Floorplan extends IPSModuleStrict
             stroke-width: 3;
         }
 
-        /* Boolean-Statusring für alle Geräte mit Bool-Variable.
-           Die Farbe kommt je Gerät aus --device-status-color. */
-        /* Numerischer Status: Die normale Geräte-Kontur bleibt immer erhalten.
-           Nur dieser zusätzliche Farbring wird mit dem Zahlenwert ein-/ausgeblendet. */
+
+
+
+
         .device.numeric-status .device-status-ring {
             fill: none;
             stroke: var(--device-status-color, #ffe66d);
@@ -711,8 +711,8 @@ class Floorplan extends IPSModuleStrict
 
 
 
-        /* Helligkeitsgesteuerte Bool-Geräte: dieselbe Kontur/Glow-Geometrie wie
-           beim normalen Boolean. Nur Stärke/Opacity werden mit 0..100 % skaliert. */
+
+
         .device.brightness-controlled.boolean-active > circle:not(.device-status-ring) {
             stroke: var(--device-status-color, #ffe66d);
             stroke-opacity: var(--device-status-opacity, 1);
@@ -726,7 +726,7 @@ class Floorplan extends IPSModuleStrict
             display: none;
         }
 
-        /* Die Lampe behält zusätzlich ihre bisherige leicht leuchtende Füllung. */
+
         .device.active-light.boolean-active circle {
             fill: #5b5422;
         }
@@ -750,8 +750,8 @@ class Floorplan extends IPSModuleStrict
             stroke-width: 0.4;
         }
 
-        /* Light-Theme: Resize-/Verschiebepunkte schwarz darstellen.
-           Im Dark-Theme bleiben sie weiß. */
+
+
         html[data-theme="light"] .resize-handle {
             fill: #111111;
         }
@@ -760,8 +760,8 @@ class Floorplan extends IPSModuleStrict
             fill: #111111;
         }
 
-        /* Optionaler Direkt-Slider für echte Integer-/Float-Zahlenbereiche.
-           Kompakt direkt unter dem Gerät, nur in der Bedienansicht aktiv. */
+
+
         .device-direct-slider {
             cursor: pointer;
         }
@@ -938,9 +938,9 @@ class Floorplan extends IPSModuleStrict
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
 
-        /* Bedienansicht:
-           Nur echte Geräte sollen mit dem Hand-Cursor als bedienbar erscheinen.
-           Wände, Türen/Fenster, Möbel und Texte sind hier reine Darstellung. */
+
+
+
         #app.view-mode .wall,
         #app.view-mode .opening,
         #app.view-mode .opening-hit,
@@ -953,9 +953,9 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer !important;
         }
 
-        /* Zusätzliche, direkt am SVG-Szenen-Container gesetzte Laufzeitregel.
-           Damit werden auch Cursor von Unterelementen (SVG-Pfade, Linien usw.)
-           sicher überschrieben. */
+
+
+
         #scene.runtime-view,
         #scene.runtime-view * {
             cursor: default !important;
@@ -1091,7 +1091,7 @@ class Floorplan extends IPSModuleStrict
         }
 
         .runtime-value-frame {
-            /* Hintergrund kommt durch die echte SVG-Aussparung darunter. */
+
             fill: transparent;
             fill-opacity: 0;
             stroke: currentColor;
@@ -1106,8 +1106,8 @@ class Floorplan extends IPSModuleStrict
             stroke: #5f5f5f;
         }
 
-        /* Reine Status-/Messwertvariablen ohne Aktion sind im Bedienmodus
-           bewusst nicht als klickbares Bedienelement dargestellt. */
+
+
         #app.view-mode .device.status-only,
         #app.view-mode .device.status-only *,
         #scene.runtime-view .device.status-only,
@@ -1255,8 +1255,8 @@ class Floorplan extends IPSModuleStrict
         appearance: none;
     }
 
-    /* Exakte Slider-Geometrie: Track und Thumb stammen aus derselben Range.
-       Dadurch entsprechen die sichtbaren Track-Enden exakt 0 % und 100 %. */
+
+
     .device-brightness-layout .control-slider-row input[type="range"]::-webkit-slider-runnable-track {
         height: 5px;
         border: 0;
@@ -1484,9 +1484,9 @@ class Floorplan extends IPSModuleStrict
             background-color: transparent !important;
         }
 
-        /* Wie bei Energiefluss/Wärmepumpe:
-           Die eigentliche Visualisierung malt KEINEN eigenen Hintergrund.
-           Dadurch kommt die reale Kachelfarbe direkt von Symcon. */
+
+
+
         #viewport,
         #viewport * {
             --card-background-color: transparent;
@@ -1507,13 +1507,13 @@ class Floorplan extends IPSModuleStrict
             stroke: #181818;
         }
 
-        /* Gezeichnete Formen im hellen Theme an die übrigen Konturlinien
-           angleichen. Im dunklen Theme bleibt die bestehende Darstellung
-           über var(--fp-text) unverändert. */
+
+
+
         html[data-theme="light"] .drawing-shape {
-            /* Gleiche sichtbare Linienfarbe wie Tür/Fenster im hellen Theme.
-               #252525 war deutlich dunkler als die späteren Light-Theme-Regeln
-               für Wand (#4a4a4a) und Öffnung (#5f5f5f). */
+
+
+
             stroke: #5f5f5f;
         }
 
@@ -1539,9 +1539,9 @@ class Floorplan extends IPSModuleStrict
             color: #111111;
         }
 
-        /* Möbel im hellen Theme:
-           helle Flächen + dunkle Konturen, damit Details nicht in dunklen
-           Eigenfüllungen verschwinden. */
+
+
+
         html[data-theme="light"] .furniture {
             color: #252525;
         }
@@ -1602,15 +1602,15 @@ class Floorplan extends IPSModuleStrict
             border-color: var(--fp-border);
         }
 
-        /* Helles Symcon-Theme:
-           Dark bleibt unverändert. Im hellen Theme die Grundrisszeichnung
-           bewusst weicher als reines Schwarz darstellen. */
+
+
+
         html[data-theme="light"] .wall {
             stroke: #4a4a4a;
         }
 
-        /* Markierte Wände sollen auch im Light-Theme wie alle anderen
-           selektierten Elemente blau hervorgehoben werden. */
+
+
         html[data-theme="light"] .wall.selected {
             stroke: #74b9ff;
         }
@@ -1623,9 +1623,9 @@ class Floorplan extends IPSModuleStrict
             stroke: #5f5f5f;
         }
 
-        /* Offenes Fenster muss auch im hellen Theme blau bleiben.
-           Diese spezifischere Regel verhindert, dass die allgemeine
-           helle Fensterfarbe den Offen-Status überschreibt. */
+
+
+
         html[data-theme="light"] .opening-line.opening-state-open {
             stroke: #1769aa;
         }
@@ -1656,9 +1656,9 @@ class Floorplan extends IPSModuleStrict
             stroke: #777777;
         }
 
-        /* Aktive Bool-Geräte müssen auch im hellen Theme ihre konfigurierte
-           Statusfarbe behalten. Diese Regel steht bewusst nach der allgemeinen
-           hellen Geräte-Kontur, damit diese die Statusfarbe nicht überschreibt. */
+
+
+
         html[data-theme="light"] .device.boolean-active circle {
             stroke: var(--device-status-color, #ffe66d);
             filter: drop-shadow(
@@ -1700,8 +1700,8 @@ class Floorplan extends IPSModuleStrict
             text-rendering: geometricPrecision;
         }
 
-        /* Helles Theme: SVG-Konturen bewusst ohne weiche Schatten/Filter.
-           Das verhindert den verwaschenen Eindruck bei Text und Symbolen. */
+
+
         html[data-theme="light"] #scene text,
         html[data-theme="light"] #scene tspan {
             stroke: none !important;
@@ -1722,7 +1722,7 @@ class Floorplan extends IPSModuleStrict
         }
 
 
-        /* Kamera-/Stream-Popup: klein starten, bei Bedarf vergrößern. */
+
         .stream-popup-body {
             display: grid;
             gap: 8px;
@@ -1779,7 +1779,7 @@ class Floorplan extends IPSModuleStrict
             cursor: pointer;
         }
 
-        /* Geräte-Bedienpopup: direkt beim angeklickten Gerät statt Bildmitte. */
+
         #controlModal {
             background: transparent;
             padding: 0;
@@ -1802,16 +1802,16 @@ class Floorplan extends IPSModuleStrict
             box-sizing: border-box;
         }
 
-        /* Einheitlicher Cursor für den Grundriss:
-           Über allen gezeichneten Elementen und Bearbeitungsgriffen wird
-           bewusst immer die Hand angezeigt. Damit gibt es keine wechselnden
-           Pfeil-, Verschiebe- oder Resize-Cursor mehr. */
+
+
+
+
         #scene,
         #scene * {
             cursor: pointer !important;
         }
 
-        /* IP-Symcon / Font-Awesome Icons aus /icons.js */
+
         .device-icon-html {
             width: 100%;
             height: 100%;
@@ -1978,7 +1978,7 @@ class Floorplan extends IPSModuleStrict
                 <label class="check"><input id="showGridVisu" type="checkbox" checked> Raster</label>
                 <input id="gridSizeVisu" class="grid-size-input" type="number" min="2" max="200" step="1" value="20" title="Rastergröße">
             </div>
-            
+
         </div>
 
         <div class="group">
@@ -2114,12 +2114,12 @@ HTML;
     let panX = 0;
     let panY = 0;
 
-    // Jede Etage besitzt ihre eigene Ansicht. Dadurch verändert Einpassen,
-    // Zoomen oder Verschieben im OG nicht mehr die Darstellung des UG.
+
+
     const floorViews = new Map();
 
-    // Feste Startansicht je Etage. Sie wird beim ersten Anzeigen der Etage
-    // einmal erzeugt und danach nicht mehr durch Einpassen/Zoomen/Verschieben verändert.
+
+
     const floorHomeViews = new Map();
 
     let history = [];
@@ -2139,10 +2139,10 @@ HTML;
     }
 
     function refreshPropertiesAfterStructuralChange() {
-        // Änderungen wie Icon oder Variablenzuordnung können ganze
-        // Eigenschaftsblöcke ein-/ausblenden (z.B. Statusfarbe).
-        // Nach Abschluss des aktuellen Events die Leiste deshalb gezielt
-        // neu aufbauen, statt auf einen Seiten-Reload zu warten.
+
+
+
+
         setTimeout(() => {
             const active = document.activeElement;
             if (active && properties.contains(active) && typeof active.blur === 'function') {
@@ -2158,10 +2158,10 @@ HTML;
         return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
     }
 
-    // Bedienelemente in der Eigenschaftenleiste dürfen während der Eingabe
-    // nicht durch ein Hintergrund-render() ersetzt werden. Sonst verschwinden
-    // bei Zahlen-/Textfeldern Cursor und Markierung und native Select-Listen
-    // klappen zu.
+
+
+
+
     properties.addEventListener('pointerdown', evt => {
         const control = evt.target.closest('input, select, textarea');
         if (control && properties.contains(control)) {
@@ -2197,9 +2197,9 @@ HTML;
             evt.target instanceof HTMLSelectElement ||
             evt.target instanceof HTMLTextAreaElement
         ) {
-            // Erst nach dem jeweiligen change-Handler freigeben. Anschließend
-            // die Eigenschaften einmal sauber aus dem aktuellen Objektzustand
-            // aufbauen.
+
+
+
             setTimeout(() => {
                 const active = document.activeElement;
                 const stillInside =
@@ -2222,13 +2222,13 @@ HTML;
 
     function normalizeProject(p) {
         const q = (p && typeof p === 'object') ? structuredClone(p) : {};
-        // Kein festes Projektformat: der Zeichenbereich entspricht immer
-        // dynamisch der verfügbaren HTML-SDK-Fläche.
+
+
         delete q.width;
         delete q.height;
         q.grid = Number(q.grid) || 20;
-        // Einrasten verwendet immer direkt die Rastergröße.
-        // Eine separate Snap-Einstellung gibt es nicht mehr.
+
+
         delete q.snap;
         q.background = q.background || '#303030';
         q.showGrid = q.showGrid !== false;
@@ -2299,9 +2299,9 @@ HTML;
             for (const item of floor.items) {
                 item.statusColor = normalizeStatusColor(item.statusColor);
                 if (typeof item.statusColorManual !== 'boolean') item.statusColorManual = false;
-                // Migration älterer Projekte: Der frühere Gerätetyp wird nur noch
-                // verwendet, um einmalig ein passendes Standardsymbol zu übernehmen.
-                // Die Bedienlogik hängt NICHT mehr vom Gerätetyp ab.
+
+
+
                 if (!item.icon || String(item.icon).startsWith('mdi:')) {
                     item.icon = defaultSymconIconForLegacyKind(item.kind);
                     item.iconManual = false;
@@ -2371,7 +2371,7 @@ HTML;
         try {
             localStorage.setItem(lastViewFloorStorageKey, state.activeFloor);
         } catch (e) {
-            // localStorage kann je nach WebView/Browser deaktiviert sein.
+
         }
     }
 
@@ -2383,7 +2383,7 @@ HTML;
                 state.activeFloor = savedFloorID;
             }
         } catch (e) {
-            // Ohne localStorage bleibt die im Projekt gespeicherte Etage aktiv.
+
         }
     }
 
@@ -2442,7 +2442,7 @@ HTML;
     }
 
     function setTool(next) {
-        // Erneuter Klick auf das bereits aktive Werkzeug schaltet es wieder aus.
+
         if (next && tool === next) {
             next = '';
         }
@@ -2472,9 +2472,9 @@ HTML;
         const isView = state.mode === 'view';
         app.classList.toggle('view-mode', isView);
         scene.classList.toggle('runtime-view', isView);
-        // Im Editor keinen dauerhaften Modus-Text anzeigen. Der freie Platz
-        // steht dadurch der einzeiligen Fußleiste vollständig zur Verfügung.
-        // Wichtige Zustände wie "Nicht gespeichert" bleiben sichtbar.
+
+
+
         statusEl.textContent = '';
         statusEl.classList.toggle('dirty', Boolean(dirty));
         statusEl.setAttribute('title', dirty ? 'Nicht gespeichert' : 'Gespeichert');
@@ -2486,7 +2486,7 @@ HTML;
     }
 
     function setMode(mode) {
-        // Jeder Wechsel zwischen Editor und Live-Ansicht beendet ein aktives Werkzeug.
+
         deactivateToolWithoutRender();
 
         state.mode = mode === 'view' ? 'view' : 'edit';
@@ -2535,20 +2535,20 @@ HTML;
     function viewSafeArea() {
         const box = svg.getBoundingClientRect();
 
-        /*
-         * Oben liegt die Visualisierungs-Kopfzone von IP-Symcon.
-         * Dieser Bereich kann Maus-/Touch-Ereignisse abfangen.
-         *
-         * Wichtig: SVG und Gitternetz bleiben unverändert über die komplette
-         * Fläche sichtbar. Nur Einpassen/Start/Zoom behandeln den oberen
-         * Bereich als Sicherheitszone für interaktive Grundrisselemente.
-         *
-         * Auf der Symcon-WebConsole reicht 40 px nicht zuverlässig aus.
-         * Deshalb verwenden wir hier 72 px Kopf-Sicherheitszone.
-         */
+
+
+
+
+
+
+
+
+
+
+
         const headerTop = 72;
 
-        // Im Bedienmodus bleibt unten eine echte Fußzeile für Etagenwahl + Editor-Icon frei.
+
         const footerBottom = state.mode === 'view' ? 40 : 0;
         const padding = 24;
 
@@ -2573,8 +2573,8 @@ HTML;
     function makeDefaultFloorView() {
         const safe = viewSafeArea();
 
-        // Die "Startgröße" ist bewusst 1:1. Im Live-Modus beginnt die
-        // nutzbare Fläche unterhalb der HTML-SDK-Kopfzeile.
+
+
         const centerX = (safe.left + safe.right) / 2;
         const centerY = (safe.top + safe.bottom) / 2;
 
@@ -2671,7 +2671,7 @@ HTML;
             points.push([minX, minY], [maxX, maxY]);
         };
 
-        // Hauptreferenz bleibt der eigentliche Grundriss.
+
         for (const w of floor.walls || []) {
             points.push([Number(w.x1) || 0, Number(w.y1) || 0]);
             points.push([Number(w.x2) || 0, Number(w.y2) || 0]);
@@ -2687,12 +2687,12 @@ HTML;
             );
         }
 
-        /*
-         * Formen sind vollwertiger Bestandteil des Grundrisses und müssen
-         * unabhängig davon, ob Wände existieren, in die Fit-Grenzen einfließen.
-         * Dieser Block verwendet exakt die Datenstruktur der bereits
-         * funktionierenden Formen-Version: x1/y1/x2/y2 + kind.
-         */
+
+
+
+
+
+
         for (const shape of floor.shapes || []) {
             const kind = shape.kind || 'line';
 
@@ -2761,12 +2761,12 @@ HTML;
             }
         }
 
-        /*
-         * Geräte werden zusätzlich mit ihrer EFFEKTIV sichtbaren Größe
-         * berücksichtigt. Befindet sich ein Gerät innerhalb des Grundrisses,
-         * verändert es die Bounds nicht. Steht es z.B. auf einer Terrasse
-         * außerhalb, erweitert es die Bounds nur genau so weit wie nötig.
-         */
+
+
+
+
+
+
         for (const item of floor.items || []) {
             const x = Number(item.x) || 0;
             const y = Number(item.y) || 0;
@@ -2834,13 +2834,13 @@ HTML;
                 addDeviceText(valueText, item.valuePosition || 'below', valueSize, valueExtra);
             }
 
-            // Unsichtbares Gerät nur minimal berücksichtigen.
+
             if (!showIcon && !showName && !showValue) {
                 addBox(x - 2, y - 2, x + 2, y + 2);
             }
         }
 
-        // Nur bei einer Etage komplett ohne Wände noch Möbel/Texte als Fallback verwenden.
+
         if (!(floor.walls || []).length) {
             for (const f of floor.furniture || []) {
                 const x = Number(f.x) || 0;
@@ -2887,12 +2887,12 @@ HTML;
         const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
         const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
 
-        /*
-         * Jede Etage wird für die AKTUELLE Fenster-/Tile-Größe separat optimal
-         * eingepasst. Dadurch nutzt jeder Grundriss den verfügbaren Platz aus.
-         * Wichtig: Beim Etagenwechsel wird immer neu berechnet; alte Zoom-/Pan-
-         * Werte werden dabei nicht wiederverwendet.
-         */
+
+
+
+
+
+
         const safe = viewSafeArea();
         const left = safe.left;
         const right = safe.right;
@@ -2905,13 +2905,13 @@ HTML;
         const scaleX = availableWidth / contentWidth;
         const scaleY = availableHeight / contentHeight;
 
-        // Proportional einpassen: maximal groß, aber vollständig sichtbar.
+
         zoom = Math.max(0.05, Math.min(20, Math.min(scaleX, scaleY)));
 
         const contentCenterX = (bounds.minX + bounds.maxX) / 2;
         const contentCenterY = (bounds.minY + bounds.maxY) / 2;
 
-        // In der tatsächlich verfügbaren Fläche horizontal UND vertikal zentrieren.
+
         const targetCenterX = (left + right) / 2;
         const targetCenterY = (top + bottom) / 2;
 
@@ -2947,8 +2947,8 @@ HTML;
                 longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
             }
 
-            // Immer gleich breit: längster Etagenname + Innenabstand + nativer Auswahlpfeil.
-            // Etwas Reserve verhindert Abschneiden je nach Browser/WebView.
+
+
             const width = Math.ceil(longestWidth + 64);
             const finalWidth = Math.max(110, width);
             liveFloorSelect.style.width = `${finalWidth}px`;
@@ -2958,9 +2958,9 @@ HTML;
     }
 
     function renderFloorSelect() {
-        // Android-WebViews reagieren sichtbar auf ein wiederholtes Neuaufbauen
-        // nativer <select>-Elemente. Deshalb werden die Etagen-Optionen nur dann
-        // ersetzt, wenn sich IDs oder Namen der Etagen wirklich geändert haben.
+
+
+
         const signature = state.floors
             .map(f => `${String(f.id)}\u0000${String(f.name)}`)
             .join('\u0001');
@@ -3007,7 +3007,7 @@ HTML;
         const startY = Math.floor(bounds.minY / g) * g;
         const endY = Math.ceil(bounds.maxY / g) * g;
 
-        // Sicherheitsgrenze bei sehr weitem Herauszoomen.
+
         const maxLines = 500;
         let count = 0;
 
@@ -3091,7 +3091,7 @@ HTML;
         if (/^fa-[a-z0-9-]+$/i.test(raw)) return `fa-light ${raw}`;
         const key = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (legacySymconIconMap[key]) return legacySymconIconMap[key];
-        // Alte Symcon-Iconnamen bestmöglich auf Font-Awesome-Namen abbilden.
+
         const slug = raw.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/[_\s]+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
         return slug ? `fa-light fa-${slug}` : 'fa-light fa-circle';
     }
@@ -3123,23 +3123,23 @@ HTML;
 
         try {
             if (window.FontAwesome && typeof window.FontAwesome.icon === 'function') {
-                // Zuerst genau den gelieferten Stil versuchen.
+
                 const prefixes = [parsed.prefix];
 
-                // Die zusätzlichen visuellen Einstellungen der neuen Symcon-
-                // Visualisierung liefern auch Symcon-eigene Icons, z.B.
-                // window-left-open, volant-open, marquee-half usw.
-                // Diese liegen in /icons.js als Kit-Icons (fak) und NICHT als
-                // normale FontAwesome-Light-Icons (fal). Der bisherige Code
-                // hat daraus fa-light fa-... gemacht -> Fragezeichen.
+
+
+
+
+
+
                 if (!prefixes.includes('fak')) prefixes.push('fak');
                 if (!prefixes.includes('fal')) prefixes.push('fal');
 
-                // Einige von Symcon gelieferte Iconnamen sind Font-Awesome-
-                // Markenicons, z.B. "500px". Symcon liefert dabei teilweise
-                // nur den Iconnamen ohne "fa-brands". Brands deshalb erst als
-                // letzten Fallback versuchen. Dadurch bleiben bereits korrekt
-                // aufgelöste Light-/Kit-Icons unverändert.
+
+
+
+
+
                 if (!prefixes.includes('fab')) prefixes.push('fab');
 
                 for (const prefix of prefixes) {
@@ -3158,7 +3158,7 @@ HTML;
                 }
             }
         } catch (e) {
-            // Fallback weiter unten.
+
         }
 
         return '';
@@ -3220,8 +3220,8 @@ HTML;
         const parsed = parseSymconIcon(icon);
         const r = Math.max(8, Number(radius) || 18);
         const fontSize = Math.max(12, r * 1.18);
-        // Bei manueller Auswahl speichern wir das von /icons.js tatsächlich erzeugte SVG mit.
-        // Damit muss das Icon beim nächsten Rendern nicht erneut anhand seines Namens aufgelöst werden.
+
+
         const persisted = String(storedSvg || '').trim();
         const svgHtml = persisted !== '' ? persisted : fontAwesomeSvgHtml(parsed.cls);
         const content = svgHtml !== ''
@@ -3263,7 +3263,7 @@ HTML;
 
         const originalPath = originalMdiPaths[iconName];
         if (originalPath) {
-            // Original-MDI verwenden ein 24x24-Koordinatensystem.
+
             const targetSize = r * 1.55;
             const scale = targetSize / 24;
             const offset = -12 * scale;
@@ -3391,9 +3391,9 @@ HTML;
         return (tpl.parts||[]).map(p=>drawPart(p)).join('');
     }
 
-    // Exakt das bewährte Verfahren aus dem Energiefluss-Modul:
-    // Symcon liefert --content-color. Daraus wird nur Hell/Dunkel bestimmt.
-    // Der Hintergrund selbst bleibt transparent und kommt direkt von Symcon.
+
+
+
     function detectTheme() {
         let probe = getComputedStyle(document.documentElement).getPropertyValue('--content-color').trim();
         if (!probe) probe = getComputedStyle(document.body).color;
@@ -3443,9 +3443,9 @@ HTML;
         const floor = currentFloor();
         const parts = [];
 
-        // Dezente Füllmuster für Formen. Jedes Muster erhält pro Form eine
-        // eigene Definition, damit dessen Ausrichtung unabhängig von der Form
-        // über fillRotation gedreht werden kann.
+
+
+
         function shapePatternId(shape, mode = '') {
             const safeId = String(shape?.id || 'shape').replace(/[^A-Za-z0-9_-]/g, '');
             return `shapePattern_${safeId}_${mode || shape?.fillMode || 'pattern'}`;
@@ -3489,18 +3489,18 @@ HTML;
         if (shapePatternDefinitions.length > 0) {
             parts.push(`<defs>${shapePatternDefinitions.join('')}</defs>`);
         }
-        // Rollladen-Bedienelemente werden separat gesammelt und ganz zum Schluss
-        // gerendert. Dadurch liegen sie immer über Möbeln und Geräten und bleiben
-        // zuverlässig anklickbar.
+
+
+
         const shutterControlParts = [];
         const variableTopParts = [];
-        // Transparente Variablenboxen brauchen eine echte Aussparung in den
-        // darunterliegenden Floorplan-Ebenen. So scheint der reale Tile-/IPSView-
-        // Hintergrund durch, ohne dass Wände, Möbel usw. durch die Box sichtbar sind.
+
+
+
         const variableFrameCutoutParts = [];
-        // Nur die sichtbaren Flügel geöffneter Türen/Fenster werden zusätzlich
-        // gesammelt und nach den Möbeln nochmals gezeichnet.
-        // Keine Hitboxen, Wandöffnungen oder Bedienlogik werden dupliziert.
+
+
+
         const openOpeningTopParts = [];
         renderEditorGrid(parts);
         const bounds = visibleWorldBounds(120);
@@ -3516,11 +3516,11 @@ HTML;
             return 'style="fill:rgba(150,160,175,.18)"';
         }
 
-        // Formen liegen als eigene Ebene unter den Möbeln.
-        // Da viele Möbel-Symbole teilweise transparent gezeichnet werden, reicht
-        // die reine SVG-Reihenfolge nicht aus: Die Form würde sonst durch das
-        // Möbel hindurch sichtbar bleiben. Deshalb schneiden wir die Grundfläche
-        // jedes Möbels aus der Formen-Ebene heraus.
+
+
+
+
+
         const furnitureMaskParts = [];
         for (const furniture of floor.furniture || []) {
             const tpl = furnitureTemplates[furniture.type] || furnitureTemplates.sofa;
@@ -3676,7 +3676,7 @@ HTML;
         }
 
 
-        // Optionaler Formenname – wie bei Möbeln standardmäßig ausgeblendet.
+
         for (const shape of floor.shapes || []) {
             if (shape.showName !== true || !shape.name) continue;
 
@@ -3695,8 +3695,8 @@ HTML;
 
         parts.push(`</g>`);
 
-        // Nicht ausgewählte Wände zuerst, die ausgewählte Wand zuletzt.
-        // Dadurch liegt die angeklickte Wand bei Kreuzungen/Überlagerungen vorne.
+
+
         const selectedWallID = selected?.type === 'wall' ? selected.id : null;
         const wallRenderOrder = selectedWallID
             ? [
@@ -3761,9 +3761,9 @@ HTML;
                 }
             } else {
                 if (!isOpen) {
-                    // Fenster immer exakt mittig im Mauerwerk darstellen.
-                    // Die beiden Fensterlinien liegen symmetrisch links/rechts
-                    // der Wandmittellinie und sind damit unabhängig vom Rollo.
+
+
+
                     const windowHalfOffset = 2;
 
                     const wx1a = geom.x1 - geom.nx * windowHalfOffset;
@@ -3779,10 +3779,10 @@ HTML;
                     parts.push(`<line class="opening-line" x1="${wx1a}" y1="${wy1a}" x2="${wx2a}" y2="${wy2a}"/>`);
                     parts.push(`<line class="opening-line" x1="${wx1b}" y1="${wy1b}" x2="${wx2b}" y2="${wy2b}"/>`);
                 } else {
-                    // Geöffnetes Fenster nicht mehr schräg nach außen darstellen.
-                    // Der komplette Flügel bleibt parallel zur Wand und wird mit
-                    // zunehmendem Öffnungsgrad gleichmäßig nach INNEN versetzt.
-                    // Die negative Normale ist hier die Innenseite des Grundrisses.
+
+
+
+
                     const maxInset = 14;
                     const inset = maxInset * amount;
                     const ix1 = geom.x1 - geom.nx * inset;
@@ -3837,8 +3837,8 @@ HTML;
             }
 
             if (selected?.type === 'opening' && selected.id === o.id) {
-                // Griff am rechten Ende der Öffnung: damit Tür/Fenster direkt
-                // entlang der zugehörigen Wand breiter oder schmaler gezogen werden kann.
+
+
                 parts.push(
                     `<circle class="resize-handle" data-resize-type="opening" data-id="${o.id}" ` +
                     `cx="${geom.x2}" cy="${geom.y2}" r="2.8"/>`
@@ -3847,9 +3847,9 @@ HTML;
 
             parts.push(`</g>`);
 
-            // Rollladen-Bedienung wird in der Mitte direkt AUF dem Rollladen platziert.
-            // Sie wird separat gesammelt und erst nach Möbeln/Geräten gerendert,
-            // damit kein anderes SVG-Element den Klick abfangen kann.
+
+
+
             const shutterField = o.type === 'window'
                 ? (
                     Number(o.shutterVariableID) > 0 ? 'shutterVariableID' :
@@ -3871,8 +3871,8 @@ HTML;
             }
         }
 
-        // Die Endpunkt-Griffe der ausgewählten Wand werden nach allen Wänden
-        // und Öffnungen gezeichnet und bleiben dadurch immer sichtbar/greifbar.
+
+
         if (state.mode !== 'view' && selectedWallID) {
             const selectedWall = floor.walls.find(w => w.id === selectedWallID);
             if (selectedWall) {
@@ -3922,8 +3922,8 @@ HTML;
             parts.push(`</g>`);
         }
 
-        // Geöffnete Türen/Fenster liegen optisch immer über Möbeln.
-        // Die ursprünglichen Openings bleiben für Auswahl und Bedienung unverändert.
+
+
         parts.push(...openOpeningTopParts);
 
         for (const item of floor.items) {
@@ -3949,9 +3949,9 @@ HTML;
 
             const numericLevel = numericStatusLevel(item);
 
-            // Bei einer Boolean-Lampe mit separater Helligkeitsvariable folgt die
-            // Leuchtstärke des Statusrings der Helligkeitsvariable. Die Bool-
-            // Hauptvariable bestimmt weiterhin ausschließlich EIN/AUS.
+
+
+
             let brightnessRingLevel = null;
             if (
                 isBooleanDevice &&
@@ -3980,13 +3980,13 @@ HTML;
 
             const effectiveRingLevel = brightnessRingLevel !== null ? brightnessRingLevel : numericLevel;
 
-            // 0 % Helligkeit bedeutet wirklich kein Leuchten. Bei einer separaten
-            // Helligkeitssteuerung darf der Ring dann nicht allein deshalb sichtbar
-            // bleiben, weil ein Level von 0 als gültiger numerischer Wert vorliegt.
+
+
+
             const brightnessRingOff = brightnessRingLevel !== null && brightnessRingLevel <= 0;
 
-            // Der Ring selbst bleibt immer vorhanden. Bei 0 % bzw. AUS wird nur
-            // sein Leuchten abgeschaltet; die normale Geräte-Kontur bleibt sichtbar.
+
+
             const numericRingVisible = effectiveRingLevel !== null || hasIntegerPresentationColor || itemColorControlCss(item) !== '';
             const numericClass = numericRingVisible ? ' numeric-status' : '';
             const brightnessClass = (
@@ -3995,8 +3995,8 @@ HTML;
                 colorBrightnessControlForKind(item, 'brightness') !== null
             ) ? ' brightness-controlled' : '';
 
-            // Symcon-GLOW_COLOR ist Teil der neuen Bool-Darstellung und gilt bei true.
-            // Er ist unabhängig von der optionalen Floorplan-Statusfarbe.
+
+
             const boolClass = isBooleanDevice
                 ? (
                     boolActive && (statusRingEnabled || symconGlowEnabled)
@@ -4009,9 +4009,9 @@ HTML;
                 )
                 : '';
 
-            // Ganzes Lampensymbol nur bei echten Boolean-Lampen als aktiv/inaktiv behandeln.
-            // Integer/Float-Lampen behalten ihre normale Deckkraft; dort wird ausschließlich
-            // der farbige Statusring entsprechend dem Zahlenwert gedimmt.
+
+
+
             const lightClass = '';
             const manualStatusColor = item.statusColorManual === true;
             const statusColor = manualStatusColor
@@ -4053,9 +4053,9 @@ HTML;
                 return {x: 0, y: radius + size + 5 + extra, anchor: 'middle'};
             }
 
-            // Wenn ein Direkt-Slider sichtbar ist, beginnt Text mit Position "unten"
-            // erst unterhalb des Sliders. Name und Wert werden danach wie bisher
-            // untereinander angeordnet.
+
+
+
             const sliderTextOffset = directSlider ? 16 : 0;
             const namePosition = item.labelPosition || 'below';
             const valuePosition = item.valuePosition || 'below';
@@ -4068,8 +4068,8 @@ HTML;
                 valueExtra += Math.max(labelSize, valueSize) + 3;
             }
 
-            // Wertebox minimal weiter vom Geräte-Icon abrücken.
-            // Nur die Position wird verändert; Boxgröße, Schrift und sonstige Abstände bleiben gleich.
+
+
             const valueIconGap = 4;
             valueExtra += valueIconGap;
 
@@ -4143,13 +4143,13 @@ HTML;
             parts.push(`<line class="preview-line" x1="${preview.x1}" y1="${preview.y1}" x2="${preview.x2}" y2="${preview.y2}"/>`);
         }
 
-        // Immer als letzte Ebene der Basis: Rollladen-Steuerung bleibt sichtbar und anklickbar.
+
         parts.push(...shutterControlParts);
 
-        // V2 Variablenbox-Aussparung:
-        // Alle bisherigen Floorplan-Ebenen werden an den Werteboxen wirklich ausgeschnitten.
-        // Die Variablen selbst werden danach unmaskiert darübergelegt. Dadurch ist innerhalb
-        // der Box exakt derselbe reale Tile-/IPSView-Hintergrund sichtbar wie außerhalb.
+
+
+
+
         let basePlanHtml = parts.join('');
         if (variableFrameCutoutParts.length > 0) {
             basePlanHtml =
@@ -4163,10 +4163,10 @@ HTML;
 
         const finalParts = [basePlanHtml];
 
-        // Variablen-/Geräteebene unmaskiert ganz oben.
+
         finalParts.push(...variableTopParts);
 
-        // Maßlinien bleiben wie bisher als letzte SVG-Ebene sichtbar.
+
         if (floor.showInsideDimensions === true || floor.showOutsideDimensions === true) {
             finalParts.push(renderGraphicWallDimensions(floor));
         }
@@ -4277,7 +4277,7 @@ HTML;
         const valueText = String(item?.[`${prefix}ValueText`] || '').toLowerCase();
         const searchText = `${profileName} ${suffix} ${path} ${valueText}`;
 
-        // Farbe hat Vorrang vor Helligkeit.
+
         if (type === 1 && (/(hex|rgb|color|colour|farbe)/.test(searchText) || (Number.isFinite(max) && max > 1000))) {
             return 'color';
         }
@@ -4385,7 +4385,7 @@ HTML;
     function automaticOpeningStatusColor(opening) {
         if (!opening) return '#4da3ff';
 
-        // Neue Bool-Darstellung: dieselbe GLOW_COLOR wie bei Geräten.
+
         const glow = String(opening._glowColor || '');
         if (
             opening._hasNewPresentation === true &&
@@ -4394,7 +4394,7 @@ HTML;
             return glow;
         }
 
-        // Legacy: Farbe der EIN/Offen-Assoziation.
+
         const legacyDirect = String(opening._legacyColorOn || '');
         if (/^#[0-9a-f]{6}$/i.test(legacyDirect)) {
             return legacyDirect;
@@ -4428,13 +4428,13 @@ HTML;
             return false;
         }
 
-        // Neue Variablendarstellung: OPTIONS / INTERVALS / COLOR.
+
         if (newIntegerPresentationColor(item) !== '') {
             return true;
         }
 
-        // Legacy-Profil mit einer Farbe auf der aktuellen Association.
-        // Auch dort wäre die manuelle Floorplan-Farbe wirkungslos.
+
+
         if (legacyIntegerCurrentColor(item) !== '') {
             return true;
         }
@@ -4447,21 +4447,21 @@ HTML;
             return false;
         }
 
-        // Neue Integer-Darstellung mit eigener Farbe (OPTIONS / INTERVALS /
-        // COLOR): Farbe kommt vollständig aus IP-Symcon und darf hier nicht
-        // scheinbar überschreibbar angeboten werden.
+
+
+
         if (hasAutomaticIntegerStatusColor(item)) {
             return false;
         }
 
-        // Bool sowie numerische Integer/Float-Werte ohne eigene
-        // Präsentationsfarbe behalten die manuelle Floorplan-Farbe.
+
+
         return true;
     }
 
     function supportsStatusColor(item) {
-        // Ohne Gerätetyp entscheidet nur noch die Variable, ob eine Statusfarbe
-        // sinnvoll dargestellt werden kann. Die Bedienlogik bleibt unverändert.
+
+
         const type = Number(item?._variableType);
         if (type === 0) return true;
         if (type === 1) {
@@ -4490,8 +4490,8 @@ HTML;
     }
 
     function directSliderConfig(item) {
-        // Ein Slider ist nur für Variablen sinnvoll, die in IP-Symcon
-        // tatsächlich eine Aktion besitzen. Reine Istwerte bleiben Anzeige.
+
+
         if (item?._canAction !== true) return null;
 
         const type = Number(item?._variableType);
@@ -4519,8 +4519,8 @@ HTML;
         const cfg = directSliderConfig(item);
         if (!cfg) return null;
 
-        // Mauskoordinate in Grundriss-/Scene-Koordinaten umrechnen.
-        // Dadurch funktioniert das Ziehen unabhängig von Zoom und Pan.
+
+
         const raw = svgPointRaw({clientX, clientY});
         const radius = Number(item.size) || 18;
         const width = Math.max(64, radius * 2.8);
@@ -4535,7 +4535,7 @@ HTML;
         if (Number(item._variableType) === 1) {
             value = Math.round(value);
         } else {
-            // Float-Werte auf sinnvolle Genauigkeit begrenzen.
+
             value = Math.round(value * 10000) / 10000;
         }
 
@@ -4552,9 +4552,9 @@ HTML;
         if (Number(variableType) === 0) {
             amount = truthyVariableValue(rawValue) ? 1 : 0;
 
-            // Bei Fenster-/Türkontakten ist TRUE nicht immer automatisch "offen".
-            // Falls das Bool-Profil sprechende Assoziationen besitzt, verwenden wir
-            // deren Bezeichnung (z.B. Offen/Geschlossen) für die Darstellung.
+
+
+
             const associations = Array.isArray(profile?.associations) ? profile.associations : [];
             const currentAssociation = associations.find(a =>
                 Boolean(Number(a.value)) === Boolean(truthyVariableValue(rawValue))
@@ -4610,9 +4610,9 @@ HTML;
 
         const mapped = map[key];
 
-        // "keep" bedeutet: Dieser Befehlswert beschreibt keine feste Position
-        // (z.B. Stop / Schritt auf / Schritt zu). Dann bleibt die zuletzt
-        // bekannte grafische Stellung während der Laufzeit erhalten.
+
+
+
         if (mapped === 'keep') {
             return Number.isFinite(Number(o._shutterVisualAmount))
                 ? Math.max(0, Math.min(1, Number(o._shutterVisualAmount)))
@@ -4664,9 +4664,9 @@ HTML;
             );
         });
 
-        // Die gespeicherte Wand läuft auf ihrer Mittellinie. Wenn am Endpunkt
-        // eine weitere Wand anschliesst, liegt die sichtbare Innenkante um eine
-        // halbe Wanddicke innerhalb dieses Mittellinien-Schnittpunkts.
+
+
+
         return joined ? (Number(floor.wallThickness) || 12) / 2 : 0;
     }
 
@@ -4716,9 +4716,9 @@ HTML;
         const thickness=Number(floor.wallThickness)||12;
         const half=thickness/2;
 
-        // Maßgebend ist NICHT der gezeichnete Endpunkt dieser Wand.
-        // Maßgebend ist der geometrische Schnittpunkt mit der anschließenden
-        // Querwand und von dort deren reale Innen-/Außenkante.
+
+
+
         function connectionAtEnd(atStart) {
             const candidates=[];
 
@@ -4736,9 +4736,9 @@ HTML;
                 const sinAngle=Math.abs((dx*ody-dy*odx)/(length*olen));
                 if(sinAngle<.05) continue;
 
-                // Ein paar cm Zeichenabweichung am Wandende werden für die
-                // Vermassung ignoriert. Auch der Endpunkt der Querwand darf
-                // leicht vor/hinter dem rechnerischen Schnitt liegen.
+
+
+
                 const alongTolerance=Math.max(thickness*1.5, 15);
                 const tTolerance=alongTolerance/length;
                 const uTolerance=alongTolerance/olen;
@@ -4769,9 +4769,9 @@ HTML;
         const startConnection=connectionAtEnd(true);
         const endConnection=connectionAtEnd(false);
 
-        // Nur echte Kanten sind Maßpunkte:
-        // Start: außen = vor der Querwand, innen = hinter der Querwand.
-        // Ende:  innen = vor der Querwand, außen = hinter der Querwand.
+
+
+
         const startOutside=startConnection
             ? startConnection.center-startConnection.projectedHalf
             : 0;
@@ -4792,8 +4792,8 @@ HTML;
 
         const points=[startInside,endInside];
 
-        // Innerhalb der Wand: jede Querwand unterbricht die Innenmaßkette
-        // an ihren beiden realen Wandkanten. Die Wandachse ist kein Maßpunkt.
+
+
         for(const other of floor.walls||[]) {
             if(other.id===w.id) continue;
 
@@ -4850,9 +4850,9 @@ HTML;
         for (const d of breaks) {
             const p = pointAt(d);
 
-            // Die Hilfslinie muss an der tatsächlich vermassten Kante beginnen:
-            // innen an der Innenkante, außen an der Außenkante – niemals an der
-            // gespeicherten Wand-Mittellinie.
+
+
+
             const measuredEdgeOffset = mode === 'inside' ? thickness / 2 : thickness / 2;
             const edgeX = p.x + nx * measuredEdgeOffset;
             const edgeY = p.y + ny * measuredEdgeOffset;
@@ -4862,8 +4862,8 @@ HTML;
             pieces.push(`<line x1="${mx - ux * 4 - nx * 4}" y1="${my - uy * 4 - ny * 4}" x2="${mx + ux * 4 + nx * 4}" y2="${my + uy * 4 + ny * 4}"/>`);
         }
 
-        // Außenmaß: eine einzige Gesamtmaßzahl von Außenkante zu Außenkante.
-        // Innenmaß: Maßkette mit allen Zwischen-/Querwandkanten.
+
+
         const segments = mode === 'outside'
             ? [[first, last]]
             : breaks.slice(0, -1).map((a, i) => [a, breaks[i + 1]]);
@@ -4876,9 +4876,9 @@ HTML;
             const dimensionFontSize = Math.max(8, Math.min(48, Number(floor.dimensionFontSize) || 18));
             const label = String(Math.round(value * 10) / 10);
 
-            // Professionelle Vermassung: Die Zahl sitzt mittig in einer echten
-            // Unterbrechung der Maßlinie. Die Lücke passt sich Schriftgröße und
-            // Anzahl der Ziffern an.
+
+
+
             const estimatedTextWidth = Math.max(
                 dimensionFontSize * 1.2,
                 label.length * dimensionFontSize * 0.62
@@ -4916,7 +4916,7 @@ HTML;
         const walls = floor.walls || [];
         if (!walls.length) return 1;
 
-        // Mittelpunkt des gesamten Wandgrundrisses.
+
         let sx = 0, sy = 0, count = 0;
         for (const wall of walls) {
             sx += Number(wall.x1) || 0;
@@ -4934,23 +4934,23 @@ HTML;
         const len = Math.hypot(dx, dy);
         if (len < 1) return 1;
 
-        // Beide Normalen prüfen. Die Seite, die vom Grundrisszentrum weg zeigt,
-        // ist die geometrische Außenseite. Dadurch ist die Richtung, in der die
-        // Wand gezeichnet wurde, egal.
+
+
+
         const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
         const toCenterX = cx - mx, toCenterY = cy - my;
 
-        // Normal für side=1 in wallGraphicDimension:
-        // nx=-uy, ny=ux.
+
+
         const nx = -dy / len, ny = dx / len;
         const dot = nx * toCenterX + ny * toCenterY;
 
-        // Zeigt side=1 zum Zentrum, liegt außen auf side=-1.
+
         return dot > 0 ? -1 : 1;
     }
 
     function renderGraphicWallDimensions(floor) {
-        // Bemaßung ist reine Editor-Hilfe und wird in der Live-Ansicht nie gezeigt.
+
         if (state.mode === 'view') return '';
         if (floor.showInsideDimensions !== true && floor.showOutsideDimensions !== true) return '';
 
@@ -5248,13 +5248,13 @@ HTML;
     }
 
     function renderProperties() {
-        // Offene native <select>-Listen dürfen bei Hintergrund-render() nicht
-        // ersetzt werden. Das gilt für ALLE Auswahllisten in den Eigenschaften
-        // (Möbeltyp, Icon, Profil-nahe Auswahlfelder usw.).
-        //
-        // document.activeElement allein reicht nicht in allen Browsern/HTML-SDK-
-        // Situationen zuverlässig aus. Daher merken wir zusätzlich, ob gerade
-        // irgendein Select in der Eigenschaftenleiste aktiv benutzt wird.
+
+
+
+
+
+
+
         const activeElement = document.activeElement;
         const activePropertyControl =
             activeElement &&
@@ -5800,8 +5800,8 @@ HTML;
                     const oldLength = Math.hypot(dx, dy);
                     const length = Math.max(1, Number(value) || 1);
 
-                    // Startpunkt und Richtung bleiben unverändert,
-                    // nur der Endpunkt wird auf die neue Länge gesetzt.
+
+
                     const ux = oldLength > 0.000001 ? dx / oldLength : 1;
                     const uy = oldLength > 0.000001 ? dy / oldLength : 0;
                     obj.x2 = x1 + ux * length;
@@ -5938,8 +5938,8 @@ HTML;
                 }
 
                 if (selected.type === 'item' && fieldName === 'colorControlEnabled') {
-                    // Die Zuordnung bleibt gespeichert, nur die Bedienung wird ein-/ausgeblendet.
-                    // Eigenschaften sofort neu aufbauen, damit kein weiterer Klick nötig ist.
+
+
                     refreshPropertiesAfterStructuralChange();
                 }
 
@@ -5988,8 +5988,8 @@ HTML;
                         }
                     }
 
-                    // Auswahl ist abgeschlossen: erst jetzt darf die Eigenschaftsansicht
-                    // neu aufgebaut werden.
+
+
                     input.blur();
                 }
 
@@ -6016,7 +6016,7 @@ HTML;
 
                 obj.shutterValueMap[rawValue] = String(select.value || 'keep');
 
-                // Die neue Zuordnung sofort auf die aktuelle grafische Stellung anwenden.
+
                 if (rawValue === String(Number(obj._shutterVariableRawValue))) {
                     delete obj._shutterVisualAmount;
                 }
@@ -6033,9 +6033,9 @@ HTML;
             openSymconIconPicker();
         };
 
-        // pointerdown statt click: Die Icon-Auswahl öffnet sofort beim ersten
-        // Antippen/Anklicken und ist nicht davon abhängig, ob zuvor ein anderes
-        // Eingabefeld den Fokus hatte.
+
+
+
         const bindItemIconPicker = (selector, slot) => {
             const button = properties.querySelector(selector);
             if (!button) return;
@@ -6195,8 +6195,8 @@ HTML;
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
 
-    // Sobald ein anderer Button der Editor-Leiste gedrückt wird, darf kein
-    // Platzierungs-/Verschiebe-Werkzeug aktiv bleiben.
+
+
     document.querySelectorAll('.toolbar button:not([data-tool])').forEach(btn => {
         btn.addEventListener('click', () => {
             deactivateToolWithoutRender();
@@ -6292,8 +6292,8 @@ HTML;
         floorViews.delete(floor.id);
         floorHomeViews.delete(floor.id);
 
-        // Der Editor benötigt immer mindestens eine Etage.
-        // Wird die letzte gelöscht, entsteht eine wirklich leere neue Etage.
+
+
         if (state.floors.length === 0) {
             const replacement = {
                 id: uid('floor'),
@@ -6335,8 +6335,8 @@ HTML;
 
         rememberCurrentFloorView(false);
 
-        // Komplette Etage kopieren, aber alle internen IDs neu erzeugen.
-        // Öffnungen müssen anschließend auf die neu erzeugten Wand-IDs zeigen.
+
+
         const floor = structuredClone(sourceFloor);
         floor.id = uid('floor');
         floor.name = name.trim() || `${sourceFloor.name} Kopie`;
@@ -6382,8 +6382,8 @@ HTML;
         });
         state.activeFloor = floor.id;
 
-        // Keine alte Zoom-/Pan-Ansicht übernehmen.
-        // Die kopierte Etage wird anhand ihres Inhalts neu und reproduzierbar eingepasst.
+
+
         floorViews.delete(floor.id);
         floorHomeViews.delete(floor.id);
 
@@ -6594,9 +6594,9 @@ HTML;
         const floor = currentFloor();
 
         if (state.mode !== 'view' && tool === 'pan' && !target) {
-            // Im Verschieben-Modus bewegt ein Klick auf freie Fläche den ganzen Plan.
-            // Ein Klick direkt auf ein Element fällt bewusst weiter zur Elementauswahl
-            // durch, damit kein separater Auswahl-Button benötigt wird.
+
+
+
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
             svg.setPointerCapture(evt.pointerId);
             evt.preventDefault();
@@ -6701,13 +6701,13 @@ HTML;
                 }
 
                 if (!item || item._canAction !== true) {
-                    // Reine Istwerte/Messwerte besitzen keine Bedienaktion.
+
                     return;
                 }
 
                 const variableType = Number(item._variableType);
                 if (variableType === 1 || variableType === 2) {
-                    // Integer/Float mit Aktion: Profil-Assoziationen oder Zahlenbereich.
+
                     openItemControl(item, evt.clientX, evt.clientY);
                 } else if (variableType === 0) {
                     if (
@@ -6717,11 +6717,11 @@ HTML;
                             (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl !== false)
                         )
                     ) {
-                        // Bei Lampen mit zusätzlicher Farbvariable Bedienfenster öffnen:
-                        // Ein/Aus und Farbe stehen dann gemeinsam zur Verfügung.
+
+
                         openItemControl(item, evt.clientX, evt.clientY);
                     } else {
-                        // Boolean ohne Farbsteuerung wie bisher direkt umschalten.
+
                         requestAction('operate', JSON.stringify({
                             floorId: state.activeFloor,
                             itemId: target.dataset.id
@@ -6732,12 +6732,12 @@ HTML;
             return;
         }
 
-        // Auswahl braucht kein eigenes Werkzeug: vorhandene Elemente können
-        // im Editor jederzeit direkt angeklickt und verschoben werden.
+
+
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
-            // "Verschieben" gilt nur für freie Fläche. Sobald ein bestehendes
-            // Element bearbeitet wird, ist das Werkzeug wieder inaktiv.
+
+
             if (tool === 'pan') {
                 deactivateToolWithoutRender();
             }
@@ -6855,7 +6855,7 @@ HTML;
                 showColorBrightnessControl2: true,
                 size: 18,
                 angle: 0,
-                kind: 'generic', // nur noch für Migration älterer Projekte
+                kind: 'generic',
                 icon: 'fa-light fa-circle',
                 iconManual: false,
                 iconSvg: '',
@@ -6922,8 +6922,8 @@ HTML;
             return;
         }
 
-        // Klick auf eine wirklich freie Fläche: aktuelle Auswahl aufheben.
-        // Dadurch zeigt die Eigenschaften-Seite wieder die Stockwerkeigenschaften.
+
+
         if (!target && !rotateHandle && !resizeHandle && !tool) {
             releasePropertiesControl();
             selected = null;
@@ -6997,8 +6997,8 @@ HTML;
                 const length2 = vx * vx + vy * vy;
                 if (length2 <= 0) return;
 
-                // Maus auf die zugehörige Wand projizieren. Es bewegt sich nur
-                // Tür/Fenster in der Wand; die Wand selbst bleibt unverändert.
+
+
                 let position =
                     ((p.x - Number(wall.x1)) * vx + (p.y - Number(wall.y1)) * vy) /
                     length2;
@@ -7069,8 +7069,8 @@ HTML;
             if (!obj) return;
 
             if (drag.type === 'wall') {
-                // Wand wie Möbel direkt per Griff bearbeiten:
-                // Start- oder Endpunkt folgt der Maus und rastet auf Snap ein.
+
+
                 if (drag.wallEnd === 'start') {
                     obj.x1 = snapValue(p.x);
                     obj.y1 = snapValue(p.y);
@@ -7122,7 +7122,7 @@ HTML;
                 const dx = p.x - cx;
                 const dy = p.y - cy;
 
-                // Mausposition in das lokale, gedrehte Möbelsystem zurückrechnen.
+
                 const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
                 const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
 
@@ -7139,7 +7139,7 @@ HTML;
                 const chars = Math.max(1, textValue.length);
                 const width = Math.max(10, p.x - originX);
 
-                // Breite zurück in eine passende Schriftgröße umrechnen.
+
                 obj.size = Math.max(6, Math.min(120, Math.round(width / (chars * 0.65))));
             } else if (drag.type === 'opening') {
                 const floor = currentFloor();
@@ -7158,9 +7158,9 @@ HTML;
                 const cy = Number(wall.y1) + vy * centerPos;
                 const raw = svgPointRaw(evt);
 
-                // Wie beim Fenster: Griff entlang der Wand ziehen. Für die
-                // Länge bewusst OHNE Raster-Snap rechnen, damit auch Türen
-                // bei kleinen Mausbewegungen sofort reagieren.
+
+
+
                 const projectedHalf = Math.abs((raw.x - cx) * ux + (raw.y - cy) * uy);
                 const maxHalf = Math.min(centerPos * wallLength, (1 - centerPos) * wallLength);
                 const maxLength = Math.max(20, maxHalf * 2);
@@ -7202,9 +7202,9 @@ HTML;
         try { svg.releasePointerCapture(evt.pointerId); } catch (_) {}
         drag = null;
 
-        // Formen sind bewusst Einmal-Werkzeuge:
-        // Nach jeder gezeichneten Form zurück in den normalen Auswahl-/Verschiebemodus.
-        // Für eine weitere Form muss Linie/Rechteck/Kreis erneut gewählt werden.
+
+
+
         if (finishedShape) {
             setTool('');
         }
@@ -7226,9 +7226,9 @@ HTML;
         drag = null;
     });
 
-    // Absichtlich kein Mausrad-Zoom: Die Visualisierungskachel soll das
-    // normale Scrollen der Oberfläche nicht abfangen. Manuelles Zoomen
-    // erfolgt über die −/+ Schaltflächen; Einpassen bleibt zusätzlich erhalten.
+
+
+
 
     window.addEventListener('keydown', evt => {
         if (evt.target instanceof HTMLInputElement || evt.target instanceof HTMLSelectElement) {
@@ -7364,7 +7364,7 @@ HTML;
 
             expandedObjectIDs.add(id);
 
-            // Kinder nur beim ersten Aufklappen vom Modul anfordern.
+
             if (node.hasChildren === true && node.childrenLoaded !== true) {
                 statusEl.textContent = 'Unterobjekte werden geladen …';
                 requestAction('getObjectTreeChildren', JSON.stringify({
@@ -7417,8 +7417,8 @@ HTML;
         const valueText = String(node.valueText || '').toLowerCase();
         const haystack = `${profileName} ${path} ${valueText}`;
 
-        // Feuchte zuerst prüfen: Prozentprofile werden sehr häufig dafür benutzt.
-        // Der Name/Pfad verhindert, dass jeder beliebige Prozentwert als Feuchte gilt.
+
+
         if (
             /\b(feuchte|luftfeuchte|humidity|humid)\b/i.test(haystack) ||
             (suffix.includes('%') && /\b(feuchte|humidity|humid)\b/i.test(haystack))
@@ -7491,7 +7491,7 @@ HTML;
             : (slot === 'on' ? effectiveItemIcon(item, true) : (item?.icon || 'fa-light fa-circle'));
         const current = normalizeSymconIcon(currentRaw);
         const icons = availableSymconIcons().filter(icon => !query || iconSearchText(icon).includes(query));
-        // Ohne Suche bewusst kompakt; bei Suche stehen weiterhin alle Treffer zur Verfügung.
+
         const shown = icons.slice(0, query ? 500 : 80);
         iconList.innerHTML = `<div class="symcon-icon-grid">` + shown.map(icon => {
             const cls = icon === current ? ' current' : '';
@@ -7507,9 +7507,9 @@ HTML;
                 const chosen = String(button.dataset.symconIcon || 'fa-light fa-circle');
                 const slot = iconPickerTarget?.slot || 'single';
 
-                // Das tatsächlich von /icons.js gerenderte SVG mit dem gewählten
-                // Icon speichern. So muss das Icon später weder im Editor noch
-                // in Live erneut anhand des Namens aufgelöst werden.
+
+
+
                 const renderedSvg = button.querySelector('svg');
                 const persistedSvg = renderedSvg
                     ? renderedSvg.outerHTML
@@ -7543,8 +7543,8 @@ HTML;
         iconSearch.value = '';
         iconModal.classList.add('open');
         iconModal.setAttribute('aria-hidden', 'false');
-        // icons.js initialisiert die Font-Awesome-Bibliothek synchron bzw. sehr früh.
-        // Ein kurzer Microtask erlaubt dem Register, vollständig verfügbar zu sein.
+
+
         Promise.resolve().then(() => renderSymconIconPicker(''));
         setTimeout(() => iconSearch.focus(), 0);
     }
@@ -7560,8 +7560,8 @@ HTML;
             const item = floor?.items?.find(i => i.id === iconPickerTarget?.itemId);
             if (!item || Number(item.variableID || 0) <= 0) return;
 
-            // Nicht mit eventuell veralteten Browserdaten arbeiten:
-            // das aktuell in Symcon hinterlegte Icon nochmals frisch abfragen.
+
+
             requestAction('refreshItemIcon', JSON.stringify({
                 floorId: state.activeFloor,
                 itemId: item.id,
@@ -7598,9 +7598,9 @@ HTML;
         const selectedVariableID = Number(variableID) || 0;
         const selectedNode = selectedVariableID ? findTreeNode(objectTree, selectedVariableID) : null;
 
-        // Zusatzvariable wirklich vollständig entfernen. Nur die ID auf 0 zu
-        // setzen reicht nicht, weil sonst die Runtime-Metadaten erhalten bleiben
-        // und der Picker die alte Farbe/Helligkeit weiterhin erkennt/anzeigt.
+
+
+
         if (
             selectedVariableID === 0 &&
             entityType === 'item' &&
@@ -7633,8 +7633,8 @@ HTML;
             return;
         }
 
-        // Der Objektbaum enthält absichtlich nur leichte Daten. Erst für die
-        // tatsächlich gewählte Variable die vollständigen Symcon-Metadaten laden.
+
+
         if (
             selectedVariableID > 0 &&
             Number(selectedNode?.objectType) === 2 &&
@@ -7696,9 +7696,9 @@ HTML;
                 Number(entity.colorVariableID || 0) > 0 ||
                 Number(entity.colorVariableID2 || 0) > 0;
 
-            // Seit der getrennten Auswahl "Helligkeit" / "Farbe" gibt es nur noch
-            // eine gemeinsame Anzeigeoption. Beide Slots müssen deshalb denselben
-            // Sichtbarkeitszustand verwenden.
+
+
+
             const showAuxControls = entity.showColorBrightnessControl !== false;
             entity.showColorBrightnessControl = showAuxControls;
             entity.showColorBrightnessControl2 = showAuxControls;
@@ -7706,8 +7706,8 @@ HTML;
 
         const node = selectedNode;
 
-        // Beim Hauptobjekt eines Geräts darf statt einer Variable auch direkt
-        // ein Symcon-Stream-Medienobjekt gewählt werden.
+
+
         if (
             entityType === 'item' &&
             field === 'variableID' &&
@@ -7731,8 +7731,8 @@ HTML;
             entity.showDirectSlider = false;
             entity.showValue = false;
 
-            // Genau wie bei Variablen das am Symcon-Objekt konfigurierte Icon
-            // übernehmen. Kein Kamera-Icon erzwingen.
+
+
             entity.iconManual = false;
             entity.iconOffManual = false;
             entity.iconOnManual = false;
@@ -7801,9 +7801,9 @@ HTML;
         entity[legacyCurrentColorKey] = node?.legacyCurrentColor || '';
         entity[newIntegerStatusColorKey] = node?.newIntegerStatusColor || '';
 
-        // Neue Bool-Darstellung: GLOW_COLOR direkt in die bestehende
-        // Floorplan-Konfiguration "Statusfarbe EIN" übernehmen.
-        // AUS erhält bewusst keine eigene Farbe.
+
+
+
         if (
             entityType === 'item' &&
             field === 'variableID' &&
@@ -7814,8 +7814,8 @@ HTML;
             entity.statusColor = String(node.glowColor);
         }
 
-        // Tür/Fenster: Beim bewussten Zuordnen der Kontakt-/Positionsvariable
-        // die Symcon-Farbe für den geöffneten Zustand übernehmen.
+
+
         if (entityType === 'opening' && field === 'variableID') {
             entity.openStatusColorManual = false;
 
@@ -7843,8 +7843,8 @@ HTML;
             entity.showDirectSlider = false;
         }
 
-        // Beim bewussten Auswählen/Neuauswählen der Gerätevariable die
-        // aktuellen Symcon-Vorgaben vollständig übernehmen.
+
+
         if (entityType === 'item' && field === 'variableID') {
             if (node) {
                 entity.statusColorManual = false;
@@ -7883,8 +7883,8 @@ HTML;
                             : (node.objectIcon || 'fa-light fa-circle');
                         entity.iconSvg = '';
                     }
-                    // Für Bool immer zwei wählbare Zustände anbieten, ohne den
-                    // funktionierenden Legacy-Autoweg zu verändern.
+
+
                     if (Number(node.variableType) === 0) {
                         if (entity.iconOffManual !== true) {
                             entity.iconOffSvg = '';
@@ -7991,7 +7991,7 @@ HTML;
         const img = controlBody?.querySelector('.stream-view img');
         if (!img) return;
 
-        // Die laufende Proxy-/MJPEG-Verbindung wirklich trennen.
+
         img.removeAttribute('src');
     }
 
@@ -8004,7 +8004,7 @@ HTML;
         const mediaID = Number(img.dataset.streamMediaId || 0);
         if (mediaID <= 0) return;
 
-        // Neue URL erzwingt nach Pause/Tab-Wechsel eine frische Verbindung.
+
         img.src = `/proxy/${mediaID}?_=${Date.now()}`;
     }
 
@@ -8076,8 +8076,8 @@ HTML;
                 let left = streamSmallPosition.left;
                 let top = streamSmallPosition.top;
 
-                // Nur falls sich die Kachel/Viewport-Größe inzwischen geändert hat,
-                // die ursprüngliche Position so weit wie nötig innerhalb halten.
+
+
                 left = Math.max(
                     margin,
                     Math.min(left, window.innerWidth - rect.width - margin)
@@ -8173,8 +8173,8 @@ HTML;
             ((colorControl && colorControl.show) || (brightnessControl && brightnessControl.show))
         );
 
-        // Bei einer Bool-Lampe mit Farb- oder Helligkeitssteuerung werden die
-        // Bool-Assoziationen innerhalb der jeweiligen Zusatzbedienung dargestellt.
+
+
         if (associations.length && !colorControlledBool) {
             html += '<div class="control-associations">';
             for (const association of associations) {
@@ -8216,9 +8216,9 @@ HTML;
         if (
             colorControl && colorControl.show
         ) {
-            // Im Farbwähler immer den tatsächlichen gespeicherten Farbwert anzeigen,
-            // unabhängig davon, ob die Bool-Hauptvariable gerade EIN oder AUS ist.
-            // Die Plan-Darstellung bleibt davon vollständig getrennt.
+
+
+
             const currentColor = integerColorToCss(colorControl.rawValue) || '#FFFFFF';
             const disabled = colorControl.canAction ? '' : ' disabled';
             html += `
@@ -8248,7 +8248,7 @@ HTML;
                                         `</div>`;
                                 }
 
-                                // Bool ohne Profil-Assoziationen: beide Zustände anbieten.
+
                                 return `<div class="device-color-bool-actions">
                                     <button type="button" class="device-color-power${!truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="0">Aus</button>
                                     <button type="button" class="device-color-power${truthyVariableValue(item._rawValue) ? ' is-active' : ''}" data-control-bool="1">Ein</button>
@@ -8369,8 +8369,8 @@ HTML;
                 placeMarker(initial.h, initial.s);
             };
 
-            // Das Popup ist beim Aufbau noch nicht vollständig positioniert.
-            // Marker erst nach dem Browser-Layout in den Farbkreis setzen.
+
+
             requestAnimationFrame(() => {
                 placeInitialMarker();
                 requestAnimationFrame(placeInitialMarker);
@@ -8390,8 +8390,8 @@ HTML;
                     let hue = Math.atan2(dy, dx) * 180 / Math.PI + 90;
                     if (hue < 0) hue += 360;
 
-                    // Der Farbkreis entspricht dem bekannten Hue/Sättigungs-Kreis:
-                    // Zentrum = Weiß, Außenrand = volle Farbe.
+
+
                     const color = hsvToRgbHex(hue, saturation, 1);
                     placeMarker(hue, saturation);
                     if (preview) preview.style.background = color;
@@ -8502,9 +8502,9 @@ HTML;
         }
     });
 
-    // Geräte-Popup auch schließen, wenn außerhalb des eigentlichen Dialogs
-    // geklickt/getippt wird. Der Backdrop selbst hat im Floorplan absichtlich
-    // pointer-events:none, deshalb muss dies auf Dokumentebene geprüft werden.
+
+
+
     document.addEventListener('pointerdown', evt => {
         if (!controlModal?.classList.contains('open')) return;
 
@@ -8526,8 +8526,8 @@ HTML;
         try {
             const data = typeof message === 'string' ? JSON.parse(message) : message;
             if (data?.command === 'reloadHtml') {
-                // Genau wie bei allen anderen Projektfeldern zuerst einen eventuell
-                // noch offenen normalen Autosave abschließen, dann HTML neu laden.
+
+
                 if (dirty) {
                     saveProject();
                 }
@@ -8588,8 +8588,8 @@ HTML;
 
                 const meta = data.meta || {};
 
-                // Explizites Aktualisieren: manuelle Farbübersteuerung bewusst
-                // aufheben und die aktuelle Symcon-Darstellung neu übernehmen.
+
+
                 opening.openStatusColorManual = false;
 
                 for (const [key, value] of Object.entries(meta)) {
@@ -8603,9 +8603,9 @@ HTML;
                 markDirty();
                 render();
 
-                // Den bereits sichtbaren Farbwähler sofort auf die neu aus Symcon
-                // geladene Farbe setzen. Manche Browser/WebViews behalten den
-                // bestehenden <input type="color">-DOM-Wert trotz Neuaufbau kurz fest.
+
+
+
                 const refreshedOpeningColor = effectiveOpeningStatusColor(opening);
                 const openingColorInput = properties.querySelector(
                     'input[data-field="openStatusColor"]'
@@ -8614,13 +8614,13 @@ HTML;
                     openingColorInput.value = refreshedOpeningColor;
                 }
 
-                // Danach die Eigenschaftenleiste zusätzlich sauber neu aufbauen.
+
                 propertiesControlActive = false;
                 propertiesSelectOpen = false;
                 setTimeout(() => {
                     renderProperties();
 
-                    // Zweite Absicherung nach dem Neuaufbau des DOM.
+
                     const rebuiltOpeningColorInput = properties.querySelector(
                         'input[data-field="openStatusColor"]'
                     );
@@ -8640,8 +8640,8 @@ HTML;
 
                 const meta = data.meta || {};
 
-                // Explizites Aktualisieren bedeutet: aktuelle Symcon-Einstellungen
-                // vollständig übernehmen, keine alten manuellen Icon-Overrides behalten.
+
+
                 item.statusColorManual = false;
                 item.iconManual = false;
                 item.iconOffManual = false;
@@ -8712,7 +8712,7 @@ HTML;
                             }
 
                             if (meta._hasLegacyProfile === true) {
-                                // Funktionierenden Legacy-Weg nicht verändern.
+
                                 if (!manualIcon && meta._objectIcon !== undefined) {
                                     item.icon = Number(meta._variableType) === 1
                                         ? (meta._presentationIcon || meta._objectIcon || 'fa-light fa-circle')
@@ -8732,7 +8732,7 @@ HTML;
                                 if (item.iconOffManual !== true) item.iconOff = meta._presentationIconOff || meta._presentationIconOn || meta._objectIcon || 'fa-light fa-circle';
                                 if (item.iconOnManual !== true) item.iconOn = meta._presentationIconOn || meta._presentationIconOff || meta._objectIcon || 'fa-light fa-circle';
 
-                                // GLOW_COLOR ist ausschließlich die EIN-Farbe.
+
                                 if (
                                     !manualStatusColor &&
                                     /^#[0-9a-f]{6}$/i.test(String(meta._glowColor || ''))
@@ -8836,14 +8836,14 @@ HTML;
                     }
                 }
 
-                // Nur neu zeichnen, kein normalizeProject(), kein fit(), kein Etagenwechsel.
+
                 render();
                 return;
             }
 
             if (data?.type === 'project' && data.project) {
-                // Runtime-Updates dürfen die im Live-Modus gewählte Etage
-                // nicht auf die im gespeicherten Projekt hinterlegte Etage zurücksetzen.
+
+
                 const currentFloorID = state?.activeFloor || '';
                 const currentMode = state?.mode || 'view';
 
@@ -8853,8 +8853,8 @@ HTML;
                     state.activeFloor = currentFloorID;
                 }
 
-                // Auch ein reines Variablen-Update darf den aktuellen Live/Edit-Modus
-                // des geöffneten Clients nicht verändern.
+
+
                 state.mode = currentMode;
 
                 selected = null;
@@ -8895,13 +8895,13 @@ HTML;
                 node.objectIcon = meta._objectIcon ?? node.objectIcon ?? '';
                 node.runtimeMetaLoaded = true;
 
-                // Jetzt läuft exakt die bisherige Zuordnungslogik weiter.
+
                 assignVariable(Number(data.variableID));
             } else if (data?.type === 'objectTreeChildren' && Array.isArray(data.objects)) {
                 const parentID = Number(data.parentID || 0);
 
                 if (parentID === 0) {
-                    // Root neu laden; Suchtext nur beim erstmaligen Öffnen leeren.
+
                     objectTree = data.objects;
                     if (!variableModal.classList.contains('open')) {
                         variableSearch.value = '';
@@ -8970,7 +8970,7 @@ HTML;
         }
     }
 
-    // Symcon kann die injizierte --content-color während eines Themewechsels ändern.
+
     setInterval(() => {
         const before = document.documentElement.getAttribute('data-theme');
         detectTheme();
@@ -9010,12 +9010,12 @@ JAVASCRIPT;
 
                 $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
 
-                /*
-                 * Die Variablenzuordnung kann direkt im HTML-Editor geändert werden.
-                 * ApplyChanges() läuft dabei nicht erneut. Deshalb müssen neu
-                 * zugeordnete Variablen unmittelbar nach dem Speichern für VM_UPDATE
-                 * registriert werden, damit externe Änderungen sofort im Floorplan erscheinen.
-                 */
+
+
+
+
+
+
                 $this->RegisterRuntimeVariableMessages();
 
                 $this->ReloadForm();
@@ -9202,7 +9202,7 @@ JAVASCRIPT;
                 );
                 break;
 
-            case 'operateColorValue': // Legacy-Alias
+            case 'operateColorValue':
             case 'operateColorBrightnessValue':
                 if (!is_string($Value)) {
                     throw new InvalidArgumentException('Ungültiger Farbwert.');
@@ -9276,6 +9276,7 @@ JAVASCRIPT;
                 JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
             )
         );
+        $this->RegisterRuntimeVariableMessages();
         $this->ReloadForm();
     }
 
@@ -9287,7 +9288,6 @@ JAVASCRIPT;
         }
 
         $this->SetFloorplanJSON($json);
-        $this->RegisterRuntimeVariableMessages();
     }
 
     public function ResetFloorplan(): void
@@ -9304,6 +9304,7 @@ JAVASCRIPT;
         }
 
         $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
+        $this->RegisterRuntimeVariableMessages();
 
         $message = json_encode(
             ['type' => 'project', 'project' => $project],
@@ -9368,17 +9369,41 @@ JAVASCRIPT;
     private function DecodeAndValidateProject(string $JSON): array
     {
         try {
+            $document = json_decode($JSON, false, 512, JSON_THROW_ON_ERROR);
             $data = json_decode($JSON, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
             throw new InvalidArgumentException('Ungültiges JSON: ' . $e->getMessage());
         }
 
-        if (!is_array($data)) {
+        if (!$document instanceof stdClass) {
             throw new InvalidArgumentException('Floorplan muss ein JSON-Objekt sein.');
         }
 
-        // Alte Projekte dürfen width/height enthalten. Diese Werte werden
-        // ab dieser Version bewusst ignoriert, da die Zeichenfläche dynamisch ist.
+        if (property_exists($document, 'floors') && !is_array($document->floors)) {
+            throw new InvalidArgumentException('Etagen müssen als JSON-Liste angegeben werden.');
+        }
+
+        foreach (($document->floors ?? []) as $floor) {
+            if (!$floor instanceof stdClass) {
+                throw new InvalidArgumentException('Jede Etage muss ein JSON-Objekt sein.');
+            }
+            foreach (['walls', 'openings', 'items', 'texts', 'furniture', 'areas', 'shapes', 'trackers'] as $key) {
+                if (!property_exists($floor, $key)) {
+                    continue;
+                }
+                if (!is_array($floor->{$key})) {
+                    throw new InvalidArgumentException('Etagenfeld "' . $key . '" muss eine JSON-Liste sein.');
+                }
+                foreach ($floor->{$key} as $element) {
+                    if (!$element instanceof stdClass) {
+                        throw new InvalidArgumentException('Elemente in "' . $key . '" müssen JSON-Objekte sein.');
+                    }
+                }
+            }
+        }
+
+
+
         unset($data['width'], $data['height']);
         $data['grid'] = max(5, (int) ($data['grid'] ?? 20));
         $data['snap'] = max(0, (int) ($data['snap'] ?? $data['grid']));
@@ -9508,6 +9533,12 @@ JAVASCRIPT;
             }
         }
 
+        foreach ($this->GetMessageList() as $senderID => $messages) {
+            if (!isset($ids[$senderID]) && in_array(VM_UPDATE, $messages, true)) {
+                $this->UnregisterMessage((int) $senderID, VM_UPDATE);
+            }
+        }
+
         foreach (array_keys($ids) as $id) {
             $this->RegisterMessage((int) $id, VM_UPDATE);
         }
@@ -9539,8 +9570,8 @@ JAVASCRIPT;
                         continue;
                     }
 
-                    // Stream-Metadaten sind Laufzeitdaten und werden beim Speichern
-                    // entfernt. Deshalb aus dem Media-Objekt bei jedem Laden neu aufbauen.
+
+
                     if (IPS_MediaExists($objectID)) {
                         try {
                             $media = IPS_GetMedia($objectID);
@@ -9568,7 +9599,7 @@ JAVASCRIPT;
                 }
             }
 
-            // Optionale zweite Farbvariable der Geräte ebenfalls als Runtime-Metadaten laden.
+
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
                     $colorID = (int) ($item['colorVariableID'] ?? 0);
@@ -9579,9 +9610,9 @@ JAVASCRIPT;
                     try {
                         $meta = $this->GetVariableRuntimeMeta($colorID);
 
-                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
-                        // Variablen verwenden. Insbesondere wird aus _variableType
-                        // _colorVariableType (nicht _colorVariableVariableType).
+
+
+
                         $runtimeMap = [
                             '_variablePath'          => '_colorVariablePath',
                             '_valueText'             => '_colorVariableValueText',
@@ -9658,7 +9689,7 @@ JAVASCRIPT;
                 }
             }
 
-            // Zweite optionale Farb-/Helligkeitsvariable laden.
+
             if (isset($floor['items']) && is_array($floor['items'])) {
                 foreach ($floor['items'] as $itemIndex => $item) {
                     $colorID = (int) ($item['colorVariableID2'] ?? 0);
@@ -9669,9 +9700,9 @@ JAVASCRIPT;
                     try {
                         $meta = $this->GetVariableRuntimeMeta($colorID);
 
-                        // Exakt dasselbe Namensschema wie bei den übrigen zusätzlichen
-                        // Variablen verwenden. Insbesondere wird aus _variableType
-                        // _colorVariableType (nicht _colorVariableVariableType).
+
+
+
                         $runtimeMap = [
                             '_variablePath'          => '_colorVariable2Path',
                             '_valueText'             => '_colorVariable2ValueText',
@@ -9752,10 +9783,10 @@ JAVASCRIPT;
         return $Project;
     }
 
-    /**
-     * Liefert ausschließlich die DIREKTEN Kinder eines Objekts.
-     * Dadurch wächst ein Request nicht mehr mit dem gesamten Symcon-Objektbaum.
-     */
+
+
+
+
     private function BuildObjectChildrenLazy(int $ParentID, string $ParentPath): array
     {
         $result = [];
@@ -9771,11 +9802,11 @@ JAVASCRIPT;
         return $result;
     }
 
-    /**
-     * Baut nur den kleinen Datensatz auf, der im Picker sichtbar sein muss.
-     * Profil-/Presentation-/Icon-Metadaten werden weiterhin erst nach Auswahl
-     * einer konkreten Variable über GetVariableRuntimeMeta() geladen.
-     */
+
+
+
+
+
     private function BuildObjectTreeNode(int $ObjectID, string $ParentPath): ?array
     {
         if (!IPS_ObjectExists($ObjectID)) {
@@ -9825,14 +9856,20 @@ JAVASCRIPT;
                     $profileName = (string) ($variable['VariableProfile'] ?? '');
                 }
 
+                $presentation = $this->GetActiveVariablePresentationInfo($ObjectID);
+                if ($presentation['legacyProfile'] !== '') {
+                    $profileName = $presentation['legacyProfile'];
+                }
+
                 $node['variableType'] = $variableType;
                 $node['variableTypeName'] = $variableTypeNames[$variableType] ?? ('Typ ' . $variableType);
                 $node['profileName'] = $profileName;
                 $node['valueText'] = $this->GetFormattedVariableValue(
                     $ObjectID,
-                    $variableType,
                     GetValue($ObjectID),
-                    $profileName
+                    $presentation['parameters'],
+                    $presentation['presentationID'] !== '' && !$presentation['isLegacyProfile'],
+                    $profileName === '' || IPS_VariableProfileExists($profileName)
                 );
                 $node['runtimeMetaLoaded'] = false;
             } catch (Throwable $e) {
@@ -9859,10 +9896,10 @@ JAVASCRIPT;
         return $node;
     }
 
-    /**
-     * Server-seitige Suche für den Lazy-Objektbaum.
-     * Es wird nie ein kompletter Baum aufgebaut; gespeichert werden nur Treffer.
-     */
+
+
+
+
     private function SearchObjectTree(string $Query, int $Limit = 200): array
     {
         $query = mb_strtolower(trim($Query));
@@ -9917,8 +9954,8 @@ JAVASCRIPT;
                 if (str_contains($haystack, $Query)) {
                     $node = $this->BuildObjectTreeNode($objectID, $ParentPath);
                     if ($node !== null) {
-                        // Suchtreffer werden flach dargestellt; Unterobjekte lädt
-                        // man anschließend wieder über den normalen Lazy-Baum.
+
+
                         $node['hasChildren'] = false;
                         $node['childrenLoaded'] = true;
                         $node['children'] = [];
@@ -10020,8 +10057,8 @@ JAVASCRIPT;
     {
         $result = ['icon' => '', 'off' => '', 'on' => '', 'glowColor' => '', 'glowIntensity' => 0];
 
-        // Neue Darstellung nur verwenden, wenn wirklich eine neue Darstellung
-        // an der Variable hinterlegt ist. Legacy-Profile werden hier bewusst ignoriert.
+
+
         $hasNewPresentation =
             !empty($Variable['VariableCustomPresentation'] ?? []) ||
             !empty($Variable['VariablePresentation'] ?? []);
@@ -10053,9 +10090,9 @@ JAVASCRIPT;
         $useIconFalseRaw = $this->FindPresentationValue($presentation, 'USE_ICON_FALSE');
         $useIconFalse = filter_var($useIconFalseRaw, FILTER_VALIDATE_BOOLEAN);
 
-        // Neue Bool-Schalterdarstellung:
-        // GLOW_COLOR ist ein Symcon-Farbwert als Integer (z. B. 4041727 = #3DABFF).
-        // GLOW_INTENSITY liegt als Prozentwert 0..100 vor.
+
+
+
         $glowColorRaw = $this->FindPresentationValue($presentation, 'GLOW_COLOR');
         if ($glowColorRaw !== null && is_numeric($glowColorRaw)) {
             $glowColor = (int) $glowColorRaw;
@@ -10105,21 +10142,21 @@ JAVASCRIPT;
             $result['parameters'] = $parameters;
             $result['presentationID'] = (string) ($parameters['PRESENTATION'] ?? '');
 
-            /*
-             * Entscheidend ist die tatsächlich aktive Darstellung:
-             *
-             * Legacy Profile:
-             *   PROFILE      => ~Switch
-             *   PRESENTATION => {4153A8D4-...}
-             *
-             * Neue Darstellung:
-             *   ICON_TRUE / ICON_FALSE / GLOW_COLOR / ...
-             *   PRESENTATION => {...}
-             *
-             * Damit ist PROFILE das eindeutige Kennzeichen der aktuell
-             * wirksamen Legacy-Profil-Darstellung. Alte VariableProfile-
-             * Felder werden für diese Entscheidung bewusst ignoriert.
-             */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             $legacyProfile = trim((string) ($parameters['PROFILE'] ?? ''));
             $result['isLegacyProfile'] = $legacyProfile !== '';
             $result['legacyProfile'] = $legacyProfile;
@@ -10135,11 +10172,11 @@ JAVASCRIPT;
         $customAction = (int) ($Variable['VariableCustomAction'] ?? 0);
         $defaultAction = (int) ($Variable['VariableAction'] ?? 0);
 
-        /*
-         * IP-Symcon-Sonderfall:
-         * VariableCustomAction = 1 bedeutet NICHT "Action-ID 1",
-         * sondern dass eine vorhandene Standardaktion explizit deaktiviert wurde.
-         */
+
+
+
+
+
         if ($customAction === 1) {
             return 0;
         }
@@ -10160,7 +10197,7 @@ JAVASCRIPT;
         try {
             $presentation = IPS_GetPresentation($PresentationID);
 
-            // Je nach Symcon-Version kommt hier JSON als String oder bereits ein Array.
+
             if (is_string($presentation)) {
                 $decoded = json_decode($presentation, true);
                 $presentation = is_array($decoded) ? $decoded : [];
@@ -10230,7 +10267,7 @@ JAVASCRIPT;
         if (is_int($Color) || is_float($Color)) {
             $value = (int) $Color;
 
-            // IP-Symcon verwendet -1 als "keine/transparent"-Farbe.
+
             if ($value < 0) {
                 return '';
             }
@@ -10251,7 +10288,7 @@ JAVASCRIPT;
 
         $rawNumeric = is_numeric($RawValue) ? (float) $RawValue : null;
 
-        // Enumeration / Value Presentation: OPTIONS enthält die einzelnen Werte.
+
         $optionsRaw = $this->FindPresentationValue($Presentation, 'OPTIONS');
         $options = $this->DecodePresentationArrayValue($optionsRaw);
 
@@ -10301,9 +10338,9 @@ JAVASCRIPT;
                     ? $this->SymconColorToCss(
                         $this->PresentationEntryValue(
                             $option,
-                            // Enumeration verwendet offiziell "Color".
-                            // "ColorValue" zusätzlich für konvertierte/ältere
-                            // Darstellungsdaten akzeptieren.
+
+
+
                             ['Color', 'COLOR', 'color', 'ColorValue'],
                             null
                         )
@@ -10343,7 +10380,7 @@ JAVASCRIPT;
             }
         }
 
-        // Interval Presentation: Farbe anhand des aktuellen Wertebereichs.
+
         $intervalsActive = filter_var(
             $this->FindPresentationValue($Presentation, 'INTERVALS_ACTIVE'),
             FILTER_VALIDATE_BOOLEAN
@@ -10387,9 +10424,9 @@ JAVASCRIPT;
                     $color = $this->SymconColorToCss(
                         $this->PresentationEntryValue(
                             $interval,
-                            // Für Wertanzeige-Intervalle zuerst ColorValue.
-                            // Color bleibt als Fallback für Symcon-Versionen/
-                            // Konfigurationen, die diesen Namen verwenden.
+
+
+
                             ['ColorValue', 'Color', 'COLOR', 'color'],
                             null
                         )
@@ -10402,16 +10439,16 @@ JAVASCRIPT;
             }
         }
 
-        // Allgemeine Farbe der neuen Darstellung als letzter Fallback.
+
         if ($result['statusColor'] === '') {
             $result['statusColor'] = $this->SymconColorToCss(
                 $this->FindPresentationValue($Presentation, 'COLOR')
             );
         }
 
-        // Falls MIN/MAX/STEP in der neuen Darstellung vorhanden sind, daraus
-        // einen Wertebereich erzeugen. Das bestehende Bedienkonzept kann ihn
-        // verwenden, aber nur wenn _canAction=true ist.
+
+
+
         if ($result['profile'] === null) {
             $min = $this->FindPresentationValue($Presentation, 'MIN');
             if ($min === null) {
@@ -10450,8 +10487,8 @@ JAVASCRIPT;
 
         $activePresentation = $this->GetActiveVariablePresentationInfo($VariableID);
 
-        // Ab Symcon 8.1 ist IPS_GetVariablePresentation() die maßgebliche Quelle:
-        // Es liefert die Parameter der AKTUELL genutzten Darstellung.
+
+
         $activePresentationID = (string) ($activePresentation['presentationID'] ?? '');
         $activeIsLegacy = (bool) ($activePresentation['isLegacyProfile'] ?? false);
 
@@ -10469,8 +10506,8 @@ JAVASCRIPT;
             $activePresentationID !== '' &&
             !$activeIsLegacy;
 
-        // Nur als Fallback für Systeme/Variablen, bei denen die aktive Darstellung
-        // nicht geliefert werden kann, verwenden wir die alten Felder.
+
+
         if ($activePresentationID === '') {
             $fallbackHasPresentation =
                 !empty($variable['VariableCustomPresentation'] ?? []) ||
@@ -10484,17 +10521,17 @@ JAVASCRIPT;
             $hasNewPresentation = $fallbackHasPresentation;
         }
 
-        // ICON / ICON_TRUE / ICON_FALSE gehören zu den zusätzlichen visuellen
-        // Einstellungen der Variable. Diese Werte können auch vorhanden sein,
-        // wenn die eigentliche Darstellung weiterhin ein Legacy-Profil nutzt.
-        // Darum NICHT vom Legacy-Profil-Icon ableiten.
+
+
+
+
         $presentationIcons = $this->GetVisualPresentationIcons(
             (array) ($activePresentation['parameters'] ?? []),
             $variableType
         );
 
-        // Fallback für Systeme, bei denen IPS_GetVariablePresentation() keine
-        // vollständigen Parameter liefert, aber eine neue Darstellung aktiv ist.
+
+
         if (
             $hasNewPresentation &&
             $presentationIcons['icon'] === '' &&
@@ -10511,11 +10548,11 @@ JAVASCRIPT;
         $profile = null;
         $profileSummary = '';
 
-        // Den sichtbaren Wert grundsätzlich von IP-Symcon formatieren lassen.
-        // Damit werden Legacy-Profile (Digits, Prefix/Suffix, Assoziationen)
-        // genauso dargestellt wie die Variable selbst. Für neue Darstellungen
-        // wird weiter unten zusätzlich ein gezielter DIGITS-Fallback angewandt,
-        // falls GetValueFormatted() nur den Rohwert zurückliefert.
+
+
+
+
+
         $referencedProfileExists =
             $profileName === '' ||
             IPS_VariableProfileExists($profileName);
@@ -10531,8 +10568,8 @@ JAVASCRIPT;
         $legacyCurrentColor = '';
         $newIntegerStatusColor = '';
 
-        // Integer mit neuer Variablendarstellung:
-        // OPTIONS / INTERVALS / COLOR direkt aus der aktiven Präsentation lesen.
+
+
         if ($variableType === 1 && $hasNewPresentation) {
             $newIntegerMeta = $this->GetNewIntegerPresentationMeta(
                 (array) ($activePresentation['parameters'] ?? []),
@@ -10607,10 +10644,10 @@ JAVASCRIPT;
                 $profileSummary = implode(' · ', $parts);
 
                 foreach ($associations as $association) {
-                    // String-Variablen müssen gegen String-Assoziationen exakt
-                    // verglichen werden (z. B. NOT_CHARGING -> Lädt nicht).
-                    // Eine Umwandlung nach float würde beliebige Texte zu 0
-                    // machen und dadurch die falsche Assoziation treffen.
+
+
+
+
                     $associationMatches = $variableType === 3
                         ? (string) ($association['value'] ?? '') === (string) $rawValue
                         : (float) ($association['value'] ?? 0) === (float) $rawValue;
@@ -10623,8 +10660,8 @@ JAVASCRIPT;
                         $valueText = $association['name'];
                     }
 
-                    // Aktuelle Farbe der passenden Legacy-Assoziation.
-                    // Keine Änderung am Icon oder an der Variablenauswahl.
+
+
                     $associationColor = (int) ($association['color'] ?? -1);
                     if ($hasLegacyProfile && $associationColor >= 0) {
                         $legacyCurrentColor = sprintf('#%06X', $associationColor & 0xFFFFFF);
@@ -10632,9 +10669,9 @@ JAVASCRIPT;
                     break;
                 }
 
-                // $valueText kommt bereits aus GetValueFormatted(). Dadurch
-                // werden insbesondere die im Legacy-Profil hinterlegten Digits
-                // sowie Prefix/Suffix exakt von Symcon übernommen.
+
+
+
             } catch (Throwable $e) {
                 $this->SendDebug('VariableProfile', $profileName . ': ' . $e->getMessage(), 0);
             }
@@ -10643,11 +10680,11 @@ JAVASCRIPT;
         $variableInfo = IPS_GetVariable($VariableID);
         $actionID = $this->GetEffectiveVariableActionID($variableInfo);
 
-        // Für die Bedienbarkeit ist die an der Variable hinterlegte Aktion
-        // maßgeblich. Die Präsentation bestimmt Darstellung/Formatierung, darf
-        // die Bedienung in IPSView aber nicht zusätzlich sperren. Andernfalls
-        // wird das Gerät im Live-Modus als "status-only" markiert und durch
-        // pointer-events:none vollständig unklickbar.
+
+
+
+
+
         $canAction = $actionID > 0;
 
         $objectInfo = IPS_GetObject($VariableID);
@@ -10686,13 +10723,13 @@ JAVASCRIPT;
         $rawText = $this->FormatRawValue($RawValue);
         $formatted = '';
 
-        // Legacy-Profile und aktuelle Symcon-Versionen mit neuer Darstellung:
-        // Symcon selbst ist die erste Quelle für die sichtbare Formatierung.
-        //
-        // Wichtig: Variablen können noch auf ein inzwischen gelöschtes Profil
-        // verweisen. Das darf die Variablenauswahl im Floorplan nicht blockieren.
-        // In diesem Fall GetValueFormatted() gar nicht erst aufrufen, weil Symcon
-        // sonst eine sichtbare Warnung "Profil ... existiert nicht" erzeugt.
+
+
+
+
+
+
+
         if ($ReferencedProfileExists) {
             try {
                 $formatted = (string) @GetValueFormatted($VariableID);
@@ -10705,10 +10742,10 @@ JAVASCRIPT;
             return $formatted !== '' ? $formatted : $rawText;
         }
 
-        // Bei neuen Wertdarstellungen gab/gibt es Symcon-Versionen, in denen
-        // GetValueFormatted() bei numerischen Werten nur den Rohwert liefert.
-        // Wenn DIGITS explizit gesetzt ist und die Ausgabe offensichtlich noch
-        // unformatiert ist, übernehmen wir diese Darstellung selbst.
+
+
+
+
         $digitsRaw = $this->FindPresentationValue($Presentation, 'DIGITS');
         if (!is_numeric($digitsRaw)) {
             return $formatted !== '' ? $formatted : $rawText;
@@ -10727,10 +10764,10 @@ JAVASCRIPT;
         $prefix = (string) ($this->FindPresentationValue($Presentation, 'PREFIX') ?? '');
         $suffix = (string) ($this->FindPresentationValue($Presentation, 'SUFFIX') ?? '');
 
-        // Dezimal-/Tausender-Trenner nur dann fest übernehmen, wenn die
-        // Darstellung tatsächlich einen konkreten Trenner vorgibt. 'Client'
-        // bleibt Symcon/Client überlassen; als neutraler Fallback verwenden wir
-        // den Punkt und keinen Tausendertrenner.
+
+
+
+
         $decimalRaw = $this->FindPresentationValue($Presentation, 'DECIMAL_SEPARATOR');
         $thousandsRaw = $this->FindPresentationValue($Presentation, 'THOUSANDS_SEPARATOR');
 
@@ -10811,9 +10848,9 @@ JAVASCRIPT;
 
                 $variable = IPS_GetVariable($variableID);
 
-                // Exakt dieselbe Bedienfreigabe wie im Live-Rendering verwenden.
-                // Reine Statusvariablen gelangen damit auch serverseitig niemals
-                // in RequestAction.
+
+
+
                 $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
                 if (($runtimeMeta['_canAction'] ?? false) !== true) {
                     return;
@@ -10842,8 +10879,8 @@ JAVASCRIPT;
                     return;
                 }
 
-                // Die Bedienung wirkt nur auf das reale IP-Symcon-Gerät.
-                // Die HTML-SDK-Kachel wird dabei absichtlich nicht neu gerendert.
+
+
                 return;
             }
         }
@@ -10942,20 +10979,6 @@ JAVASCRIPT;
         try {
             if ($actionID > 0) {
                 \RequestAction($VariableID, $Value);
-                return true;
-            }
-
-            $object = IPS_GetObject($VariableID);
-            $parentID = (int) ($object['ParentID'] ?? 0);
-            $ident = (string) ($object['ObjectIdent'] ?? '');
-
-            if ($parentID > 0 && $ident !== '' && IPS_InstanceExists($parentID)) {
-                \IPS_RequestAction($parentID, $ident, $Value);
-                return true;
-            }
-
-            if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
-                SetValue($VariableID, $Value);
                 return true;
             }
 
