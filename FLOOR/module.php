@@ -10656,7 +10656,7 @@ JAVASCRIPT;
                         continue;
                     }
 
-                    if ($association['name'] !== '') {
+                    if (!in_array($variableType, [1, 2], true) && $association['name'] !== '') {
                         $valueText = $association['name'];
                     }
 

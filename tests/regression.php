@@ -27,6 +27,7 @@ function GetValue(int $id): mixed { return $GLOBALS['value'] ?? 21.5; }
 function GetValueFormatted(int $id): string { return $GLOBALS['formatted'] ?? '21.5 °C'; }
 function IPS_GetVariablePresentation(int $id): array { return $GLOBALS['presentation'] ?? []; }
 function IPS_VariableProfileExists(string $name): bool { return $name !== 'Missing'; }
+function IPS_GetVariableProfile(string $name): array { return $GLOBALS['profile']; }
 function IPS_InstanceExists(int $id): bool { return false; }
 function SetValue(int $id, mixed $value): void { $GLOBALS['writes'][] = [$id,$value]; }
 function RequestAction(int $id, mixed $value): void { $GLOBALS['actions'][] = [$id,$value]; }
@@ -89,3 +90,24 @@ foreach (['[]','null','{"floors":{}}','{"floors":{"ground":{"id":"ground"}}}','{
         expect($m->stored === $stored, 'invalid import preserves saved project: ' . $bad);
     }
 }
+$GLOBALS['profile'] = [
+    'MinValue'=>0, 'MaxValue'=>3680, 'StepSize'=>0, 'Prefix'=>'', 'Suffix'=>' W',
+    'Associations'=>[
+        ['Value'=>0, 'Name'=>'%.0f', 'Color'=>-1],
+        ['Value'=>5, 'Name'=>'%.0f', 'Color'=>16711680]
+    ]
+];
+foreach ([1, 2] as $variableType) {
+    $GLOBALS['variables'][321] = ['VariableType'=>$variableType, 'VariableCustomProfile'=>'Watt_Verbrauch_rot'];
+    foreach ([0, 1, 5] as $value) {
+        $GLOBALS['value'] = $value;
+        $GLOBALS['formatted'] = $value . ' W';
+        $meta = $invoke('GetVariableRuntimeMeta',321);
+        expect($meta['_valueText'] === $value . ' W', 'numeric association preserves formatted value: type ' . $variableType . ', value ' . $value);
+    }
+}
+$GLOBALS['variables'][321] = ['VariableType'=>3, 'VariableCustomProfile'=>'Charging'];
+$GLOBALS['profile']['Associations'] = [['Value'=>'CHARGING', 'Name'=>'Laden', 'Color'=>-1]];
+$GLOBALS['value'] = 'CHARGING';
+$GLOBALS['formatted'] = 'CHARGING';
+expect($invoke('GetVariableRuntimeMeta',321)['_valueText'] === 'Laden', 'string association label remains supported');
