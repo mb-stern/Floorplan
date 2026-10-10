@@ -147,6 +147,10 @@ Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Gru
 
 ## 📝 Änderungen
 
+### 1.24
+
+- Modulcode überarbeitet und kleinere Fehler behoben.
+
 ### 1.23
 
 - Zur bool Variable kann nun zusätzlich eine Farb- und eine Helligkeitsvariable gewählt werden.
