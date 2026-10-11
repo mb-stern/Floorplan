@@ -964,13 +964,17 @@ class Floorplan extends IPSModuleStrict
             width: 100%;
             height: auto;
             padding: 0 10px;
+            margin: 3px 0;
             text-align: left;
             font-size: 14px;
             white-space: normal;
             box-shadow: none;
             border: 0;
         }
-        #liveFloorMenu button[aria-current="true"] { outline: 1px solid var(--fp-accent); }
+        #liveFloorMenu button[aria-current="true"] {
+            outline: 1px solid var(--fp-accent);
+            outline-offset: -1px;
+        }
         #app.view-mode #viewbar { display: flex; }
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
@@ -6623,10 +6627,7 @@ HTML;
                 openItemControl(item, evt.clientX, evt.clientY);
             } else {
 
-                requestAction('operate', JSON.stringify({
-                    floorId: state.activeFloor,
-                    itemId: target.dataset.id
-                }));
+                sendItemValue(item, !truthyVariableValue(item._rawValue), true);
             }
         }
     });
@@ -8004,7 +8005,7 @@ HTML;
         }
     });
 
-    function sendItemValue(item, value) {
+    function sendItemValue(item, value, toggleBoolean = false) {
         if (!item || item._canAction !== true) {
             return;
         }
@@ -8012,7 +8013,8 @@ HTML;
         requestAction('operateValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
-            value
+            value,
+            toggleBoolean
         }));
     }
 
@@ -9241,11 +9243,18 @@ JAVASCRIPT;
                 if (!is_array($request)) {
                     throw new InvalidArgumentException('Ungültiger Bedienwert.');
                 }
-                $this->OperateItemValue(
-                    (string) ($request['floorId'] ?? ''),
-                    (string) ($request['itemId'] ?? ''),
-                    $request['value'] ?? null
-                );
+                if (($request['toggleBoolean'] ?? false) === true) {
+                    $this->OperateItem(
+                        (string) ($request['floorId'] ?? ''),
+                        (string) ($request['itemId'] ?? '')
+                    );
+                } else {
+                    $this->OperateItemValue(
+                        (string) ($request['floorId'] ?? ''),
+                        (string) ($request['itemId'] ?? ''),
+                        $request['value'] ?? null
+                    );
+                }
                 break;
 
             case 'operateColorValue':
@@ -10875,6 +10884,10 @@ JAVASCRIPT;
 
     private function OperateItemValueInternal(string $FloorID, string $ItemID, mixed $Value, bool $ToggleBoolean): void
     {
+        $this->SendDebug('OperateItem', json_encode(
+            ['floorId' => $FloorID, 'itemId' => $ItemID, 'toggleBoolean' => $ToggleBoolean, 'value' => $Value],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ), 0);
         $project = $this->GetProject();
 
         foreach (($project['floors'] ?? []) as $floor) {
@@ -10889,6 +10902,7 @@ JAVASCRIPT;
 
                 $variableID = (int) ($item['variableID'] ?? 0);
                 if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
+                    $this->SendDebug('OperateItem', 'Die zugewiesene Variable existiert nicht.', 0);
                     return;
                 }
 
@@ -10899,6 +10913,7 @@ JAVASCRIPT;
 
                 $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
                 if (($runtimeMeta['_canAction'] ?? false) !== true) {
+                    $this->SendDebug('OperateItem', 'Variable #' . $variableID . ' besitzt keine freigegebene Aktion.', 0);
                     return;
                 }
 
@@ -10906,6 +10921,7 @@ JAVASCRIPT;
 
                 if ($ToggleBoolean) {
                     if ($variableType !== 0) {
+                        $this->SendDebug('OperateItem', 'Umschalten ist nur für Boolean-Variablen möglich.', 0);
                         return;
                     }
                     $targetValue = !GetValueBoolean($variableID);
@@ -10925,11 +10941,14 @@ JAVASCRIPT;
                     return;
                 }
 
+                $this->SendDebug('OperateItem', 'Aktion für Variable #' . $variableID . ' angefordert.', 0);
+
 
 
                 return;
             }
         }
+        $this->SendDebug('OperateItem', 'Gerät oder Etage ist im gespeicherten Projekt nicht vorhanden.', 0);
     }
 
     private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value, int $RequestedVariableID = 0): void

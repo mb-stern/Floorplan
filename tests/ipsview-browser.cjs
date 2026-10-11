@@ -38,7 +38,7 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__', bootstrap + edito
             await activate(device('switch'));
             const actions = await page.evaluate(() => window.actions);
             assert.equal(actions.length, 1, 'one activation sends exactly one action');
-            assert.deepEqual(actions[0], {ident: 'operate', payload: {floorId: 'ground', itemId: 'switch'}, phase: 'click'});
+            assert.deepEqual(actions[0], {ident: 'operateValue', payload: {floorId: 'ground', itemId: 'switch', value: true, toggleBoolean: true}, phase: 'click'});
             assert.deepEqual(await page.evaluate(() => window.rejectedActions), [], 'host receives no early pointerdown action');
             const bounds = await device('switch').boundingBox();
             await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -48,6 +48,10 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__', bootstrap + edito
             assert.equal((await page.evaluate(() => window.actions)).length, 1, 'press then drag away does not toggle');
             await device('readonly').dispatchEvent('click', {button: 0});
             assert.equal((await page.evaluate(() => window.actions)).length, 1, 'read-only variable does not send action');
+            await page.evaluate(() => window.handleMessage({type: 'variableUpdate', variableID: 100, meta: {_rawValue: true}}));
+            await activate(device('switch'));
+            assert.deepEqual((await page.evaluate(() => window.actions)).at(-1).payload,
+                {floorId: 'ground', itemId: 'switch', value: false, toggleBoolean: true}, 'on device sends toggle through value route');
             await activate(device('dimmer'));
             assert.equal(await page.locator('#controlModal').getAttribute('aria-hidden'), 'false', 'numeric device opens popup');
             await activate(page.locator('[data-control-step="1"]'));
@@ -55,6 +59,11 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__', bootstrap + edito
             await page.mouse.click(10, 10);
             await activate(page.locator('#liveFloorButton'));
             assert.equal(await page.locator('#liveFloorMenu').isVisible(), true, 'HTML floor menu opens');
+            const outline = await page.locator('#liveFloorMenu [aria-current="true"]').evaluate(button => {
+                const style = getComputedStyle(button);
+                return {offset: parseFloat(style.outlineOffset), width: parseFloat(style.outlineWidth), gap: parseFloat(style.marginBottom)};
+            });
+            assert.ok(outline.offset <= -outline.width && outline.gap >= 3, 'selection outline is inset and menu rows have spacing');
             await activate(page.locator('[data-floor-id="upper"]'));
             assert.equal(await page.locator('#liveFloorButton').textContent(), 'Obergeschoss');
             assert.equal(await device('upstairs').count(), 1, 'chosen floor is rendered');

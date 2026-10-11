@@ -24,13 +24,17 @@ function IPS_GetChildrenIDs(int $id): array { return []; }
 function IPS_VariableExists(int $id): bool { return $id > 0; }
 function IPS_GetVariable(int $id): array { return $GLOBALS['variables'][$id] ?? ['VariableType'=>2]; }
 function GetValue(int $id): mixed { return $GLOBALS['value'] ?? 21.5; }
+function GetValueBoolean(int $id): bool { return (bool) GetValue($id); }
 function GetValueFormatted(int $id): string { return $GLOBALS['formatted'] ?? '21.5 °C'; }
 function IPS_GetVariablePresentation(int $id): array { return $GLOBALS['presentation'] ?? []; }
 function IPS_VariableProfileExists(string $name): bool { return $name !== 'Missing'; }
 function IPS_GetVariableProfile(string $name): array { return $GLOBALS['profile']; }
 function IPS_InstanceExists(int $id): bool { return false; }
 function SetValue(int $id, mixed $value): void { $GLOBALS['writes'][] = [$id,$value]; }
-function RequestAction(int $id, mixed $value): void { $GLOBALS['actions'][] = [$id,$value]; }
+function RequestAction(int $id, mixed $value): void {
+    $GLOBALS['actions'][] = [$id,$value];
+    if ((IPS_GetVariable($id)['VariableType'] ?? null) === 0) $GLOBALS['value'] = $value;
+}
 require $argv[1] ?? dirname(__DIR__) . '/FLOOR/module.php';
 function expect(bool $condition, string $description): void {
     if (!$condition) throw new RuntimeException('FAIL: ' . $description);
@@ -111,3 +115,21 @@ $GLOBALS['profile']['Associations'] = [['Value'=>'CHARGING', 'Name'=>'Laden', 'C
 $GLOBALS['value'] = 'CHARGING';
 $GLOBALS['formatted'] = 'CHARGING';
 expect($invoke('GetVariableRuntimeMeta',321)['_valueText'] === 'Laden', 'string association label remains supported');
+$GLOBALS['variables'][123] = ['VariableType'=>0, 'VariableAction'=>456];
+$GLOBALS['value'] = false;
+$GLOBALS['formatted'] = 'Aus';
+$GLOBALS['actions'] = [];
+$m->SetFloorplanJSON('{"floors":[{"id":"ground","items":[{"id":"switch","variableID":123}]}]}');
+$toggle = '{"floorId":"ground","itemId":"switch","value":true,"toggleBoolean":true}';
+$m->RequestAction('operateValue', $toggle);
+expect($GLOBALS['actions'] === [[123,true]], 'value route toggles Boolean off to on');
+$m->RequestAction('operateValue', $toggle);
+expect($GLOBALS['actions'] === [[123,true],[123,false]], 'repeated toggle uses server state rather than stale client value');
+$m->RequestAction('operate', '{"floorId":"ground","itemId":"switch"}');
+expect($GLOBALS['actions'][2] === [123,true], 'legacy toggle route remains compatible');
+$m->RequestAction('operateValue', '{"floorId":"ground","itemId":"switch","value":false}');
+expect($GLOBALS['actions'][3] === [123,false], 'popup can still send explicit Boolean value');
+$GLOBALS['variables'][123]['VariableCustomAction'] = 1;
+$m->RequestAction('operateValue', $toggle);
+expect(count($GLOBALS['actions']) === 4, 'toggle cannot bypass disabled action');
+expect(str_contains(implode(' ', $m->logs), 'keine freigegebene Aktion'), 'debug explains disabled action');
