@@ -896,7 +896,7 @@ class Floorplan extends IPSModuleStrict
             justify-content: center;
         }
 
-        #viewbar .live-floor-button {
+        #viewbar select {
             height: 36px;
             max-width: none;
             padding: 0 26px 0 9px;
@@ -934,47 +934,6 @@ class Floorplan extends IPSModuleStrict
         }
 
         #app.view-mode .toolbar { display: none; }
-        .live-floor-picker { position: relative; min-width: 0; pointer-events: auto; }
-        .live-floor-picker[hidden] { display: none; }
-        #viewbar .live-floor-button {
-            width: auto;
-            max-width: 70vw;
-            padding: 0 12px;
-            font-size: 14px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        #liveFloorMenu {
-            position: absolute;
-            bottom: calc(100% + 6px);
-            left: 0;
-            min-width: 100%;
-            max-width: 70vw;
-            max-height: min(60vh, 320px);
-            overflow-y: auto;
-            padding: 4px;
-            border: 1px solid var(--fp-border);
-            border-radius: 6px;
-            background: var(--fp-panel-2);
-            box-shadow: 0 2px 8px rgba(0,0,0,.35);
-        }
-        #viewbar #liveFloorMenu button {
-            display: block;
-            width: 100%;
-            height: auto;
-            padding: 0 10px;
-            margin: 3px 0;
-            text-align: left;
-            font-size: 14px;
-            white-space: normal;
-            box-shadow: none;
-            border: 0;
-        }
-        #liveFloorMenu button[aria-current="true"] {
-            outline: 1px solid var(--fp-accent);
-            outline-offset: -1px;
-        }
         #app.view-mode #viewbar { display: flex; }
         #app.view-mode .main { grid-template-columns: 1fr; }
         #app.view-mode .sidebar { display: none; }
@@ -2047,10 +2006,7 @@ class Floorplan extends IPSModuleStrict
     </div>
 
     <div id="viewbar">
-        <div class="live-floor-picker">
-            <button id="liveFloorButton" class="live-floor-button" type="button" aria-label="Etage auswählen" aria-expanded="false" aria-controls="liveFloorMenu"></button>
-            <div id="liveFloorMenu" hidden></div>
-        </div>
+        <select id="liveFloorSelect" title="Etage auswählen" aria-label="Etage auswählen"></select>
         <button id="editBtn" type="button" title="Floorplan bearbeiten" aria-label="Floorplan bearbeiten">✎</button>
     </div>
 </div>
@@ -2125,8 +2081,7 @@ HTML;
     let resizeFitTimer = null;
     let lastTileWidth = 0;
     let lastTileHeight = 0;
-    const liveFloorButton = document.getElementById('liveFloorButton');
-    const liveFloorMenu = document.getElementById('liveFloorMenu');
+    const liveFloorSelect = document.getElementById('liveFloorSelect');
     const statusEl = document.getElementById('status');
     const app = document.getElementById('app');
     const variableModal = document.getElementById('variableModal');
@@ -2977,9 +2932,29 @@ HTML;
             .replaceAll("'", '&#039;');
     }
 
-    function closeLiveFloorMenu() {
-        liveFloorMenu.hidden = true;
-        liveFloorButton.setAttribute('aria-expanded', 'false');
+    function updateLiveFloorSelectWidth() {
+        if (!liveFloorSelect) return;
+
+        const style = getComputedStyle(liveFloorSelect);
+        const canvas = updateLiveFloorSelectWidth._canvas || (updateLiveFloorSelectWidth._canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+
+        if (ctx) {
+            ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+
+            let longestWidth = 0;
+            for (const option of liveFloorSelect.options) {
+                longestWidth = Math.max(longestWidth, ctx.measureText(option.text || '').width);
+            }
+
+
+
+            const width = Math.ceil(longestWidth + 64);
+            const finalWidth = Math.max(110, width);
+            liveFloorSelect.style.width = `${finalWidth}px`;
+            liveFloorSelect.style.minWidth = `${finalWidth}px`;
+            liveFloorSelect.style.maxWidth = 'none';
+        }
     }
 
     function renderFloorSelect() {
@@ -2996,9 +2971,10 @@ HTML;
             ).join('');
 
             floorSelect.innerHTML = options;
-            liveFloorMenu.innerHTML = state.floors.map(f =>
-                `<button type="button" data-floor-id="${escapeHtml(f.id)}">${escapeHtml(f.name)}</button>`
-            ).join('');
+            if (liveFloorSelect) {
+                liveFloorSelect.innerHTML = options;
+                updateLiveFloorSelectWidth();
+            }
             renderFloorSelect._signature = signature;
         }
 
@@ -3006,13 +2982,19 @@ HTML;
             floorSelect.value = state.activeFloor;
         }
 
-        liveFloorButton.textContent = currentFloor()?.name || 'Etage auswählen';
-        liveFloorButton.parentElement.hidden = state.floors.length < 2;
-        for (const button of liveFloorMenu.querySelectorAll('[data-floor-id]')) {
-            button.setAttribute('aria-current', String(button.dataset.floorId === state.activeFloor));
-        }
-        if (state.mode !== 'view' || state.floors.length < 2) {
-            closeLiveFloorMenu();
+        if (liveFloorSelect) {
+            if (liveFloorSelect.value !== state.activeFloor) {
+                liveFloorSelect.value = state.activeFloor;
+            }
+
+            const showLiveFloorSelect = state.floors.length > 1;
+            const wantedDisplay = showLiveFloorSelect ? '' : 'none';
+            if (liveFloorSelect.style.display !== wantedDisplay) {
+                liveFloorSelect.style.display = wantedDisplay;
+            }
+            if (liveFloorSelect.disabled === showLiveFloorSelect) {
+                liveFloorSelect.disabled = !showLiveFloorSelect;
+            }
         }
     }
 
@@ -6290,37 +6272,9 @@ HTML;
     document.getElementById('finishBtn').addEventListener('click', () => setMode('view'));
     document.getElementById('editBtn').addEventListener('click', () => setMode('edit'));
 
-    liveFloorButton.addEventListener('click', () => {
-        liveFloorMenu.hidden = !liveFloorMenu.hidden;
-        liveFloorButton.setAttribute('aria-expanded', String(!liveFloorMenu.hidden));
-        if (!liveFloorMenu.hidden) {
-            liveFloorMenu.querySelector('[aria-current="true"]')?.focus();
-        }
-    });
-    liveFloorMenu.addEventListener('click', evt => {
-        const button = evt.target.closest('[data-floor-id]');
-        if (!button) return;
-        switchFloorView(button.dataset.floorId);
-        closeLiveFloorMenu();
-        liveFloorButton.focus();
-    });
-    liveFloorButton.parentElement.addEventListener('keydown', evt => {
-        if (evt.key === 'Escape') {
-            evt.preventDefault();
-            evt.stopPropagation();
-            closeLiveFloorMenu();
-            liveFloorButton.focus();
-        } else if (!liveFloorMenu.hidden && ['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(evt.key)) {
-            evt.preventDefault();
-            const buttons = Array.from(liveFloorMenu.querySelectorAll('button'));
-            const index = buttons.indexOf(document.activeElement);
-            const next = evt.key === 'Home' ? 0 : evt.key === 'End' ? buttons.length - 1
-                : (index + (evt.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
-            buttons[next]?.focus();
-        }
-    });
-    document.addEventListener('pointerdown', evt => {
-        if (!liveFloorButton.parentElement.contains(evt.target)) closeLiveFloorMenu();
+    liveFloorSelect?.addEventListener('change', () => {
+        updateLiveFloorSelectWidth();
+        switchFloorView(liveFloorSelect.value);
     });
 
     document.getElementById('deleteFloorBtn')?.addEventListener('click', () => {
@@ -6586,52 +6540,6 @@ HTML;
         }
     }
 
-    svg.addEventListener('click', evt => {
-        if (state.mode !== 'view' || evt.button !== 0) return;
-        if (evt.target.closest('[data-direct-slider], [data-shutter-control]')) return;
-        const target = evt.target.closest('[data-type]');
-        if (!target || target.dataset.type !== 'item') return;
-        evt.preventDefault();
-        evt.stopPropagation();
-        const floor = currentFloor();
-        const item = floor.items.find(i => i.id === target.dataset.id);
-
-        if (
-            item?._objectKind === 'stream' &&
-            Number(item?._mediaType) === 3 &&
-            Number(item?.variableID) > 0
-        ) {
-            openStreamControl(item, evt.clientX, evt.clientY);
-            return;
-        }
-
-        if (!item || item._canAction !== true) {
-
-            return;
-        }
-
-        const variableType = Number(item._variableType);
-        if (variableType === 1 || variableType === 2) {
-
-            openItemControl(item, evt.clientX, evt.clientY);
-        } else if (variableType === 0) {
-            if (
-                item.colorControlEnabled === true &&
-                (
-                    (Number(item.colorVariableID || 0) > 0 && colorBrightnessControlKindForSlot(item, 1) !== '' && item.showColorBrightnessControl !== false) ||
-                    (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl !== false)
-                )
-            ) {
-
-
-                openItemControl(item, evt.clientX, evt.clientY);
-            } else {
-
-                sendItemValue(item, !truthyVariableValue(item._rawValue), true);
-            }
-        }
-    });
-
     svg.addEventListener('pointerdown', evt => {
         if (evt.button === 1) {
             drag = {mode: 'pan', x: evt.clientX, y: evt.clientY, panX, panY};
@@ -6779,7 +6687,52 @@ HTML;
             }
         }
 
-        if (state.mode === 'view') return;
+        if (state.mode === 'view') {
+            if (target && target.dataset.type === 'item') {
+                const item = floor.items.find(i => i.id === target.dataset.id);
+
+                if (
+                    item?._objectKind === 'stream' &&
+                    Number(item?._mediaType) === 3 &&
+                    Number(item?.variableID) > 0
+                ) {
+                    openStreamControl(item, evt.clientX, evt.clientY);
+                    return;
+                }
+
+                if (!item || item._canAction !== true) {
+
+                    return;
+                }
+
+                const variableType = Number(item._variableType);
+                if (variableType === 1 || variableType === 2) {
+
+                    openItemControl(item, evt.clientX, evt.clientY);
+                } else if (variableType === 0) {
+                    if (
+                        item.colorControlEnabled === true &&
+                        (
+                            (Number(item.colorVariableID || 0) > 0 && colorBrightnessControlKindForSlot(item, 1) !== '' && item.showColorBrightnessControl !== false) ||
+                            (Number(item.colorVariableID2 || 0) > 0 && colorBrightnessControlKindForSlot(item, 2) !== '' && item.showColorBrightnessControl !== false)
+                        )
+                    ) {
+
+
+                        openItemControl(item, evt.clientX, evt.clientY);
+                    } else {
+
+                        requestAction('operate', JSON.stringify({
+                            floorId: state.activeFloor,
+                            itemId: target.dataset.id
+                        }));
+                    }
+                }
+            }
+            return;
+        }
+
+
 
         if (state.mode !== 'view' && target &&
             !((tool === 'door' || tool === 'window') && target.dataset.type === 'wall')) {
@@ -8005,7 +7958,7 @@ HTML;
         }
     });
 
-    function sendItemValue(item, value, toggleBoolean = false) {
+    function sendItemValue(item, value) {
         if (!item || item._canAction !== true) {
             return;
         }
@@ -8013,8 +7966,7 @@ HTML;
         requestAction('operateValue', JSON.stringify({
             floorId: state.activeFloor,
             itemId: item.id,
-            value,
-            toggleBoolean
+            value
         }));
     }
 
@@ -9243,18 +9195,11 @@ JAVASCRIPT;
                 if (!is_array($request)) {
                     throw new InvalidArgumentException('Ungültiger Bedienwert.');
                 }
-                if (($request['toggleBoolean'] ?? false) === true) {
-                    $this->OperateItem(
-                        (string) ($request['floorId'] ?? ''),
-                        (string) ($request['itemId'] ?? '')
-                    );
-                } else {
-                    $this->OperateItemValue(
-                        (string) ($request['floorId'] ?? ''),
-                        (string) ($request['itemId'] ?? ''),
-                        $request['value'] ?? null
-                    );
-                }
+                $this->OperateItemValue(
+                    (string) ($request['floorId'] ?? ''),
+                    (string) ($request['itemId'] ?? ''),
+                    $request['value'] ?? null
+                );
                 break;
 
             case 'operateColorValue':
@@ -10884,10 +10829,6 @@ JAVASCRIPT;
 
     private function OperateItemValueInternal(string $FloorID, string $ItemID, mixed $Value, bool $ToggleBoolean): void
     {
-        $this->SendDebug('OperateItem', json_encode(
-            ['floorId' => $FloorID, 'itemId' => $ItemID, 'toggleBoolean' => $ToggleBoolean, 'value' => $Value],
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-        ), 0);
         $project = $this->GetProject();
 
         foreach (($project['floors'] ?? []) as $floor) {
@@ -10902,7 +10843,6 @@ JAVASCRIPT;
 
                 $variableID = (int) ($item['variableID'] ?? 0);
                 if ($variableID <= 0 || !IPS_VariableExists($variableID)) {
-                    $this->SendDebug('OperateItem', 'Die zugewiesene Variable existiert nicht.', 0);
                     return;
                 }
 
@@ -10913,7 +10853,6 @@ JAVASCRIPT;
 
                 $runtimeMeta = $this->GetVariableRuntimeMeta($variableID);
                 if (($runtimeMeta['_canAction'] ?? false) !== true) {
-                    $this->SendDebug('OperateItem', 'Variable #' . $variableID . ' besitzt keine freigegebene Aktion.', 0);
                     return;
                 }
 
@@ -10921,7 +10860,6 @@ JAVASCRIPT;
 
                 if ($ToggleBoolean) {
                     if ($variableType !== 0) {
-                        $this->SendDebug('OperateItem', 'Umschalten ist nur für Boolean-Variablen möglich.', 0);
                         return;
                     }
                     $targetValue = !GetValueBoolean($variableID);
@@ -10941,14 +10879,11 @@ JAVASCRIPT;
                     return;
                 }
 
-                $this->SendDebug('OperateItem', 'Aktion für Variable #' . $variableID . ' angefordert.', 0);
-
 
 
                 return;
             }
         }
-        $this->SendDebug('OperateItem', 'Gerät oder Etage ist im gespeicherten Projekt nicht vorhanden.', 0);
     }
 
     private function OperateItemColorBrightnessValue(string $FloorID, string $ItemID, mixed $Value, int $RequestedVariableID = 0): void
