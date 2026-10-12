@@ -1,149 +1,124 @@
 # 🏠 Floorplan für IP-Symcon
 
-Floorplan ist ein interaktiver Grundriss-Editor für **IP-Symcon**. Räume, Wände, Türen, Fenster, Objekte, Formen und Geräte können direkt im Browser erstellt, positioniert und anschließend in der Visualisierung angezeigt und bedient werden.
+Mit Floorplan zeichnest du deinen Grundriss direkt in IP-Symcon und bedienst deine Geräte an ihrer Position im Raum. Du kannst mehrere Etagen anlegen, Türen und Fenster darstellen sowie Möbel, Formen, Texte und Kameras ergänzen. Floorplan benötigt keine externe Cloud.
 
-Floorplan arbeitet vollständig innerhalb von IP-Symcon und benötigt keine externe Cloud.
+## 📦 Installation und erster Start
 
-### Ursprung
+**Voraussetzung:** IP-Symcon ab Version 8.2.
 
-Dieses Projekt basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller**. Easy Floorplan wurde unter der **MIT-Lizenz** veröffentlicht. Der heutige Floorplan wurde für IP-Symcon umfassend weiterentwickelt und arbeitet inzwischen eigenständig.
+1. **Floorplan** über den IP-Symcon Module Store installieren.
+2. Eine **Floorplan-Instanz** anlegen und deren Kachel in der Symcon-Visualisierung öffnen.
+3. Falls bereits die Live-Ansicht angezeigt wird, über das **Stiftsymbol** zum Editor wechseln.
 
-Die ursprüngliche MIT-Lizenz und der Copyright-Hinweis bleiben im Repository erhalten.
+Zum Zeichnen und Einrichten empfiehlt sich ein Browser mit ausreichend Platz für den Grundriss und die Eigenschaftenleiste.
 
-## ✨ Funktionen
+## ✏️ Deinen ersten Grundriss erstellen
 
-- Grundrisse direkt im Browser zeichnen und bearbeiten
-- Mehrere Etagen mit eigener Ansicht
-- Wände, Türen und Fenster frei platzieren
-- Objekte, Formen, Texte und Geräte frei positionieren, drehen und skalieren
-- Raster und Zoom im Editor
-- Grundriss automatisch an die verfügbare Fläche anpassen
-- Konfigurierbare Wandstärke und Wandlänge
-- Optionale Innen- und Außenvermassung
-- Live-Ansicht ohne Editor-Raster und Bearbeitungshilfen
-- Etagenwechsel direkt in der Live-Ansicht
-- Geräte und Variablen über den IP-Symcon-Objektbaum auswählen
-- Geräte direkt aus dem Grundriss bedienen
-- Kamerastreams im Floorplan darstellen
-- Unterstützung des hellen und dunklen IP-Symcon-Themes
+1. **Wand** wählen und im Zeichenbereich den Anfangs- und Endpunkt anklicken. Weitere Wände auf dieselbe Weise zeichnen.
+2. **Tür** oder **Fenster** wählen und auf die gewünschte Wand klicken. Danach kannst du Position, Breite und weitere Eigenschaften anpassen.
+3. Über **Objekte**, **Formen** und **Text** Möbel, Flächen und Beschriftungen ergänzen.
+4. **Gerät** wählen, im Grundriss platzieren und in den Eigenschaften die passende **IP-Symcon Variable** zuordnen.
+5. Mit **Einpassen** den ganzen Grundriss anzeigen und über **Live-Ansicht** zur Bedienung wechseln.
 
-## 🎛️ IP-Symcon Variablen
+Änderungen werden nach einer kurzen Pause automatisch gespeichert. Beim Wechsel zwischen Editor und Live-Ansicht wird ebenfalls gespeichert. Warte nach der letzten Änderung kurz, bevor du die Ansicht schließt.
 
-Geräte werden mit einer IP-Symcon-Variable verknüpft. Je nach Variablentyp und Variablendarstellung stellt Floorplan passende Anzeige- und Bedienmöglichkeiten bereit.
+## 🖱️ Im Editor arbeiten
 
-Unterstützt werden **Boolean-, Integer-, Float- und String-Variablen**.
+Klicke ein Element an, um seine Eigenschaften zu öffnen. Du kannst es mit der Maus verschieben und je nach Element über die sichtbaren Griffpunkte vergrößern, verkleinern oder drehen. Genaue Werte lassen sich in den Eigenschaften eingeben. Unterhalb der Eigenschaften findest du die passende Bedienhilfe zur Auswahl.
 
-Sowohl klassische **Legacy-Profile** als auch die aktuellen **IP-Symcon-Variablendarstellungen** werden berücksichtigt.
+| Bedienung | Wirkung |
+| --- | --- |
+| **Verschieben** und auf einer freien Fläche ziehen | Grundriss verschieben |
+| Mittlere Maustaste gedrückt halten und ziehen | Grundriss verschieben |
+| **− / +** | Heraus- oder hineinzoomen |
+| **Einpassen** | Aktuelle Etage vollständig anzeigen |
+| **Raster** und die Zahl daneben | Raster einblenden und dessen Abstand einstellen |
+| **↶ / ↷** | Änderungen rückgängig machen oder wiederholen |
+| **Löschen** | Ausgewähltes Element entfernen |
+| **Esc** | Aktives Werkzeug und Auswahl aufheben |
 
-Variablen ohne hinterlegte Aktion dienen ausschließlich zur Anzeige. Boolean-Werte können direkt geschaltet werden. Integer- und Float-Werte lassen sich abhängig von der IP-Symcon-Konfiguration über Assoziationen oder Slider bedienen.
+Das Raster hilft beim Ausrichten der Elemente. Eine Wand kannst du auch über ihre Endpunkte oder die Eingabe **Länge** verändern. Beim Löschen einer Wand werden ihre Türen und Fenster ebenfalls entfernt.
 
-Auch **String-Assoziationen** werden unterstützt. Dadurch kann beispielsweise anstelle eines Rohwertes wie `CHARGING` der in IP-Symcon hinterlegte Text `Laden` angezeigt werden.
+### Etagen verwalten
 
-## 🖼️ Icons und Statusfarben
+Mit **+ Etage** legst du ein weiteres Stockwerk an. Über die Etagenauswahl wechselst du zwischen den Grundrissen. Wenn kein Element ausgewählt ist, kannst du in den **Projekteigenschaften** den Etagennamen, die Reihenfolge und die Mauerwerkdicke ändern.
 
-Das Gerätesymbol wird soweit möglich automatisch aus der ausgewählten IP-Symcon-Variable übernommen.
+**Etage kopieren** übernimmt den vollständigen Grundriss einschließlich der Gerätezuordnungen. Prüfe danach die zugeordneten Variablen, damit die kopierten Geräte das richtige Stockwerk bedienen. **Etage löschen** entfernt das gesamte ausgewählte Stockwerk nach einer Bestätigung.
 
-Bei Boolean-Variablen können unterschiedliche Icons für **AUS** und **EIN** verwendet werden. Zusätzlich steht die umfangreiche IP-Symcon-Iconauswahl zur Verfügung.
+### Objekte, Formen und Maße
 
-Statusfarben aus IP-Symcon-Profilen und Variablendarstellungen werden ebenfalls berücksichtigt. Bei Boolean-Variablen kann damit der aktive Zustand farbig dargestellt werden.
+Über **Objekte** kannst du beispielsweise Möbel, Sanitärobjekte oder Fahrzeuge platzieren und anschließend den gewünschten Typ auswählen. Größe, Drehung und Beschriftung lassen sich anpassen.
 
-Auch Integer-Variablen können Statusfarben aus ihrer Darstellung bzw. ihrem Profil übernehmen.
+Bei **Formen** stehen Rechteck, Kreis/Ellipse, Dreieck, Linie und Pfeil zur Verfügung. Geschlossene Formen können gefüllt oder mit einem Muster versehen werden. Sie eignen sich beispielsweise zum Kennzeichnen von Räumen und Bereichen.
 
-Mit **Variableneinstellungen aktualisieren** können die aktuell in IP-Symcon hinterlegten Icons und Darstellungsinformationen erneut eingelesen werden.
+In den Projekteigenschaften lassen sich **Innenmaße anzeigen**, **Außenmaße anzeigen** und **Wandmaße bei Mausover** aktivieren. Die Maße werden in Zentimetern angegeben; die Schriftgröße der Vermassung ist einstellbar. In der Live-Ansicht sind diese Maße ausgeblendet.
 
-## 💡 Farbsteuerung für Lampen
+## 🎛️ Geräte zuordnen und bedienen
 
-Bei Geräten mit einer **Boolean-Hauptvariable** kann optional eine zusätzliche **Integer-Farbvariable (Hex/RGB)** zugeordnet werden.
+Platziere ein **Gerät** und klicke in seinen Eigenschaften auf **IP-Symcon Variable**. Öffne die passenden Zweige des Objektbaums oder suche nach Name, Objekt-ID oder Profil. Klicke anschließend auf die gewünschte Variable. Über **Zuordnung entfernen** kannst du eine bestehende Verbindung wieder lösen.
 
-Die Boolean-Variable übernimmt weiterhin **Ein/Aus**, während die zusätzliche Integer-Variable die aktuelle Leuchtfarbe enthält.
+In der **Live-Ansicht** hängt die Bedienung von der zugeordneten Variable ab:
 
-Damit kann:
+| Variable | Bedienung und Anzeige |
+| --- | --- |
+| Ein/Aus (Boolean) | Icon anklicken, um umzuschalten. Bei eingerichteter Farb- oder Helligkeitsbedienung öffnet sich stattdessen das Bedienfenster. |
+| Zahlenwert (Integer/Float) | Icon anklicken und im Bedienfenster einen angebotenen Wert wählen oder den Slider verwenden. Die verfügbaren Werte richten sich nach den Einstellungen in Symcon. |
+| Text (String) | Text anzeigen. Hinterlegte Bezeichnungen werden berücksichtigt, etwa „Laden“ statt „CHARGING“. |
+| Variable ohne Aktion | Aktuellen Zustand anzeigen; eine Bedienung ist nicht möglich. |
 
-- die aktuelle Leuchtfarbe im Floorplan dargestellt werden
-- die Farbe direkt über einen Farbkreis gewählt werden
-- Ein/Aus und Farbe gemeinsam im Geräte-Popup bedient werden
-- die gespeicherte Farbe auch bei ausgeschalteter Lampe im Farbwähler angezeigt werden
-- das Gerätesymbol nur bei eingeschalteter Lampe in der gewählten Farbe leuchten
+Für geeignete Zahlenbereiche kannst du in den Geräteeigenschaften **Slider anzeigen** aktivieren. Damit lässt sich der Wert direkt unter dem Icon verstellen. Diese Option wird für Zahlenbereiche ohne feste Auswahleinträge angeboten.
 
-Die zusätzliche Farbvariablenauswahl wird nur bei Boolean-Geräten angeboten.
+Bedienfenster bleiben geöffnet, bis du daneben klickst. Über das **Stiftsymbol** kehrst du zum Editor zurück. Bei mehreren Etagen steht in der Live-Ansicht eine Etagenauswahl zur Verfügung.
+
+### Icons und Darstellung
+
+Icons, Wertformatierung und Statusfarben werden soweit möglich aus Symcon übernommen. In den Geräteeigenschaften kannst du unter anderem:
+
+- das Icon ändern und bei Ein/Aus-Geräten getrennte Symbole für **AUS** und **EIN** wählen,
+- **Name anzeigen**, **Wert anzeigen** und **Symbol anzeigen** einzeln einstellen,
+- Position und Schriftgröße von Name und Wert anpassen,
+- über **Rahmen um Istwert** die Lesbarkeit des Wertes verbessern.
+
+Wenn du das Profil oder die Darstellung in Symcon geändert hast, wähle am Gerät **Variableneinstellungen aktualisieren**, um die aktuellen Einstellungen erneut zu übernehmen. Klassische Variablenprofile und die neueren Symcon-Variablendarstellungen werden unterstützt.
+
+### 💡 Lampen mit Farbe und Helligkeit
+
+Ordne zunächst die Ein/Aus-Variable der Lampe als Hauptvariable zu. Danach kannst du in **Helligkeit (optional)** und **Farbe (optional)** die zugehörigen Variablen auswählen.
+
+Mit **Farbe/Helligkeit im Bedienfenster anzeigen** öffnet ein Klick auf die Lampe ein gemeinsames Bedienfenster für Ein/Aus, Helligkeit und Farbe. Dort lässt sich die Farbe über einen Farbkreis wählen. Schaltest du diese Option aus, schaltet das Icon wieder direkt Ein/Aus.
 
 ## 🚪 Türen, Fenster und Rollläden
 
-Türen und Fenster werden direkt einer Wand zugeordnet und bewegen sich zusammen mit dieser.
+Türen und Fenster gehören zu einer Wand und bewegen sich mit ihr. Wähle das Element im Editor aus, um seine Größe, Position und bei Türen die Öffnungsseite anzupassen.
 
-Türen können in Position, Breite und Anschlag konfiguriert werden.
+Über **Türkontakt / Türposition** beziehungsweise **Fensterkontakt / Fensterposition** kannst du den Zustand mit einer Symcon-Variable verknüpfen. Geöffnete Elemente werden entsprechend dargestellt. Falls die Anzeige umgekehrt ist, aktiviere **Türzustand invertieren** beziehungsweise **Fensterzustand invertieren**. Die Farbe für den geöffneten Zustand lässt sich ebenfalls anpassen.
 
-Fensterkontakte können mit einer Boolean-Variable verknüpft werden. Ein geöffnetes Fenster wird entsprechend dargestellt und farblich hervorgehoben.
+Am Fenster kannst du zusätzlich unter **Rollo / Rollladen (optional)** die passende Variable zuordnen. In der Live-Ansicht öffnet das Rollo-Bediensymbol die verfügbaren Werte oder den Slider. Zeigt der Grundriss die Stellung verkehrt an, nutze **Rollo-Status invertieren**. Bei festen Profilwerten kannst du über **Rollo-Werte zuordnen** festlegen, welche grafische Stellung zu welchem Wert gehört.
 
-Rollläden und Jalousien können direkt am Fenster mit eigenen Variablen verknüpft und bedient werden.
+## 🎥 Kameras
 
-## 🛋️ Objekte
+Platziere ein Gerät und wähle im Objektbaum das passende **Stream-Medienobjekt** aus. In der Live-Ansicht öffnet ein Klick auf das Kamerasymbol das Videofenster innerhalb des Floorplans. Voraussetzung ist ein bereits in Symcon eingerichteter Kamerastream.
 
-Objekte dienen zur Gestaltung des Grundrisses und können frei platziert, verschoben, gedreht und skaliert werden.
+## 💾 Grundriss sichern und wiederherstellen
 
-Neben den ursprünglich aus Easy Floorplan übernommenen Objekten stehen weitere Symbole wie Dusche, Eckdusche, Badewanne, Waschbecken, WC, Wärmepumpe, Backofen, Regal, Auto, Motorrad und Fahrrad zur Verfügung.
+Öffne das Konfigurationsformular der Floorplan-Instanz in der Symcon-Verwaltungskonsole:
 
-Die Objektliste wird alphabetisch angezeigt. Die Beschriftung eines Objektes kann optional ein- oder ausgeblendet werden.
+- **Sichern** lädt den gespeicherten Grundriss als Sicherungsdatei herunter.
+- **Wiederherstellen** öffnet die Dateiauswahl für eine vorhandene Sicherung. Nach dem Einspielen ersetzt sie den aktuell gespeicherten Grundriss.
 
-## 🔷 Formen
+Erstelle vor größeren Änderungen oder vor einer Wiederherstellung eine Sicherung.
 
-Zusätzlich können Formen zur Gestaltung und Kennzeichnung von Flächen verwendet werden.
+## ❓ Wenn die Bedienung nicht klappt
 
-Verfügbar sind:
+**Ein Gerät zeigt seinen Wert, lässt sich aber nicht schalten:** Prüfe in Symcon, ob für die zugeordnete Variable eine Aktion eingerichtet ist und sie sich in der normalen Kachelvisualisierung bedienen lässt. Reine Statusvariablen werden im Floorplan ausschließlich angezeigt.
 
-- Dreieck
-- Kreis / Ellipse
-- Linie
-- Pfeil
-- Rechteck
+**Icons oder Werte passen nicht mehr:** Wähle am betroffenen Gerät **Variableneinstellungen aktualisieren**. Prüfe auch die zugeordnete Variable und ihre Darstellung in Symcon.
 
-Nach dem Platzieren können Position, Größe, Drehung, Name und Darstellung angepasst werden.
+**IPSView-App:** In der getesteten Version 6.5.10 werden Geräteaktionen aus der Floorplan-Kachel nicht korrekt übertragen. Bedienfenster können sich öffnen, ohne dass Wertänderungen ausgeführt werden. Auch die Etagenauswahl kann eingeschränkt sein. Im IPSView-Webclient funktionierte die Bedienung. Das passt zu den [bekannten Problemen mit HTML-Tiles in IPSView](https://community.symcon.de/t/html-tile-probleme/143806). Nutze für die Bedienung bis zur Behebung die Symcon-Kachelvisualisierung oder den funktionierenden Webclient.
 
-Geschlossene Formen können optional gefüllt werden. Auch das Füllmuster kann unabhängig gedreht werden.
+## Ursprung
 
-Formen liegen grafisch unterhalb der Objekte und eignen sich dadurch beispielsweise zur Kennzeichnung von Grundflächen oder Bereichen.
-
-## 📐 Vermassung
-
-Für jede Etage kann optional eine Vermassung der Wände eingeblendet werden.
-
-Unterstützt werden **Innenmaße und Außenmaße**. Dabei werden Wandstärken und Wandanschlüsse berücksichtigt.
-
-Die Schriftgröße der Vermassung ist konfigurierbar. Zusätzlich können im Editor Tooltips für Wände eingeblendet werden.
-
-In der Live-Ansicht bleiben Vermassung und Bearbeitungshilfen ausgeblendet.
-
-## ✏️ Editor und Live-Ansicht
-
-Im Editor können sämtliche Elemente des Grundrisses erstellt und bearbeitet werden.
-
-Werkzeuge sind nur aktiv, solange sie tatsächlich benötigt werden. Nach dem Platzieren werden entsprechende Werkzeuge wieder deaktiviert.
-
-Bestehende Elemente können direkt angeklickt und anschließend über ihre Eigenschaften bearbeitet werden.
-
-Der komplette Grundriss kann über **Verschieben** oder mit der mittleren Maustaste bewegt werden.
-
-In der **Live-Ansicht** werden Raster, Auswahlrahmen und Bearbeitungshilfen ausgeblendet. Bei mehreren Etagen kann direkt zwischen den Stockwerken gewechselt werden.
-
-## 🎥 Kamerastreams
-
-Kamerastreams können als Geräte in den Floorplan eingebunden und direkt innerhalb der Visualisierung dargestellt werden.
-
-Die Streamdarstellung berücksichtigt die verfügbare Kachelgröße, damit das Videofenster möglichst vollständig innerhalb des Floorplans dargestellt wird.
-
-## ⚙️ Technisches
-
-Floorplan arbeitet vollständig innerhalb von IP-Symcon. Der Floorplan-Editor und die Visualisierung sind direkt im Modul implementiert und benötigen keine externe Cloud oder zusätzliche Laufzeit-Ressourcen von Easy Floorplan.
-
-Das Projekt basiert ursprünglich auf Easy Floorplan von Nicolas Sandller. Der entsprechende MIT-Hinweis bleibt im Quellcode erhalten.
-
-## 📦 Installation
-
-Das Modul kann über den **IP-Symcon Module Store** installiert werden.
-
-Anschließend eine **Floorplan-Instanz** anlegen, den Editor öffnen und den Grundriss erstellen.
-
-**Voraussetzung:** IP-Symcon ab Version 8.2.
+Floorplan basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller** und wurde für IP-Symcon weiterentwickelt. Die ursprüngliche MIT-Lizenz und die zugehörigen Copyright-Hinweise bleiben im Repository erhalten.
 
 ## 📝 Änderungen
 
