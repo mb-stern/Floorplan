@@ -912,10 +912,6 @@ class Floorplan extends IPSModuleStrict
             -webkit-backface-visibility: hidden;
         }
 
-        #viewbar select:focus-visible {
-            border-color: var(--fp-accent);
-        }
-
         #viewbar button {
             width: 36px;
             pointer-events: auto;
