@@ -2103,6 +2103,7 @@ HTML;
     const expandedObjectIDs = new Set([0]);
     let objectTreeSearchTimer = null;
     let objectTreeSearchRequest = 0;
+    let objectTreeLocationRequest = 0;
     let tool = '';
     let selected = null;
     let wallStart = null;
@@ -6052,6 +6053,16 @@ HTML;
         bindItemIconPicker('#itemIconOnSelect', 'on');
 
         properties.querySelectorAll('.variable-select-field[data-variable-field]').forEach(field => {
+            const pathFields = {
+                variableID: '_variablePath',
+                secondaryVariableID: '_secondaryVariablePath',
+                shutterVariableID: '_shutterVariablePath',
+                shutterSecondaryVariableID: '_shutterSecondaryVariablePath',
+                colorVariableID: '_colorVariablePath',
+                colorVariableID2: '_colorVariable2Path'
+            };
+            const entity = selected ? findEntity(selected.type, selected.id) : null;
+            field.title = entity?.[pathFields[field.dataset.variableField]] || 'Variable auswählen';
             field.addEventListener('click', () => {
                 if (!selected) return;
                 variablePickerTarget = {
@@ -6062,12 +6073,24 @@ HTML;
                 };
                 statusEl.textContent = 'Objektbaum wird geladen …';
                 objectTree = [];
+                variableSearch.value = '';
+                if (objectTreeSearchTimer !== null) {
+                    clearTimeout(objectTreeSearchTimer);
+                    objectTreeSearchTimer = null;
+                }
+                const requestID = ++objectTreeLocationRequest;
+                ++objectTreeSearchRequest;
                 expandedObjectIDs.clear();
                 expandedObjectIDs.add(0);
-                requestAction('getObjectTreeChildren', JSON.stringify({
-                    parentID: 0,
-                    parentPath: ''
-                }));
+                const objectID = currentPickerVariableID();
+                if (objectID > 0) {
+                    requestAction('getObjectTreeLocation', JSON.stringify({objectID, requestID}));
+                } else {
+                    requestAction('getObjectTreeChildren', JSON.stringify({
+                        parentID: 0,
+                        parentPath: ''
+                    }));
+                }
             });
         });
 
@@ -7323,15 +7346,16 @@ HTML;
         const typeTitle = isVariable
             ? escapeHtml([node.variableTypeName || '', node.profileName || ''].filter(Boolean).join(' · '))
             : escapeHtml(node.objectTypeName || '');
+        const pathTitle = escapeHtml(node.path || node.name || '');
 
         let html = `
             <div class="tree-node">
-                <div class="tree-row${rowClass}${selectedClass}" style="--depth:${depth}" data-object-id="${node.id}" data-object-type="${node.objectType}" title="${escapeHtml(node.path || node.name || '')}">
+                <div class="tree-row${rowClass}${selectedClass}" style="--depth:${depth}" data-object-id="${node.id}" data-object-type="${node.objectType}" title="${pathTitle}">
                     <div class="tree-toggle" data-tree-toggle="${node.id}">${toggle}</div>
                     <div class="tree-icon">${treeIcon(node)}</div>
                     <div class="tree-name">${escapeHtml(node.name || ('Objekt ' + node.id))}</div>
                     <div class="tree-id">#${node.id}</div>
-                    <div class="tree-value" title="${typeTitle}">${value || typeTitle}</div>
+                    <div class="tree-value" title="${pathTitle}${typeTitle ? '&#10;' + typeTitle : ''}">${value || typeTitle}</div>
                 </div>`;
 
         if (hasChildren) {
@@ -7923,6 +7947,8 @@ HTML;
     }
 
     variableSearch.addEventListener('input', () => {
+        ++objectTreeLocationRequest;
+        ++objectTreeSearchRequest;
         const query = String(variableSearch.value || '').trim();
 
         if (objectTreeSearchTimer !== null) {
@@ -7948,12 +7974,14 @@ HTML;
         }, 220);
     });
     document.getElementById('variableCloseBtn').addEventListener('click', () => {
+        ++objectTreeLocationRequest;
         variableModal.classList.remove('open');
         variableModal.setAttribute('aria-hidden', 'true');
     });
     document.getElementById('variableClearBtn').addEventListener('click', () => assignVariable(0));
     variableModal.addEventListener('click', evt => {
         if (evt.target === variableModal) {
+            ++objectTreeLocationRequest;
             variableModal.classList.remove('open');
             variableModal.setAttribute('aria-hidden', 'true');
         }
@@ -8898,6 +8926,23 @@ HTML;
 
 
                 assignVariable(Number(data.variableID));
+            } else if (data?.type === 'objectTreeLocation' && Array.isArray(data.objects)) {
+                if (Number(data.requestID) !== objectTreeLocationRequest ||
+                    Number(data.objectID) !== currentPickerVariableID()) return;
+
+                objectTree = data.objects;
+                expandedObjectIDs.clear();
+                expandedObjectIDs.add(0);
+                for (const id of data.expandedIDs || []) expandedObjectIDs.add(Number(id));
+                renderObjectTree('');
+                variableModal.classList.add('open');
+                variableModal.setAttribute('aria-hidden', 'false');
+                variableSearch.focus();
+                requestAnimationFrame(() => {
+                    variableList.querySelector(`.tree-row[data-object-id="${Number(data.focusID)}"]`)
+                        ?.scrollIntoView({block: 'center'});
+                });
+                statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'objectTreeChildren' && Array.isArray(data.objects)) {
                 const parentID = Number(data.parentID || 0);
 
@@ -9048,6 +9093,33 @@ JAVASCRIPT;
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
 
+                if ($message !== false) {
+                    $this->UpdateVisualizationValue($message);
+                }
+                break;
+
+            case 'getObjectTreeLocation':
+                if (!is_string($Value)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+                $request = json_decode($Value, true);
+                if (!is_array($request)) {
+                    throw new InvalidArgumentException('Ungültige Objektbaum-Anforderung.');
+                }
+
+                $objectID = max(0, (int) ($request['objectID'] ?? 0));
+                $location = $this->BuildObjectTreeLocation($objectID);
+                $message = json_encode(
+                    [
+                        'type'        => 'objectTreeLocation',
+                        'objectID'    => $objectID,
+                        'requestID'   => (int) ($request['requestID'] ?? 0),
+                        'objects'     => $location['objects'],
+                        'expandedIDs' => $location['expandedIDs'],
+                        'focusID'     => $location['focusID']
+                    ],
+                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                );
                 if ($message !== false) {
                     $this->UpdateVisualizationValue($message);
                 }
@@ -9787,6 +9859,40 @@ JAVASCRIPT;
 
 
 
+
+    private function BuildObjectTreeLocation(int $ObjectID): array
+    {
+        $ancestorIDs = [];
+        $seen = [$ObjectID => true];
+        $current = $ObjectID;
+        while ($current > 0 && IPS_ObjectExists($current)) {
+            $parentID = (int) (IPS_GetObject($current)['ParentID'] ?? 0);
+            if ($parentID <= 0 || isset($seen[$parentID]) || !IPS_ObjectExists($parentID)) {
+                break;
+            }
+            $seen[$parentID] = true;
+            array_unshift($ancestorIDs, $parentID);
+            $current = $parentID;
+        }
+
+        $objects = $this->BuildObjectChildrenLazy(0, '');
+        $expandedIDs = [];
+        $level = &$objects;
+        foreach ($ancestorIDs as $parentID) {
+            $index = array_search($parentID, array_column($level, 'id'), true);
+            if ($index === false) {
+                break;
+            }
+            $level[$index]['children'] = $this->BuildObjectChildrenLazy($parentID, $level[$index]['path']);
+            $level[$index]['childrenLoaded'] = true;
+            $expandedIDs[] = $parentID;
+            $level = &$level[$index]['children'];
+        }
+        $focusID = in_array($ObjectID, array_column($level, 'id'), true) ? $ObjectID : 0;
+        unset($level);
+
+        return ['objects' => $objects, 'expandedIDs' => $expandedIDs, 'focusID' => $focusID];
+    }
 
     private function BuildObjectChildrenLazy(int $ParentID, string $ParentPath): array
     {

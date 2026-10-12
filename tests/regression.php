@@ -5,6 +5,7 @@ class IPSModuleStrict {
     public array $messages = [];
     public array $logs = [];
     public string $stored = '';
+    public array $visualization = [];
     protected function ReadAttributeString(string $name): string { return $this->stored; }
     protected function WriteAttributeString(string $name, string $value): void { $this->stored = $value; }
     protected function ReadPropertyInteger(string $name): int { return 20; }
@@ -13,14 +14,17 @@ class IPSModuleStrict {
     protected function RegisterMessage(int $id, int $message): void { $this->messages[$id][$message] = $message; }
     protected function GetMessageList(): array { return array_map('array_values', $this->messages); }
     protected function UnregisterMessage(int $id, int $message): void { unset($this->messages[$id][$message]); }
-    protected function UpdateVisualizationValue(string $value): void {}
+    protected function UpdateVisualizationValue(string $value): void { $this->visualization[] = json_decode($value, true, 512, JSON_THROW_ON_ERROR); }
     protected function ReloadForm(): void {}
     protected function SendDebug(string $name, string $value, int $format): void { $this->logs[] = $value; }
 }
-function IPS_ObjectExists(int $id): bool { return true; }
-function IPS_GetObject(int $id): array { return ['ObjectType'=>2, 'ParentID'=>0]; }
-function IPS_GetName(int $id): string { return 'Temperature'; }
-function IPS_GetChildrenIDs(int $id): array { return []; }
+function IPS_ObjectExists(int $id): bool { return !isset($GLOBALS['objects']) || isset($GLOBALS['objects'][$id]); }
+function IPS_GetObject(int $id): array {
+    if (isset($GLOBALS['objectReads'])) $GLOBALS['objectReads'][] = $id;
+    return $GLOBALS['objects'][$id] ?? ['ObjectType'=>2, 'ParentID'=>0];
+}
+function IPS_GetName(int $id): string { return $GLOBALS['objects'][$id]['name'] ?? 'Temperature'; }
+function IPS_GetChildrenIDs(int $id): array { return $GLOBALS['objectChildren'][$id] ?? []; }
 function IPS_VariableExists(int $id): bool { return $id > 0; }
 function IPS_GetVariable(int $id): array { return $GLOBALS['variables'][$id] ?? ['VariableType'=>2]; }
 function GetValue(int $id): mixed { return $GLOBALS['value'] ?? 21.5; }
@@ -111,3 +115,35 @@ $GLOBALS['profile']['Associations'] = [['Value'=>'CHARGING', 'Name'=>'Laden', 'C
 $GLOBALS['value'] = 'CHARGING';
 $GLOBALS['formatted'] = 'CHARGING';
 expect($invoke('GetVariableRuntimeMeta',321)['_valueText'] === 'Laden', 'string association label remains supported');
+
+$GLOBALS['objects'] = [
+    10=>['ObjectType'=>0, 'ParentID'=>0, 'name'=>'Haus'],
+    11=>['ObjectType'=>0, 'ParentID'=>10, 'name'=>'Obergeschoss'],
+    12=>['ObjectType'=>1, 'ParentID'=>11, 'name'=>'Lampe "Nord" & Licht'],
+    123=>['ObjectType'=>2, 'ParentID'=>12, 'name'=>'Ein'],
+    124=>['ObjectType'=>2, 'ParentID'=>12, 'name'=>'Helligkeit'],
+    15=>['ObjectType'=>0, 'ParentID'=>11, 'name'=>'Anderes Zimmer'],
+    16=>['ObjectType'=>2, 'ParentID'=>15, 'name'=>'Unbeteiligte Variable'],
+    50=>['ObjectType'=>0, 'ParentID'=>0, 'name'=>'Andere Etage'],
+    51=>['ObjectType'=>2, 'ParentID'=>50, 'name'=>'Unbeteiligte Variable'],
+    199=>['ObjectType'=>2, 'ParentID'=>0, 'name'=>'Direkt im Hauptverzeichnis']
+];
+$GLOBALS['objectChildren'] = [0=>[10,50,199], 10=>[11], 11=>[12,15], 12=>[123,124], 15=>[16], 50=>[51]];
+$GLOBALS['objectReads'] = [];
+$location = $invoke('BuildObjectTreeLocation',123);
+expect($location['expandedIDs'] === [10,11,12] && $location['focusID'] === 123, 'picker opens ancestors of assigned variable');
+$house = $location['objects'][array_search(10,array_column($location['objects'],'id'),true)];
+$floor = $house['children'][0];
+$lamp = $floor['children'][array_search(12,array_column($floor['children'],'id'),true)];
+$target = $lamp['children'][array_search(123,array_column($lamp['children'],'id'),true)];
+expect($target['path'] === 'Haus / Obergeschoss / Lampe "Nord" & Licht / Ein', 'picker location contains full path');
+expect(count($lamp['children']) === 2 && count($floor['children']) === 2, 'picker location keeps siblings available');
+expect($house['childrenLoaded'] && $floor['childrenLoaded'] && $lamp['childrenLoaded'], 'picker marks expanded ancestors as loaded');
+expect(!in_array(16,$GLOBALS['objectReads'],true) && !in_array(51,$GLOBALS['objectReads'],true), 'picker location does not traverse unrelated branches');
+$rootLocation = $invoke('BuildObjectTreeLocation',199);
+expect($rootLocation['expandedIDs'] === [] && $rootLocation['focusID'] === 199, 'picker supports assigned variable at root');
+$missingLocation = $invoke('BuildObjectTreeLocation',999);
+expect($missingLocation['expandedIDs'] === [] && $missingLocation['focusID'] === 0 && count($missingLocation['objects']) === 3, 'deleted picker target falls back to root');
+$m->RequestAction('getObjectTreeLocation',json_encode(['objectID'=>123,'requestID'=>7],JSON_THROW_ON_ERROR));
+$message = $m->visualization[array_key_last($m->visualization)];
+expect($message['type'] === 'objectTreeLocation' && $message['requestID'] === 7 && $message['objectID'] === 123 && $message['focusID'] === 123, 'picker action sends correlated location response');

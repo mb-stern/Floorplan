@@ -124,7 +124,12 @@ Floorplan basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller** und 
 
 ### 1.24
 
-- Modulcode überarbeitet und kleinere Fehler behoben.
+- Die Variablenauswahl öffnet sich direkt am Standort der bereits zugeordneten Variable.
+- Beim Darüberfahren mit der Maus wird der vollständige Variablenpfad angezeigt.
+- Zahlenwerte und Einheiten werden korrekt dargestellt, auch beim Wert 0.
+- Der störende Rahmen beim Anklicken der Etagenauswahl wurde entfernt.
+- Wertanzeigen werden nach dem Speichern und Wiederherstellen zuverlässiger aktualisiert.
+- Die README wurde als Anleitung für Einrichtung und Bedienung überarbeitet.
 
 ### 1.23
 
