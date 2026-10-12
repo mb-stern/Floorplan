@@ -901,6 +901,7 @@ class Floorplan extends IPSModuleStrict
             max-width: none;
             padding: 0 26px 0 9px;
             border: 1px solid var(--fp-border);
+            outline: none;
             border-radius: 6px;
             background: var(--fp-panel-2);
             color: var(--fp-text);
@@ -909,6 +910,10 @@ class Floorplan extends IPSModuleStrict
             pointer-events: auto;
             backface-visibility: hidden;
             -webkit-backface-visibility: hidden;
+        }
+
+        #viewbar select:focus-visible {
+            border-color: var(--fp-accent);
         }
 
         #viewbar button {
