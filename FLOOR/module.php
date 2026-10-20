@@ -2098,12 +2098,14 @@ HTML;
 
     let state = normalizeProject(initial);
     let variablePickerTarget = null;
+    let variablePickerToken = '';
     let iconPickerTarget = null;
     let objectTree = [];
     const expandedObjectIDs = new Set([0]);
     let objectTreeSearchTimer = null;
     let objectTreeSearchRequest = 0;
     let objectTreeLocationRequest = 0;
+    let variableAssignmentRequest = 0;
     let tool = '';
     let selected = null;
     let wallStart = null;
@@ -6065,6 +6067,7 @@ HTML;
             field.title = entity?.[pathFields[field.dataset.variableField]] || 'Variable auswählen';
             field.addEventListener('click', () => {
                 if (!selected) return;
+                variablePickerToken = uid('picker');
                 variablePickerTarget = {
                     floorId: state.activeFloor,
                     entityType: selected.type,
@@ -6084,11 +6087,13 @@ HTML;
                 expandedObjectIDs.add(0);
                 const objectID = currentPickerVariableID();
                 if (objectID > 0) {
-                    requestAction('getObjectTreeLocation', JSON.stringify({objectID, requestID}));
+                    requestAction('getObjectTreeLocation', JSON.stringify({objectID, requestID, pickerToken: variablePickerToken}));
                 } else {
                     requestAction('getObjectTreeChildren', JSON.stringify({
                         parentID: 0,
-                        parentPath: ''
+                        parentPath: '',
+                        requestID,
+                        pickerToken: variablePickerToken
                     }));
                 }
             });
@@ -7394,7 +7399,9 @@ HTML;
                 statusEl.textContent = 'Unterobjekte werden geladen …';
                 requestAction('getObjectTreeChildren', JSON.stringify({
                     parentID: id,
-                    parentPath: node.path || ''
+                    parentPath: node.path || '',
+                    requestID: objectTreeLocationRequest,
+                    pickerToken: variablePickerToken
                 }));
                 renderObjectTree(variableSearch.value);
                 return;
@@ -7602,6 +7609,20 @@ HTML;
         });
     }
 
+    function closeVariablePicker() {
+        variablePickerTarget = null;
+        variablePickerToken = '';
+        ++objectTreeLocationRequest;
+        ++objectTreeSearchRequest;
+        ++variableAssignmentRequest;
+        if (objectTreeSearchTimer !== null) {
+            clearTimeout(objectTreeSearchTimer);
+            objectTreeSearchTimer = null;
+        }
+        variableModal.classList.remove('open');
+        variableModal.setAttribute('aria-hidden', 'true');
+    }
+
     function assignVariable(variableID) {
         if (!variablePickerTarget) return;
 
@@ -7649,8 +7670,7 @@ HTML;
                 Number(entity.colorVariableID || 0) > 0 ||
                 Number(entity.colorVariableID2 || 0) > 0;
 
-            variableModal.classList.remove('open');
-            variableModal.setAttribute('aria-hidden', 'true');
+            closeVariablePicker();
             pushHistory();
             markDirty();
             render();
@@ -7667,7 +7687,10 @@ HTML;
         ) {
             statusEl.textContent = 'Variablendaten werden geladen …';
             requestAction('getVariableMetaForAssignment', JSON.stringify({
-                variableID: selectedVariableID
+                variableID: selectedVariableID,
+                requestID: ++variableAssignmentRequest,
+                pickerRequestID: objectTreeLocationRequest,
+                pickerToken: variablePickerToken
             }));
             return;
         }
@@ -7766,8 +7789,7 @@ HTML;
             entity.iconOnSvg = '';
             entity.icon = node.objectIcon || 'fa-light fa-circle';
 
-            variableModal.classList.remove('open');
-            variableModal.setAttribute('aria-hidden', 'true');
+            closeVariablePicker();
             pushHistory();
             markDirty();
             render();
@@ -7933,8 +7955,7 @@ HTML;
             }
         }
 
-        variableModal.classList.remove('open');
-        variableModal.setAttribute('aria-hidden', 'true');
+        closeVariablePicker();
         pushHistory();
         markDirty();
 
@@ -7959,7 +7980,9 @@ HTML;
         if (query === '') {
             requestAction('getObjectTreeChildren', JSON.stringify({
                 parentID: 0,
-                parentPath: ''
+                parentPath: '',
+                requestID: objectTreeLocationRequest,
+                pickerToken: variablePickerToken
             }));
             return;
         }
@@ -7969,21 +7992,17 @@ HTML;
             statusEl.textContent = 'Objektbaum wird durchsucht …';
             requestAction('searchObjectTree', JSON.stringify({
                 query,
-                requestID
+                requestID,
+                pickerRequestID: objectTreeLocationRequest,
+                pickerToken: variablePickerToken
             }));
         }, 220);
     });
-    document.getElementById('variableCloseBtn').addEventListener('click', () => {
-        ++objectTreeLocationRequest;
-        variableModal.classList.remove('open');
-        variableModal.setAttribute('aria-hidden', 'true');
-    });
+    document.getElementById('variableCloseBtn').addEventListener('click', closeVariablePicker);
     document.getElementById('variableClearBtn').addEventListener('click', () => assignVariable(0));
     variableModal.addEventListener('click', evt => {
         if (evt.target === variableModal) {
-            ++objectTreeLocationRequest;
-            variableModal.classList.remove('open');
-            variableModal.setAttribute('aria-hidden', 'true');
+            closeVariablePicker();
         }
     });
 
@@ -8871,7 +8890,7 @@ HTML;
             }
 
             if (data?.type === 'project' && data.project) {
-
+                closeVariablePicker();
 
                 const currentFloorID = state?.activeFloor || '';
                 const currentMode = state?.mode || 'view';
@@ -8899,6 +8918,10 @@ HTML;
                 Number(data.variableID) > 0 &&
                 data.meta
             ) {
+                if (!variablePickerTarget || data.pickerToken !== variablePickerToken ||
+                    Number(data.pickerRequestID) !== objectTreeLocationRequest ||
+                    Number(data.requestID) !== variableAssignmentRequest) return;
+
                 const node = findTreeNode(objectTree, Number(data.variableID));
                 if (!node) return;
 
@@ -8927,7 +8950,8 @@ HTML;
 
                 assignVariable(Number(data.variableID));
             } else if (data?.type === 'objectTreeLocation' && Array.isArray(data.objects)) {
-                if (Number(data.requestID) !== objectTreeLocationRequest ||
+                if (!variablePickerTarget || data.pickerToken !== variablePickerToken ||
+                    Number(data.requestID) !== objectTreeLocationRequest ||
                     Number(data.objectID) !== currentPickerVariableID()) return;
 
                 objectTree = data.objects;
@@ -8944,6 +8968,9 @@ HTML;
                 });
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'objectTreeChildren' && Array.isArray(data.objects)) {
+                if (!variablePickerTarget || data.pickerToken !== variablePickerToken ||
+                    Number(data.requestID) !== objectTreeLocationRequest) return;
+
                 const parentID = Number(data.parentID || 0);
 
                 if (parentID === 0) {
@@ -8967,7 +8994,9 @@ HTML;
                 statusEl.textContent = 'Objektbaum – Variable auswählen';
             } else if (data?.type === 'objectTreeSearchResults' && Array.isArray(data.objects)) {
                 const requestID = Number(data.requestID || 0);
-                if (requestID < objectTreeSearchRequest) return;
+                if (!variablePickerTarget || data.pickerToken !== variablePickerToken ||
+                    requestID !== objectTreeSearchRequest ||
+                    Number(data.pickerRequestID) !== objectTreeLocationRequest) return;
 
                 objectTree = data.objects;
                 expandedObjectIDs.clear();
@@ -9086,9 +9115,11 @@ JAVASCRIPT;
 
                 $message = json_encode(
                     [
-                        'type'     => 'objectTreeChildren',
-                        'parentID' => $parentID,
-                        'objects'  => $this->BuildObjectChildrenLazy($parentID, $parentPath)
+                        'type'        => 'objectTreeChildren',
+                        'parentID'    => $parentID,
+                        'requestID'   => (int) ($request['requestID'] ?? 0),
+                        'pickerToken' => (string) ($request['pickerToken'] ?? ''),
+                        'objects'     => $this->BuildObjectChildrenLazy($parentID, $parentPath)
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -9114,6 +9145,7 @@ JAVASCRIPT;
                         'type'        => 'objectTreeLocation',
                         'objectID'    => $objectID,
                         'requestID'   => (int) ($request['requestID'] ?? 0),
+                        'pickerToken' => (string) ($request['pickerToken'] ?? ''),
                         'objects'     => $location['objects'],
                         'expandedIDs' => $location['expandedIDs'],
                         'focusID'     => $location['focusID']
@@ -9141,10 +9173,12 @@ JAVASCRIPT;
 
                 $message = json_encode(
                     [
-                        'type'      => 'objectTreeSearchResults',
-                        'requestID' => $requestID,
-                        'objects'   => $search['objects'],
-                        'truncated' => $search['truncated']
+                        'type'            => 'objectTreeSearchResults',
+                        'requestID'       => $requestID,
+                        'pickerRequestID' => (int) ($request['pickerRequestID'] ?? 0),
+                        'pickerToken'     => (string) ($request['pickerToken'] ?? ''),
+                        'objects'         => $search['objects'],
+                        'truncated'       => $search['truncated']
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -9171,9 +9205,12 @@ JAVASCRIPT;
 
                 $message = json_encode(
                     [
-                        'type'       => 'variableMetaForAssignment',
-                        'variableID' => $variableID,
-                        'meta'       => $this->GetVariableRuntimeMeta($variableID)
+                        'type'            => 'variableMetaForAssignment',
+                        'variableID'      => $variableID,
+                        'requestID'       => (int) ($request['requestID'] ?? 0),
+                        'pickerRequestID' => (int) ($request['pickerRequestID'] ?? 0),
+                        'pickerToken'     => (string) ($request['pickerToken'] ?? ''),
+                        'meta'            => $this->GetVariableRuntimeMeta($variableID)
                     ],
                     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
                 );
@@ -9345,7 +9382,7 @@ JAVASCRIPT;
         $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
         $this->UpdateVisualizationValue(
             json_encode(
-                ['type' => 'project', 'project' => $project],
+                ['type' => 'project', 'project' => $this->AddRuntimeValues($project)],
                 JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
             )
         );
@@ -9412,7 +9449,7 @@ JAVASCRIPT;
         $this->WriteAttributeString(self::ATTRIBUTE_DATA, $json);
 
         $message = json_encode(
-            ['type' => 'project', 'project' => $project],
+            ['type' => 'project', 'project' => $this->AddRuntimeValues($project)],
             JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
         );
 
