@@ -122,6 +122,12 @@ Floorplan basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller** und 
 
 ## 📝 Änderungen
 
+### 1.25
+
+- Abbrechen in der Variablenauswahl verhindert zuverlässig eine Änderung der Zuordnung.
+- Geschlossene Auswahlfenster bleiben auch bei verzögert geladenen Einträgen geschlossen.
+- Nach dem Wiederherstellen eines Grundrisses werden aktuelle Werte sofort angezeigt und Geräte können direkt bedient werden.
+
 ### 1.24
 
 - Die Variablenauswahl öffnet sich direkt am Standort der bereits zugeordneten Variable.
