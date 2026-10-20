@@ -42,6 +42,11 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__',
         const respond = message => page.evaluate(data => window.handleMessage(data), message);
         const location = action => ({type: 'objectTreeLocation', ...action.payload, objects,
             expandedIDs: [10, 11, 12], focusID: action.payload.objectID});
+        const children = (action, objects) => ({type: 'objectTreeChildren',
+            parentID: action.payload.parentID, requestID: action.payload.requestID,
+            pickerToken: action.payload.pickerToken, objects});
+        const metadata = action => ({type: 'variableMetaForAssignment', ...action.payload,
+            meta: {_variableType: 0, _canAction: true, _rawValue: false, _valueText: 'Aus'}});
 
         assert.equal(await field.getAttribute('title'), assignedPath, 'assigned field tooltip has full path');
         await field.click();
@@ -62,9 +67,10 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__',
 
         await page.locator('[data-tree-toggle="50"]').click();
         const childrenAction = await lastAction();
-        assert.deepEqual(childrenAction, {ident: 'getObjectTreeChildren', payload: {parentID: 50, parentPath: 'Anderes'}},
+        assert.deepEqual(childrenAction, {ident: 'getObjectTreeChildren', payload: {parentID: 50, parentPath: 'Anderes',
+            requestID: first.payload.requestID, pickerToken: first.payload.pickerToken}},
             'unrelated branch still loads on demand');
-        await respond({type: 'objectTreeChildren', parentID: 50, objects: [node(51, 'Temperatur', 2, 'Anderes / Temperatur')]});
+        await respond(children(childrenAction, [node(51, 'Temperatur', 2, 'Anderes / Temperatur')]));
         assert.equal(await page.locator('.tree-row[data-object-id="51"]').isVisible(), true);
 
         await page.locator('#variableCloseBtn').click();
@@ -88,11 +94,47 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__',
 
         await field.click();
         await respond(location(await lastAction()));
+        await page.locator('[data-tree-toggle="50"]').click();
+        const pendingChildren = await lastAction();
+        await page.locator('#variableCloseBtn').click();
+        await respond(children(pendingChildren, [node(51, 'Temperatur', 2, 'Anderes / Temperatur')]));
+        assert.equal(await modal.getAttribute('aria-hidden'), 'true', 'late children do not reopen cancelled picker');
+        await field.click();
+        const reopened = await lastAction();
+        await respond(children(pendingChildren, [node(51, 'Temperatur', 2, 'Anderes / Temperatur')]));
+        assert.equal(await modal.getAttribute('aria-hidden'), 'true', 'old children cannot open a new picker session');
+        await respond(location(reopened));
+        await respond(children(pendingChildren, [node(51, 'Temperatur', 2, 'Anderes / Temperatur')]));
+        assert.equal(await page.locator('.tree-row[data-object-id="51"]').count(), 0, 'old children do not alter reopened tree');
+
+        await page.waitForTimeout(1300);
+        await page.evaluate(() => { window.actions = []; });
+        await page.locator('.tree-row[data-object-id="200"]').click();
+        const cancelledSelection = await lastAction();
+        assert.equal(cancelledSelection.ident, 'getVariableMetaForAssignment');
+        await page.locator('#variableCloseBtn').click();
+        await respond(metadata(cancelledSelection));
+        assert.ok((await field.inputValue()).startsWith('#123'), 'cancel preserves original variable assignment');
+        await page.waitForTimeout(1300);
+        assert.equal(await page.evaluate(() => window.actions.some(a => a.ident === 'save')), false,
+            'cancelled selection is not saved later');
+
+        await field.click();
+        await respond(location(await lastAction()));
+        await respond(metadata(cancelledSelection));
+        assert.equal(await modal.getAttribute('aria-hidden'), 'false', 'old metadata cannot select in reopened picker');
+        assert.ok((await field.inputValue()).startsWith('#123'));
+        await page.locator('.tree-row[data-object-id="200"]').click();
+        const olderSelection = await lastAction();
         await page.locator('.tree-row[data-object-id="123"]').click();
-        assert.deepEqual(await lastAction(), {ident: 'getVariableMetaForAssignment', payload: {variableID: 123}},
-            'clicking a variable still selects it');
-        await respond({type: 'variableMetaForAssignment', variableID: 123,
-            meta: {_variableType: 0, _canAction: true, _rawValue: false, _valueText: 'Aus'}});
+        const latestSelection = await lastAction();
+        assert.equal(latestSelection.ident, 'getVariableMetaForAssignment');
+        assert.equal(latestSelection.payload.variableID, 123, 'clicking a variable still selects it');
+        await respond({...metadata(latestSelection), pickerToken: 'other-view'});
+        assert.equal(await modal.getAttribute('aria-hidden'), 'false', 'another view cannot complete this selection');
+        await respond(metadata(olderSelection));
+        assert.equal(await modal.getAttribute('aria-hidden'), 'false', 'older selection cannot override latest click');
+        await respond(metadata(latestSelection));
         assert.equal(await modal.getAttribute('aria-hidden'), 'true');
         assert.equal(await field.getAttribute('title'), assignedPath, 'selected path survives assignment');
 
@@ -105,6 +147,8 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__',
         await page.waitForFunction(() => window.actions.at(-1)?.ident === 'searchObjectTree');
         const searchAction = await lastAction();
         await respond({type: 'objectTreeSearchResults', requestID: searchAction.payload.requestID,
+            pickerRequestID: searchAction.payload.pickerRequestID,
+            pickerToken: searchAction.payload.pickerToken,
             objects: [node(51, 'Temperatur', 2, 'Anderes / Temperatur')], truncated: false});
         assert.equal(await page.locator('.tree-row[data-object-id="51"]').getAttribute('title'), 'Anderes / Temperatur');
         await page.locator('#variableCloseBtn').click();
@@ -112,15 +156,36 @@ const html = markup.replace('__FLOORPLAN_EDITOR_JAVASCRIPT__',
         await field.click();
         assert.equal(await page.locator('#variableSearch').inputValue(), '', 'reopening clears previous search');
         await respond(location(await lastAction()));
+        await respond({type: 'objectTreeSearchResults', ...searchAction.payload,
+            objects: [node(51, 'Temperatur', 2, 'Anderes / Temperatur')], truncated: false});
+        assert.equal(await selected.isVisible(), true, 'old search cannot replace reopened tree');
         await page.locator('#variableClearBtn').click();
         assert.equal(await field.getAttribute('title'), 'Variable auswählen');
         await field.click();
-        assert.deepEqual(await lastAction(), {ident: 'getObjectTreeChildren', payload: {parentID: 0, parentPath: ''}},
-            'unassigned picker starts at root');
-        await respond({type: 'objectTreeChildren', parentID: 0, objects: [other]});
+        const rootAction = await lastAction();
+        assert.equal(rootAction.ident, 'getObjectTreeChildren');
+        assert.equal(rootAction.payload.parentID, 0, 'unassigned picker starts at root');
+        await respond(children(rootAction, [other]));
         assert.equal(await page.locator('.tree-row[data-object-id="50"]').isVisible(), true);
+        await page.evaluate(() => { window.actions = []; });
+        await page.locator('#variableSearch').fill('Lampe');
+        await page.locator('#variableCloseBtn').click();
+        await page.waitForTimeout(300);
+        assert.equal(await page.evaluate(() => window.actions.some(a => a.ident === 'searchObjectTree')), false,
+            'closing picker cancels pending search timer');
+
+        const restored = structuredClone(project);
+        Object.assign(restored.floors[0].items[0], {_valueText: 'Ein', _rawValue: true, showValue: true});
+        await page.locator('#finishBtn').click();
+        await respond({type: 'project', project: restored});
+        const restoredDevice = page.locator('[data-type="item"][data-id="lamp"]');
+        assert.equal(await restoredDevice.locator('.runtime-value').textContent(), 'Ein', 'restored live view shows current value');
+        assert.ok(!(await restoredDevice.getAttribute('class')).includes('status-only'), 'restored device keeps action enabled');
+        await restoredDevice.locator('circle').first().click();
+        assert.deepEqual(await lastAction(), {ident: 'operate', payload: {floorId: 'ground', itemId: 'lamp'}},
+            'restored device sends action without reloading');
         assert.deepEqual(errors, [], 'no JavaScript runtime errors');
-        console.log('PASS: full path tooltips, ancestor expansion, scrolling, lazy loading, assignment, search and stale responses');
+        console.log('PASS: picker navigation, cancellation, stale responses, search and restored device operation');
     } finally {
         await browser.close();
     }
