@@ -15,11 +15,16 @@ declare(strict_types=1);
 class Floorplan extends IPSModuleStrict
 {
     private const ATTRIBUTE_DATA = 'FloorplanData';
-    private const VISUALIZATION_TYPE_HTML = 1;
 
     public function Create(): void
     {
         parent::Create();
+
+        $this->SetVisualizationType(
+            defined('INSTANCE_VISUALIZATION_TYPE_HTML_FULLSCREEN')
+                ? INSTANCE_VISUALIZATION_TYPE_HTML_FULLSCREEN
+                : 1
+        );
 
         $this->RegisterPropertyInteger('GridSize', 20);
         $this->RegisterPropertyInteger('SnapSize', 20);
@@ -27,15 +32,17 @@ class Floorplan extends IPSModuleStrict
         $this->RegisterPropertyBoolean('ShowGrid', true);
 
         $this->RegisterAttributeString(self::ATTRIBUTE_DATA, '');
-
-        $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
     }
 
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
 
-        $this->SetVisualizationType(self::VISUALIZATION_TYPE_HTML);
+        $this->SetVisualizationType(
+            defined('INSTANCE_VISUALIZATION_TYPE_HTML_FULLSCREEN')
+                ? INSTANCE_VISUALIZATION_TYPE_HTML_FULLSCREEN
+                : 1
+        );
 
         if ($this->ReadAttributeString(self::ATTRIBUTE_DATA) === '') {
             $this->WriteAttributeString(
