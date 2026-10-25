@@ -12,6 +12,8 @@ Mit Floorplan zeichnest du deinen Grundriss direkt in IP-Symcon und bedienst dei
 
 Zum Zeichnen und Einrichten empfiehlt sich ein Browser mit ausreichend Platz für den Grundriss und die Eigenschaftenleiste.
 
+Ab **Symcon 9.1** kannst du die Floorplan-Kachel maximieren. Aktiviere dafür in den visuellen Einstellungen der Kachel **„Maximieren-Button anzeigen“**. Übernimm bei bestehenden Instanzen nach dem Modulupdate einmal die Konfiguration.
+
 ## ✏️ Deinen ersten Grundriss erstellen
 
 1. **Wand** wählen und im Zeichenbereich den Anfangs- und Endpunkt anklicken. Weitere Wände auf dieselbe Weise zeichnen.
