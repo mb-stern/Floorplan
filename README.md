@@ -124,6 +124,10 @@ Floorplan basiert ursprünglich auf **Easy Floorplan von Nicolas Sandller** und 
 
 ## 📝 Änderungen
 
+### 1.26
+
+- Die Floorplan-Kachel lässt sich ab Symcon 9.1 auch maximiert anzeigen.
+
 ### 1.25
 
 - Abbrechen in der Variablenauswahl verhindert zuverlässig eine Änderung der Zuordnung.
